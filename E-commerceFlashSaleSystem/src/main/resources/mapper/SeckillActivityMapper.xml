@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ghb.ecommerceflashsalesystem.mapper.SeckillActivityMapper">
+
+    <!-- 基础结果映射：所有字段 -->
+    <resultMap id="BaseResultMap" type="com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="product_id" property="productId" jdbcType="BIGINT"/>
+        <result column="activity_name" property="activityName" jdbcType="VARCHAR"/>
+        <result column="start_time" property="startTime" jdbcType="TIMESTAMP"/>
+        <result column="end_time" property="endTime" jdbcType="TIMESTAMP"/>
+        <result column="seckill_price" property="seckillPrice" jdbcType="BIGINT"/>
+        <result column="seckill_stock" property="seckillStock" jdbcType="INTEGER"/>
+        <result column="limit_per_user" property="limitPerUser" jdbcType="INTEGER"/>
+        <result column="status" property="status" jdbcType="TINYINT"/>
+        <result column="preheat_status" property="preheatStatus" jdbcType="TINYINT"/>
+        <result column="version" property="version" jdbcType="INTEGER"/>
+        <result column="created_at" property="createdAt" jdbcType="TIMESTAMP"/>
+        <result column="updated_at" property="updatedAt" jdbcType="TIMESTAMP"/>
+    </resultMap>
+</mapper>

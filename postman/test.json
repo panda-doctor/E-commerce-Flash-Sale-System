@@ -1,0 +1,648 @@
+{
+  "info": {
+    "name": "轻量级电商秒杀系统接口测试",
+    "_postman_id": "3f07a3fa-6215-4c5d-8a61-202607270001",
+    "description": "用于验证轻量级电商秒杀系统的商品缓存、活动预热、秒杀下单、订单查询和排行榜接口。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "productId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "activityId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "1001",
+      "type": "string"
+    },
+    {
+      "key": "orderNo",
+      "value": "SK202607272000001001",
+      "type": "string"
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('响应时间小于 2000 毫秒', function () {",
+          "  pm.expect(pm.response.responseTime).to.be.below(2000);",
+          "});",
+          "",
+          "pm.test('响应是 JSON', function () {",
+          "  pm.response.to.have.header('Content-Type');",
+          "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "基础检查",
+      "item": [
+        {
+          "name": "健康检查",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('状态码为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('业务状态成功', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(0);",
+                  "  pm.expect(json.data).to.have.property('application');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "商品缓存",
+      "item": [
+        {
+          "name": "创建或更新商品",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": 1,\n  \"name\": \"秒杀机械键盘\",\n  \"description\": \"高并发秒杀测试商品\",\n  \"originalPrice\": 29900,\n  \"seckillPrice\": 9900,\n  \"totalStock\": 100,\n  \"status\": \"ON_SALE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "products"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('状态码为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('返回商品编号', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(0);",
+                  "  pm.expect(json.data.productId).to.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "查询商品详情",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "{{productId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('状态码为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('返回商品详情', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(0);",
+                  "  pm.expect(json.data).to.have.property('productId');",
+                  "  pm.expect(json.data).to.have.property('name');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "秒杀活动管理",
+      "item": [
+        {
+          "name": "创建秒杀活动",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activityId\": 1,\n  \"productId\": 1,\n  \"activityName\": \"键盘限时秒杀\",\n  \"startTime\": \"2026-07-27 20:00:00\",\n  \"endTime\": \"2026-07-27 21:00:00\",\n  \"seckillStock\": 100,\n  \"limitPerUser\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/seckill/activities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "seckill",
+                "activities"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('状态码为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('返回活动编号', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(0);",
+                  "  pm.expect(json.data.activityId).to.eql(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "预热秒杀活动",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/seckill/activities/{{activityId}}/preheat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "seckill",
+                "activities",
+                "{{activityId}}",
+                "preheat"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('状态码为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('返回缓存键', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(0);",
+                  "  pm.expect(json.data).to.have.property('stockKey');",
+                  "  pm.expect(json.data).to.have.property('activityKey');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "查询活动详情",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seckill/activities/{{activityId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seckill",
+                "activities",
+                "{{activityId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('状态码为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('返回活动状态', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(0);",
+                  "  pm.expect(json.data).to.have.property('status');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "查询用户秒杀资格",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seckill/activities/{{activityId}}/check?userId={{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seckill",
+                "activities",
+                "{{activityId}}",
+                "check"
+              ],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "{{userId}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('状态码为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('返回资格判断', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(0);",
+                  "  pm.expect(json.data).to.have.property('canJoin');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "秒杀链路",
+      "item": [
+        {
+          "name": "执行秒杀",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activityId\": 1,\n  \"productId\": 1,\n  \"userId\": 1001\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/seckill/execute",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seckill",
+                "execute"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 状态为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('业务码符合预期', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.be.oneOf([0, 40001, 40901, 40902, 42900, 50000]);",
+                  "});",
+                  "",
+                  "pm.test('返回秒杀结果', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('code');",
+                  "  pm.expect(json.data).to.have.property('result');",
+                  "  if (json.data.orderNo) {",
+                  "    pm.collectionVariables.set('orderNo', json.data.orderNo);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "重复秒杀验证",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activityId\": 1,\n  \"productId\": 1,\n  \"userId\": 1001\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/seckill/execute",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seckill",
+                "execute"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 状态为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('重复请求应返回重复秒杀业务码', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.be.oneOf([0, 40901]);",
+                  "});",
+                  "",
+                  "pm.test('返回统一结构', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('code');",
+                  "  pm.expect(json).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "查询订单状态",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seckill/orders/{{orderNo}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seckill",
+                "orders",
+                "{{orderNo}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 状态为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('业务码符合查询预期', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.be.oneOf([0, 40004]);",
+                  "});",
+                  "",
+                  "pm.test('返回统一结构', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('code');",
+                  "  pm.expect(json).to.have.property('data');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "查询用户秒杀订单",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/seckill/users/{{userId}}/orders?activityId={{activityId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "seckill",
+                "users",
+                "{{userId}}",
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "activityId",
+                  "value": "{{activityId}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('状态码为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('返回订单列表', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(0);",
+                  "  pm.expect(json.data).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "排行榜与指标",
+      "item": [
+        {
+          "name": "查询秒杀排行榜",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/rank/top10?activityId={{activityId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "rank",
+                "top10"
+              ],
+              "query": [
+                {
+                  "key": "activityId",
+                  "value": "{{activityId}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('状态码为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('返回排行榜列表', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(0);",
+                  "  pm.expect(json.data).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "查询活动运行指标",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/seckill/activities/{{activityId}}/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "seckill",
+                "activities",
+                "{{activityId}}",
+                "metrics"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('状态码为 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('返回核心指标', function () {",
+                  "  var json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(0);",
+                  "  pm.expect(json.data).to.have.property('redisStock');",
+                  "  pm.expect(json.data).to.have.property('orderCount');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

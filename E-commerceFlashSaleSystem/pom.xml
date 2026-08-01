@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- 1. 使用 Spring Boot 3.3.4 稳定版本（不要用不存在的 4.1.0） -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.4</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+
+    <groupId>com.ghb</groupId>
+    <artifactId>E-commerceFlashSaleSystem</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>E-commerceFlashSaleSystem</name>
+    <description>E-commerce Flash Sale System</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <!-- 可选：显式指定 MyBatis-Plus 版本已由 starter 管理，无需再定义 -->
+    </properties>
+
+    <dependencies>
+        <!-- ========== Web 层 ========== -->
+        <!-- 使用 spring-boot-starter-web，而不是 webmvc（虽然 webmvc 也能用，但标准是 web） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- ========== Redis ========== -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- ========== Redisson ========== -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <version>3.34.0</version>
+        </dependency>
+
+        <!-- ========== MyBatis-Plus ========== -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <version>3.5.7</version>
+        </dependency>
+
+        <!-- ========== Validation ========== -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- ========== MySQL 驱动 ========== -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>8.0.33</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- ========== Lombok ========== -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- ========== DevTools（开发时热部署） ========== -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- ========== 测试依赖（修正！） ========== -->
+        <!-- 使用 spring-boot-starter-test 替代错误的 webmvc-test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+            <!-- 排除 JUnit 4 的 vintage 引擎，避免版本冲突 -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.junit.vintage</groupId>
+                    <artifactId>junit-vintage-engine</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Spring Boot Maven 插件 -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <!-- Maven 编译插件（已由 Spring Boot 父管理，无需额外配置 Lombok 注解处理器） -->
+            <!-- 如果你需要显式配置，可以保留，但推荐使用 spring-boot-starter-parent 的默认配置 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                    <!-- 注解处理器由 Lombok 注解处理器自动发现，无需显式指定路径 -->
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

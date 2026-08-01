@@ -1,0 +1,6 @@
+# IDE 与本地工具
+.vscode/
+.idea/
+
+# 独立参考模块（org.py 包，与主项目 com.ghb 无关），不纳入版本控制
+mymodule/
