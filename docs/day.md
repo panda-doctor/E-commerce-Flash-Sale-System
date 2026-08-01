@@ -33,7 +33,7 @@
 | 依赖                             | 版本    | 用途          |
 | ------------------------------ | ----- | ----------- |
 | JDK                            | 17    | 语言基础        |
-| Spring Boot                    | 4.1.0 | 后端框架        |
+| Spring Boot                    | 3.3.4 | 后端框架        |
 | Spring Web                     | -     | RESTful API |
 | MyBatis-Plus                   | -     | ORM 数据访问    |
 | MySQL Connector                | 8.0   | 数据库驱动       |
@@ -42,8 +42,8 @@
 | Lombok                         | -     | 减少样板代码      |
 | Spring Boot Starter Validation | -     | 参数校验        |
 | Spring Boot Starter Test       | -     | 单元测试        |
-| Docker                         | 24+   | 本地环境快速部署    |
-| Docker Compose                 | -     | 服务编排        |
+| Docker                         | 24+   | WSL Docker 运行 Redis 7.0 |
+| Docker Compose                 | -     | 未启用（MySQL 本机安装，Redis 用 WSL Docker） |
 
 ### 1.4 Redis 缓存键设计（第一阶段）
 
@@ -82,18 +82,18 @@
 
 | 序号  | 任务                                                                                                                                 | 工作量  | 产出物                                                    |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------ |
-| 1.1 | Docker Compose 编排 MySQL 8.0 + Redis 7.0，配置端口映射和数据持久化                                                                               | 1.5h | `deploy/docker-compose.yml`                            |
-| 1.2 | 编写初始化 SQL 脚本（product、seckill\_activity、seckill\_order 三张表 + 索引 + 种子数据）                                                             | 1.5h | `deploy/mysql/init.sql`                                |
+| 1.1 | 搭建运行环境：MySQL 8.0 本机安装 + Redis 7.0（WSL Docker），配置连接与持久化                                                                               | 1.5h | `本机 MySQL + WSL Docker Redis`                            |
+| 1.2 | 编写初始化 SQL 脚本（product、seckill\_activity、seckill\_order 三张表 + 索引 + 种子数据）                                                             | 1.5h | `src/main/resources/db/schema.sql`                                |
 | 1.3 | 确认 `pom.xml` 依赖完整：spring-boot-starter-web、mybatis-plus、spring-boot-starter-data-redis、redisson、mysql-connector-j、lombok、validation | 0.5h | `pom.xml` 已确认                                          |
-| 1.4 | 补齐 `application.properties`：MySQL 数据源、Redis 连接、MyBatis-Plus 配置、日志级别                                                                | 1h   | `application.properties`                               |
+| 1.4 | 补齐 `application.yaml`：MySQL 数据源、Redis 连接、MyBatis-Plus 配置、日志级别                                                                | 1h   | `application.yaml`                               |
 | 1.5 | 全局配置类骨架：RedisTemplate 序列化配置、Redisson 客户端配置                                                                                         | 1h   | `config/RedisConfig.java`、`config/RedissonConfig.java` |
 | 1.6 | 验证环境连通：启动应用后确认 MySQL 和 Redis 可连接                                                                                                   | 0.5h | 控制台日志无连接错误                                             |
 
 **验收标准：**
 
-- Docker 容器正常启动，`docker ps` 显示 mysql 和 redis 容器运行中
+- MySQL（本机）服务正常，Redis 容器运行中（`docker ps` 可见 redis）
 - 应用启动无报错，Spring Boot Banner 正常输出
-- `application.properties` 中数据库和 Redis 配置正确
+- `application.yaml` 中数据库和 Redis 配置正确
 - Postman 测试 MySQL 和 Redis 连通性（通过后续健康检查接口验证）
 
 **风险预判：**
@@ -101,7 +101,7 @@
 | 风险                   | 概率 | 影响          | 应对                           |
 | -------------------- | -- | ----------- | ---------------------------- |
 | Docker 镜像拉取慢         | 中  | 延迟 30-60min | 预先配置国内镜像源，提前拉取               |
-| 端口冲突（3306/6379/8080） | 低  | 服务无法启动      | `docker-compose.yml` 映射自定义端口 |
+| 端口冲突（3306/6379/8080） | 低  | 服务无法启动      | 调整 MySQL 端口或 Redis 容器 `-p` 映射 |
 | JDK 版本不匹配            | 低  | 编译失败        | 确认 `JAVA_HOME` 指向 JDK 17     |
 
 ***
@@ -136,7 +136,7 @@
 
 | 风险                                  | 概率 | 影响     | 应对                                  |
 | ----------------------------------- | -- | ------ | ----------------------------------- |
-| MyBatis-Plus 与 Spring Boot 4.x 兼容问题 | 低  | 编译失败   | 降级为 MyBatis 原生 + 分页插件，或查阅最新兼容版本     |
+| MyBatis-Plus 与 Spring Boot 版本兼容问题 | 低  | 编译失败   | 已规避：采用 Spring Boot 3.3.4（与 MyBatis-Plus 3.5.7 兼容） |
 | 枚举与数据库 int 映射错误                     | 中  | 查询结果异常 | 使用 `@EnumValue` 或 `IEnum` 接口处理枚举序列化 |
 
 ***
@@ -331,7 +331,7 @@
 | 7.3 | 缓存穿透集成测试：连续请求不存在的商品 ID 100 次，观察 DB 查询次数（应为 1 次）                            | 0.5h | 集成测试通过                                                     |
 | 7.4 | 缓存击穿集成测试：多线程并发请求同一商品，观察 DB 查询次数（应为 1 次）                                    | 0.5h | 集成测试通过                                                     |
 | 7.5 | 修复测试中发现的 Bug，补充缺失的边界处理                                                     | 1.5h | Bug 修复完毕                                                   |
-| 7.6 | 确认 `application.properties` 中生产级配置（连接池、超时时间、日志级别）                          | 0.5h | 配置复查通过                                                     |
+| 7.6 | 确认 `application.yaml` 中生产级配置（连接池、超时时间、日志级别）                          | 0.5h | 配置复查通过                                                     |
 | 7.7 | 输出第一阶段验收报告，标记完成与待优化项                                                       | 0.5h | `docs/phase1-review.md`                                    |
 
 **验收标准：**
@@ -358,10 +358,10 @@
 ```
 Phase 1 — 地基搭建与基础缓存
 ├── 1. 环境搭建（Day 1）
-│   ├── 1.1 Docker Compose 编排 MySQL + Redis
+│   ├── 1.1 搭建 MySQL（本机）+ Redis（WSL Docker）
 │   ├── 1.2 初始化建表脚本
 │   ├── 1.3 Maven 依赖确认
-│   ├── 1.4 application.properties 配置
+│   ├── 1.4 application.yaml 配置
 │   └── 1.5 Redis/Redisson 配置类
 ├── 2. 数据访问层（Day 2）
 │   ├── 2.1 实体类（3 个）
@@ -422,8 +422,8 @@ Day 1 (环境) ───────── Day 2 (数据层) ───── Day
 
 | 风险项                                | 概率 | 影响级别 | 触发条件               | 应对方案                                          |
 | ---------------------------------- | -- | ---- | ------------------ | --------------------------------------------- |
-| Spring Boot 4.1 与 MyBatis-Plus 兼容性 | 低  | 高    | 编译期报错              | 降级方案：使用 Spring Boot 3.x 或 MyBatis 原生          |
-| Redisson 与 Spring Boot 4.1 版本不匹配   | 低  | 中    | 启动报错               | 改用 Spring Data Redis 的 `RedisTemplate` 实现分布式锁 |
+| Spring Boot 4.x 与 MyBatis-Plus 兼容性 | 低  | 高    | 编译期报错              | 已规避：实际采用 Spring Boot 3.3.4                    |
+| Redisson 与 Spring Boot 版本不匹配    | 低  | 中    | 启动报错               | 已规避：使用 Redisson 核心库 3.34.0（兼容 Boot 3.3.4） |
 | Redis 缓存穿透攻击                       | 高  | 中    | 恶意请求大量不存在 ID       | 布隆过滤器（阶段二引入），当前用空值缓存兜底                        |
 | 缓存与数据库数据不一致                        | 中  | 中    | 并发更新+删除缓存竞态        | 采用"延迟双删"策略或 Canal 订阅 binlog（阶段二优化）            |
 | 本地 Docker 资源不足                     | 低  | 中    | MySQL/Redis 容器 OOM | 缩小容器内存限制，或直接使用本地安装的 MySQL/Redis               |
@@ -462,9 +462,9 @@ Day 1 (环境) ───────── Day 2 (数据层) ───── Day
 
 | 序号 | 交付物                                                                     | 来源    | 验收方式                     |
 | -- | ----------------------------------------------------------------------- | ----- | ------------------------ |
-| 1  | `deploy/docker-compose.yml`                                             | Day 1 | 容器正常运行                   |
-| 2  | `deploy/mysql/init.sql`                                                 | Day 1 | 表结构+种子数据正确               |
-| 3  | `application.properties`                                                | Day 1 | 配置完整可启动                  |
+| 1  | 本机 MySQL 8.0 + WSL Docker Redis 7.0（无 Compose 编排）                     | Day 1 | MySQL/Redis 可连接              |
+| 2  | `src/main/resources/db/schema.sql`（5 张表 + 种子数据）                      | Day 1 | 表结构+种子数据正确               |
+| 3  | `src/main/resources/application.yaml`                                    | Day 1 | 配置完整可启动                  |
 | 4  | `config/RedisConfig.java`                                               | Day 1 | RedisTemplate Bean 注入成功  |
 | 5  | `config/RedissonConfig.java`                                            | Day 1 | RedissonClient Bean 注入成功 |
 | 6  | `domain/entity/Product.java`、`SeckillActivity.java`、`SeckillOrder.java` | Day 2 | 字段映射正确                   |

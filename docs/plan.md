@@ -9,7 +9,7 @@
 | 项目 | 内容 |
 |------|------|
 | 项目名称 | 轻量级电商秒杀系统（E-commerce Flash Sale System） |
-| 技术栈 | Spring Boot 4.1.0 / JDK 17 / MySQL 8.0 + MyBatis-Plus 3.5.7 / Redis 7.0 + Redisson 3.34.0 |
+| 技术栈 | Spring Boot 3.3.4 / JDK 17 / MySQL 8.0 + MyBatis-Plus 3.5.7 / Redis 7.0 + Redisson 3.34.0 |
 | 项目文档 | `docs/project.md`、`docs/developlan.md`、`docs/interface.md`、`docs/database.md`、`docs/day.md` |
 | 开发人员 | panda |
 | 导师 | Claude Code |
@@ -46,7 +46,7 @@
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| Docker Compose 编排 MySQL + Redis | ✅ | 本地 MySQL + WSL Docker Redis 直接启动 |
+| 搭建环境：MySQL 本机 + WSL Docker Redis | ✅ | 本地 MySQL + WSL Docker Redis 直接启动 |
 | 初始化 SQL 脚本 | ✅ | `src/main/resources/db/schema.sql`（5 张表 + 种子数据） |
 | pom.xml 依赖确认 | ✅ | 已确认完整 |
 | application.yaml 配置 | ✅ | MySQL 数据源、Redis 连接、MyBatis-Plus 配置 |
@@ -57,7 +57,7 @@
 | 问题 | 修复方案 |
 |------|----------|
 | `GenericJackson2JsonRedisSerializer` 废弃警告 | 替换为 `RedisSerializer.json()` |
-| `jackson-datatype-jsr310` 多余依赖（Jackson 2.x，与 Boot 4.x 的 Jackson 3.x 不兼容） | 从 pom.xml 中删除 |
+| `jackson-datatype-jsr310` 冗余依赖（Spring Boot 3.x 的 starter-web 已内置 Jackson 时间序列化支持） | 从 pom.xml 中删除 |
 | `mysql-connector-j` 作用域优化 | 改为 `runtime` |
 | `redisson-spring-boot-starter` 引用了 Boot 3.x 的旧类导致启动崩溃 | 替换为 `redisson` 核心库，删除错误的 `spring-boot-autoconfigure:4.0.5` 依赖 |
 | Redis 认证失败（Redisson 默认发 AUTH 命令） | 条件设置密码，仅在配置了密码时才发送 AUTH |
@@ -108,11 +108,42 @@
 5. **两类校验异常**：`MethodArgumentNotValidException`（@Valid 请求体）与 `ConstraintViolationException`（参数/路径）是不同异常，都要单独处理
 6. **约束校验异常消息**：拼接 `ConstraintViolation.getMessage()` 比用 `e.getMessage()` 简洁，后者带完整路径
 
+### Day 4 — 商品查询接口与缓存旁路 ▶ 进行中（2026-08-01）
+
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| 4.1 商品视图对象 `ProductVO` | ⏳ | `domain/vo/ProductVO.java`，含 `cacheHit` 标记字段，status 用 `ProductStatusEnum` |
+| 4.2 商品缓存服务 `ProductCacheService` | ⏳ | 缓存键 `product:detail:{productId}`，随机过期 300+random(60) 秒，`getProductFromCache` / `setProductToCache` |
+| 4.3 商品服务 `ProductService` + `Impl` | ⏳ | 缓存旁路：先查缓存 → 未命中查库 → 回写缓存 → 返回，带 cacheHit 标记与查库/查缓存日志 |
+| 4.4 商品查询控制器 `ProductController` | ⏳ | `GET /api/products/{productId}`，商品不存在返回 40004 |
+| 4.5 管理端控制器 `AdminProductController` | ⏳ | `POST /api/admin/products` 创建/更新商品，写操作后删除对应缓存 |
+| 4.6 商品请求 DTO `ProductRequest` | ⏳ | `@NotBlank` / `@NotNull` / `@Min` 校验，productId 可选（创建/更新判定） |
+| 4.7 接口验证与测试 | ⏳ | 首查 cacheHit=false、二次 cacheHit=true、更新清缓存、不存在 40004；`mvn test` 保证 BUILD SUCCESS |
+
+**Day 4 设计决策（任务布置阶段确定）：**
+
+1. **`seckillPrice` 不引入**：interface.md 示例含 `seckillPrice`，但秒杀价属于 `seckill_activity` 表，`Product` 实体无此字段，本轮商品模块以实体为准。
+2. **status 用枚举输出**：`ProductVO.status` 声明为 `ProductStatusEnum` 类型，Jackson 序列化为 `"ON_SHELF"` / `"OFF_SHELF"`，通过 `fromValue` 与数据库 `int` 互转。
+3. **创建/更新判定**：请求体带 `productId` → `updateById`；不带 → 应用层生成新 id 后 `insert`（`id` 为 `IdType.INPUT`）。
+4. **缓存键常量**：新建 `CacheKeyConstant` 收敛 `product:detail:` 前缀，Day 6 活动缓存键复用同一常量类。
+
+**验收标准：**
+
+- 首次查询商品：日志显示查库，响应 `cacheHit: false`
+- 第二次查询同商品：日志显示查缓存，响应 `cacheHit: true`
+- 管理端更新商品后旧缓存被清除（再次查询应回库重建）
+- 查询不存在的商品返回 `code: 40004`
+- 全量 `mvn test` 保证 BUILD SUCCESS
+
+**Day 4 边界：** 缓存穿透防护（空值缓存）与缓存击穿防护（互斥锁）属 Day 5，本次不实现；查库未命中直接返回 40004。
+
+**Day 4 经验教训：**（开发过程中补充）
+
 ### 后续任务计划（Day 4 ~ Day 7）
 
 | 天 | 主要内容 | 前置依赖 |
 |----|----------|----------|
-| Day 4 | 商品缓存旁路、商品查询接口、管理端商品接口 | Day 3 |
+| Day 4 ▶ | 商品缓存旁路、商品查询接口、管理端商品接口 | Day 3 ✅ |
 | Day 5 | 缓存穿透防护、缓存击穿防护（分布式锁）、单测 | Day 4 |
 | Day 6 | 活动管理、缓存预热、活动查询与校验接口 | Day 4 |
 | Day 7 | 集成测试、问题修复、阶段验收 | Day 5 + Day 6 |
@@ -142,7 +173,7 @@
 
 | 缓存键 | 类型 | 用途 | 引入阶段 |
 |--------|------|------|----------|
-| `product:detail:{productId}` | String | 商品详情缓存旁路 | Day 4 |
+| `product:detail:{productId}` | String | 商品详情缓存旁路 | Day 4 ▶ |
 | `seckill:activity:{activityId}` | Hash | 活动信息+时间窗口 | Day 6 |
 | `seckill:stock:{activityId}` | String | 秒杀实时库存 | Day 6 |
 | `seckill:user:{activityId}:{userId}` | String | 用户秒杀幂等标记 | Day 6 |
@@ -154,8 +185,8 @@
 | 方法 | 路径 | 状态 | 计划实现日 |
 |------|------|------|-----------|
 | GET | `/api/health` | ✅ | Day 3 |
-| GET | `/api/products/{productId}` | ⏳ | Day 4 |
-| POST | `/api/admin/products` | ⏳ | Day 4 |
+| GET | `/api/products/{productId}` | ▶ | Day 4 |
+| POST | `/api/admin/products` | ▶ | Day 4 |
 | POST | `/api/admin/seckill/activities` | ⏳ | Day 6 |
 | POST | `/api/admin/seckill/activities/{id}/preheat` | ⏳ | Day 6 |
 | GET | `/api/seckill/activities/{id}` | ⏳ | Day 6 |
@@ -178,5 +209,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-08-01（Day 3 公共组件完成）*
+*上次更新：2026-08-01（Day 4 开发进行中）*
 *下次开始位置：Day 4 — 任务 4.1（商品缓存旁路 ProductCacheService）*

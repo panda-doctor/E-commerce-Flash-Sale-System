@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 轻量级电商秒杀系统 — an educational e-commerce flash sale (seckill) system demonstrating Redis enterprise patterns in high-concurrency scenarios. Uses Redis for caching, atomic inventory deduction, distributed locking, sliding-window rate limiting, async order processing via Redis Streams, and real-time leaderboards.
 
-**Stack:** Spring Boot 4.1.0 / JDK 17 / MySQL 8.0 + MyBatis-Plus 3.5.7 / Redis 7.0 + Redisson 3.34.0
+**Stack:** Spring Boot 3.3.4 / JDK 17 / MySQL 8.0 + MyBatis-Plus 3.5.7 / Redis 7.0 + Redisson 3.34.0
 
 ## Build & Run
 
@@ -26,16 +26,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Package
 ./mvnw clean package
 
-# Start infrastructure (MySQL + Redis)
-docker compose -f deploy/docker-compose.yml up -d
+# Start infrastructure: local MySQL 8.0 + Redis 7.0 via WSL Docker (no docker-compose file)
 ```
 
 ## Project Structure
 
 ```
 E-commerceFlashSaleSystem/
-├── deploy/                         # Docker Compose, SQL init scripts
-├── docs/                           # project.md, interface.md, database.md, developlan.md, day.md
+├── docs/                           # project.md, interface.md, database.md, developlan.md, day.md, plan.md
 ├── postman/                        # API test collection
 ├── scripts/jmeter/                 # Load testing scripts
 ├── src/main/java/.../
@@ -161,7 +159,7 @@ The project is implemented in 4 incremental phases following `docs/developlan.md
 3. **Phase 3 (Week 3):** High-concurrency defense — distributed lock, sliding window rate limit, Redis Stream async ordering
 4. **Phase 4 (Week 4):** Leaderboard, frontend, end-to-end load testing
 
-The day-by-day plan is documented in `docs/day.md` (currently at Phase 1, Day 1).
+The day-by-day plan is documented in `docs/day.md` (currently at Phase 1, Day 3 — progress tracked in `docs/plan.md`).
 
 ## Important Conventions
 
@@ -178,11 +176,12 @@ The day-by-day plan is documented in `docs/day.md` (currently at Phase 1, Day 1)
 
 | Dependency | Version | Purpose |
 |---|---|---|
-| spring-boot-starter-webmvc | 4.1.0 | REST API |
+| spring-boot-starter-web | 3.3.4 | REST API |
 | mybatis-plus-spring-boot3-starter | 3.5.7 | ORM |
-| redisson-spring-boot-starter | 3.34.0 | Distributed locks |
-| spring-boot-starter-data-redis | 4.1.0 | Redis template + Lettuce |
+| redisson | 3.34.0 | Distributed locks (core lib, not starter) |
+| spring-boot-starter-data-redis | 3.3.4 | Redis template + Lettuce |
 | mysql-connector-j | 8.0.33 | MySQL driver |
-| jackson-datatype-jsr310 | - | Java 8 time serialization |
-| spring-boot-starter-validation | 4.1.0 | Bean validation |
+| spring-boot-starter-validation | 3.3.4 | Bean validation |
+| spring-boot-starter-test | 3.3.4 | Unit tests |
+| spring-boot-devtools | 3.3.4 | Dev hot reload |
 | lombok | - | Boilerplate reduction |
