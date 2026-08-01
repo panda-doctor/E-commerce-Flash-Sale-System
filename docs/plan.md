@@ -23,6 +23,7 @@
 5. **工作流程**：导师分步布置任务 → panda 编写代码 → 导师审查 → panda 修正 → 确认通过。每完成一个 Day 更新一次 plan.md 进度。
 6. **测试验证**：每个功能模块完成后必须通过 Maven 测试验证（`mvn test`），保证 BUILD SUCCESS。
 7. **问题记录**：遇到的技术问题和修复方案及时记录在 plan.md 的"经验教训"中，便于复盘。
+8. **代码注释约定**：panda 在代码编写过程中会在代码中添加个人理解的知识笔记（教学式注释），用于记录学习过程。导师审查时应忽略这类注释，不作删除要求，仅关注逻辑正确性。
 
 ---
 
@@ -30,9 +31,8 @@
 
 ```
 ■ 第 1 阶段：地基搭建与基础缓存（Day 1 ~ Day 7）
-  ✅ Day 1 环境搭建  ✅ Day 2 实体与数据层  ✅ Day 3 公共组件
-  ▶ Day 4 商品缓存  ⏳ Day 5 缓存防护    ⏳ Day 6 活动管理
-  ⏳ Day 7 集成验收
+  ✅ Day 1 环境搭建  ✅ Day 2 实体与数据层  ✅ Day 3 公共组件  ✅ Day 4 商品缓存
+  ⏳ Day 5 缓存防护  ⏳ Day 6 活动管理    ⏳ Day 7 集成验收
 □ 第 2 阶段：秒杀核心与原子库存扣减
 □ 第 3 阶段：高并发防护体系
 □ 第 4 阶段：排行榜、前端与全链路压测
@@ -108,17 +108,17 @@
 5. **两类校验异常**：`MethodArgumentNotValidException`（@Valid 请求体）与 `ConstraintViolationException`（参数/路径）是不同异常，都要单独处理
 6. **约束校验异常消息**：拼接 `ConstraintViolation.getMessage()` 比用 `e.getMessage()` 简洁，后者带完整路径
 
-### Day 4 — 商品查询接口与缓存旁路 ▶ 进行中（2026-08-01）
+### Day 4 — 商品查询接口与缓存旁路 ✅ 已完成（2026-08-02）
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| 4.1 商品视图对象 `ProductVO` | ⏳ | `domain/vo/ProductVO.java`，含 `cacheHit` 标记字段，status 用 `ProductStatusEnum` |
-| 4.2 商品缓存服务 `ProductCacheService` | ⏳ | 缓存键 `product:detail:{productId}`，随机过期 300+random(60) 秒，`getProductFromCache` / `setProductToCache` |
-| 4.3 商品服务 `ProductService` + `Impl` | ⏳ | 缓存旁路：先查缓存 → 未命中查库 → 回写缓存 → 返回，带 cacheHit 标记与查库/查缓存日志 |
-| 4.4 商品查询控制器 `ProductController` | ⏳ | `GET /api/products/{productId}`，商品不存在返回 40004 |
-| 4.5 管理端控制器 `AdminProductController` | ⏳ | `POST /api/admin/products` 创建/更新商品，写操作后删除对应缓存 |
-| 4.6 商品请求 DTO `ProductRequest` | ⏳ | `@NotBlank` / `@NotNull` / `@Min` 校验，productId 可选（创建/更新判定） |
-| 4.7 接口验证与测试 | ⏳ | 首查 cacheHit=false、二次 cacheHit=true、更新清缓存、不存在 40004；`mvn test` 保证 BUILD SUCCESS |
+| 4.1 商品视图对象 `ProductVO` | ✅ | `domain/vo/ProductVO.java`，含 `cacheHit` 标记字段，status 用 `ProductStatusEnum` |
+| 4.2 商品缓存服务 `ProductCacheService` | ✅ | 缓存键 `product:detail:{productId}`，随机过期 300+random(60) 秒，`getProductFromCache` / `setProductToCache` |
+| 4.3 商品服务 `ProductService` + `Impl` | ✅ | 缓存旁路：先查缓存 → 未命中查库 → 回写缓存 → 返回，带 cacheHit 标记与查库/查缓存日志 |
+| 4.4 商品查询控制器 `ProductController` | ✅ | `GET /api/products/{productId}`，商品不存在返回 40004，运行验证通过 |
+| 4.5 管理端控制器 `AdminProductController` | ✅ | `POST /api/admin/products` 创建/更新商品，写操作后删除对应缓存 |
+| 4.6 商品请求 DTO `ProductRequest` | ✅ | `@NotBlank` / `@NotNull` 校验，status 用 `ProductStatusEnum`，productId 可选（创建/更新判定） |
+| 4.7 接口验证与测试 | ✅ | 7 个场景全部通过（创建/首查 cacheHit=false/二次 cacheHit=true/更新清缓存/不存在 40004/参数缺失 40001）；`mvn test` BUILD SUCCESS |
 
 **Day 4 设计决策（任务布置阶段确定）：**
 
@@ -137,13 +137,19 @@
 
 **Day 4 边界：** 缓存穿透防护（空值缓存）与缓存击穿防护（互斥锁）属 Day 5，本次不实现；查库未命中直接返回 40004。
 
-**Day 4 经验教训：**（开发过程中补充）
+**Day 4 经验教训：**
+
+1. **`@MapperScan` 必须显式指定 mapper 包**：无参 `@MapperScan` 默认扫描入口类所在包及全部子包，会把业务 Service 接口（如 `ProductService`）误注册为 MyBatis Mapper 代理，调用时抛 `Invalid bound statement (not found)`。修复：`@MapperScan("com.ghb.ecommerceflashsalesystem.mapper")` 只扫描 mapper 包。（印证 Day 2 第 6 条的后果）
+2. **Redis 序列化 `LocalDateTime` 必须注册 `JavaTimeModule`**：`RedisSerializer.json()` 内部 ObjectMapper 不含 `JavaTimeModule`，序列化实体中的 `LocalDateTime` 字段（如 `Product.createdAt`）报错。修复：注入 Spring Boot 自动配置的 `ObjectMapper`（已含 JavaTimeModule），`copy()` 后调用 `activateDefaultTyping(NON_FINAL, As.PROPERTY)` 构造 `GenericJackson2JsonRedisSerializer`。**必须开启 DefaultTyping**，否则反序列化无法还原具体类型（`instanceof Product` 判断会失效）。
+3. **拼写 `ProductVo` vs `ProductVO`**：Java 类名区分大小写，`ProductVo` 类不存在导致"找不到符号"；同时接口与实现返回类型不一致（实体 `Product` vs 视图 `ProductVO`）会使 `@Override` 失败。接口契约统一返回 `ProductVO`。
+4. **数据库种子数据与 schema.sql 不一致导致测试失败**：`MapperTest` 断言与 schema.sql 均为 `total_stock=1000`，但库里实际是 `100`（库比 schema 旧），测试报 `expected: <1000> but was: <100>`。修复：单条 `UPDATE` 修正种子数据（或重跑 schema.sql，其 `CREATE TABLE IF NOT EXISTS` + `INSERT ON DUPLICATE KEY UPDATE` 幂等安全）。
+5. **`@Valid` 触发校验 + 请求体反序列化失败的区分**：`POST /api/admin/products` 用 `@Valid @RequestBody`，JSON 反序列化失败返回 40001"请求体格式错误"（`HttpMessageNotReadableException`），参数校验失败返回 40001 + 具体字段消息——两者都走全局异常处理，无需重复捕获。
 
 ### 后续任务计划（Day 4 ~ Day 7）
 
 | 天 | 主要内容 | 前置依赖 |
 |----|----------|----------|
-| Day 4 ▶ | 商品缓存旁路、商品查询接口、管理端商品接口 | Day 3 ✅ |
+| Day 4 ✅ | 商品缓存旁路、商品查询接口、管理端商品接口 | Day 3 ✅ |
 | Day 5 | 缓存穿透防护、缓存击穿防护（分布式锁）、单测 | Day 4 |
 | Day 6 | 活动管理、缓存预热、活动查询与校验接口 | Day 4 |
 | Day 7 | 集成测试、问题修复、阶段验收 | Day 5 + Day 6 |
@@ -173,7 +179,7 @@
 
 | 缓存键 | 类型 | 用途 | 引入阶段 |
 |--------|------|------|----------|
-| `product:detail:{productId}` | String | 商品详情缓存旁路 | Day 4 ▶ |
+| `product:detail:{productId}` | String | 商品详情缓存旁路 | Day 4 ✅ |
 | `seckill:activity:{activityId}` | Hash | 活动信息+时间窗口 | Day 6 |
 | `seckill:stock:{activityId}` | String | 秒杀实时库存 | Day 6 |
 | `seckill:user:{activityId}:{userId}` | String | 用户秒杀幂等标记 | Day 6 |
@@ -185,8 +191,8 @@
 | 方法 | 路径 | 状态 | 计划实现日 |
 |------|------|------|-----------|
 | GET | `/api/health` | ✅ | Day 3 |
-| GET | `/api/products/{productId}` | ▶ | Day 4 |
-| POST | `/api/admin/products` | ▶ | Day 4 |
+| GET | `/api/products/{productId}` | ✅ | Day 4 |
+| POST | `/api/admin/products` | ✅ | Day 4 |
 | POST | `/api/admin/seckill/activities` | ⏳ | Day 6 |
 | POST | `/api/admin/seckill/activities/{id}/preheat` | ⏳ | Day 6 |
 | GET | `/api/seckill/activities/{id}` | ⏳ | Day 6 |
@@ -209,5 +215,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-08-01（Day 4 开发进行中）*
-*下次开始位置：Day 4 — 任务 4.1（商品缓存旁路 ProductCacheService）*
+*上次更新：2026-08-02（Day 4 商品缓存旁路完成）*
+*下次开始位置：Day 5 — 任务 5.1（缓存穿透防护：空值缓存）*

@@ -163,7 +163,7 @@ GET /api/products/{productId}
     "description": "高并发秒杀测试商品",
     "originalPrice": 29900,
     "seckillPrice": 9900,
-    "status": "ON_SALE",
+    "status": "ON_SHELF",
     "cacheHit": true
   },
   "requestId": "202607271200001002",
@@ -189,7 +189,7 @@ POST /api/admin/products
   "originalPrice": 29900,
   "seckillPrice": 9900,
   "totalStock": 100,
-  "status": "ON_SALE"
+  "status": "ON_SHELF"
 }
 ```
 
