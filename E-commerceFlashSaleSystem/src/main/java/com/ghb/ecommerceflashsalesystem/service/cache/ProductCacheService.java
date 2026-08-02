@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant.PRODUCT_DETAIL_CACHE_TTL;
 import static com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant.PRODUCT_DETAIL_CACHE_TTL_RANDOM_RANGE;
@@ -22,6 +23,7 @@ public class ProductCacheService {
 结合你之前的 CacheKeyConstant，它正是用来操作那些缓存键（如 product:detail:123）的核心工具。
     */
 
+    private static final String EMPTY_VALUE_MARKER = "";
     /**
      * 从缓存中获取商品。
      *
@@ -36,9 +38,13 @@ public class ProductCacheService {
             return null;
         }
         // 安全类型检查
-        if(value instanceof Product){
+        if(value instanceof Product) {
             log.info("缓存命中, key = {}", key);
             return (Product) value;
+        }else if (EMPTY_VALUE_MARKER.equals(value)) {
+            log.info("命中空值标记缓存，key={}", key);
+            return null;
+
         }else{
             // 理论上不会发生，但做防御：删除异常数据
             log.info("缓存数据类型异常，key={}, 实际类型={}，将删除该键", key, value.getClass().getName());
@@ -71,5 +77,25 @@ public class ProductCacheService {
         log.info("商品缓存已删除，key={}", key);
     }
 
+    /**
+     * 写入空值标记，过期时间 60 秒
+     * @param productId 商品编号
+     */
+    public void setProductEmptyToCache(Long productId) {
+        String key = CacheKeyConstant.PRODUCT_DETAIL_PREFIX + productId;
+        redisTemplate.opsForValue().set(key, EMPTY_VALUE_MARKER,
+                CacheKeyConstant.PRODUCT_DETAIL_CACHE_EMPTY_TTL, TimeUnit.SECONDS);
+        log.info("空值缓存写入，key={}, ttl={}秒", key, CacheKeyConstant.PRODUCT_DETAIL_CACHE_EMPTY_TTL);
+    }
+
+    public boolean isProductEmptyFromCache(Long productId) {
+        String key = CacheKeyConstant.PRODUCT_DETAIL_PREFIX + productId;
+        Object value = redisTemplate.opsForValue().get(key);
+        boolean isEmpty = EMPTY_VALUE_MARKER.equals(value);
+        if(isEmpty){
+            log.debug("命中空值缓存，key={}", key);
+        }
+        return isEmpty;
+    }
 
 }

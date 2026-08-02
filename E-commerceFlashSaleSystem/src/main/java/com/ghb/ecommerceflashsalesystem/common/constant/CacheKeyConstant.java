@@ -23,6 +23,16 @@ public class CacheKeyConstant {
      * 用于防缓存雪崩，实际过期时间为 TTL + random(0, TTL_RANDOM_RANGE)
      */
     public static final int PRODUCT_DETAIL_CACHE_TTL_RANDOM_RANGE = 60;
+
+    /**
+     * 商品详情空值缓存过期时间（秒），60秒
+     */
+    public static final long PRODUCT_DETAIL_CACHE_EMPTY_TTL = 60L;
+
+    /**
+     * 商品缓存互斥锁前缀
+     */
+    public static final String PRODUCT_LOCK_PREFIX = "product:lock:";
 }
 /*
  * 3. 实际用途与意义

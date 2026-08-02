@@ -10,7 +10,7 @@
 |------|------|
 | 项目名称 | 轻量级电商秒杀系统（E-commerce Flash Sale System） |
 | 技术栈 | Spring Boot 3.3.4 / JDK 17 / MySQL 8.0 + MyBatis-Plus 3.5.7 / Redis 7.0 + Redisson 3.34.0 |
-| 项目文档 | `docs/project.md`、`docs/developlan.md`、`docs/interface.md`、`docs/database.md`、`docs/day.md` |
+| 项目文档 | `docs/project.md`、`docs/developlan.md`、`docs/interface.md`、`docs/database.md`、`docs/day.md`、`docs/plan.md` |
 | 开发人员 | panda |
 | 导师 | Claude Code |
 
@@ -145,13 +145,44 @@
 4. **数据库种子数据与 schema.sql 不一致导致测试失败**：`MapperTest` 断言与 schema.sql 均为 `total_stock=1000`，但库里实际是 `100`（库比 schema 旧），测试报 `expected: <1000> but was: <100>`。修复：单条 `UPDATE` 修正种子数据（或重跑 schema.sql，其 `CREATE TABLE IF NOT EXISTS` + `INSERT ON DUPLICATE KEY UPDATE` 幂等安全）。
 5. **`@Valid` 触发校验 + 请求体反序列化失败的区分**：`POST /api/admin/products` 用 `@Valid @RequestBody`，JSON 反序列化失败返回 40001"请求体格式错误"（`HttpMessageNotReadableException`），参数校验失败返回 40001 + 具体字段消息——两者都走全局异常处理，无需重复捕获。
 
-### 后续任务计划（Day 4 ~ Day 7）
+### Day 5 — 缓存防护（缓存穿透 + 缓存击穿）✅ 已完成（2026-08-03）
+
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| 5.1 缓存穿透防护（空值缓存） | ✅ | `ProductCacheService` + `ProductServiceImpl`：查库未命中写空值标记（TTL 60s），命中标记直接返回 40004 不再打库（curl + 单测验证） |
+| 5.2 缓存击穿防护（互斥锁） | ✅ | Redisson 分布式锁：锁内双重检查 + `tryLock` 双参数 + 超时兜底 + 中断处理，8 线程并发测试验证仅 1 次查库 |
+| 5.3 单测与验收 | ✅ | `ProductCacheProtectionTest`（穿透/击穿 2 测试）+ 原 4 测试全绿，`mvn test` BUILD SUCCESS |
+
+**Day 5 设计决策（任务布置阶段确定）：**
+
+1. **空值标记存储形式**：使用空字符串 `""` 作为空值缓存标记，`CacheKeyConstant` 新增空值 TTL 常量（60 秒）。
+2. **读取三态区分**：`ProductCacheService` 读取缓存需区分"未命中 / 命中空值标记 / 命中真实商品"三种情况；现有"非 `Product` 类型即删除"的防御分支需调整，避免误删空值标记。
+3. **穿透分支位置**：`ProductServiceImpl.getProductDetail` 查库前先判断是否命中空值标记，命中直接返回 null（映射 40004）；查库未命中先写空值标记再返回 null。
+4. **5.1 不引入锁**：保持"查缓存 → 判空值 → 查库 → 回写"线性结构，互斥锁留待 5.2 引入，便于单独验证穿透逻辑。
+
+**验收标准（5.1）：**
+
+- 第一次查询不存在的 productId：日志显示查库 → 返回 40004
+- 第二次查询同一 ID：日志显示命中空值缓存，不出现查库日志 → 仍返回 40004
+- 正常商品查询（cacheHit false→true）行为不受影响
+- 删除键 / 更新商品的缓存清理逻辑不变（空值标记一并清除）
+
+**Day 5 经验教训：**
+
+1. **Redis 数据库选择与排查陷阱（database: 1）**：应用配置 `spring.data.redis.database: 1`，与默认 db0 隔离。排查时 redis-cli 默认连接 db0，会误判"键不存在"（DBSIZE=0），实际键在 db1——查 Redis 须用 `redis-cli -n 1`。同理，外部工具（如 Redis 桌面管理器）若连不同库，会看到互相隔离的数据。
+2. **空值标记不能走"类型异常删除"分支**：`getProductFromCache` 原对非 `Product` 类型的值一律删除，空值标记（String `""`）一读就被删，穿透保护形同虚设。空值标记需独立分支：命中返回 null 且不删除。
+3. **空值分支禁止强转 `(Product) value`**：空值标记是 String 不是 Product，强转编译能过但运行时会抛 `ClassCastException`。命中空值标记应返回 null。
+4. **锁键也要收敛到 `CacheKeyConstant`**：5.2 初版把锁前缀硬编码在 Service 里，常量成了死代码。键前缀统一走常量类，避免散落。
+5. **击穿防护核心是"锁内双重检查"**：等锁期间其他线程可能已回源，拿到锁必须先查缓存/空值，命中直接返回；`tryLock(waitTime, leaseTime)` 两个参数都设（防死锁自动释放），释放前用 `lock.isHeldByCurrentThread()` 判断；`tryLock` 等待会被中断，需处理 `InterruptedException` 并恢复中断位。
+6. **测试数据漂移（反复踩坑）**：管理端接口测试拿商品 1（MapperTest 断言对象）做更新，会把种子数据改掉导致 `mvn test` 失败（本次原价 29900→19900、库存 1000→100）。习惯：验证更新接口用专属测试商品，或测完恢复种子数据。
+7. **curl 发送中文请求体易踩 40001**：Windows 终端按 GBK 编码发送中文，Jackson 按 UTF-8 解析 → `HttpMessageNotReadableException` → "请求体格式错误"，请求根本不进业务层。用 Postman / UTF-8 文件（`--data-binary @file`）发送，或先 `chcp 65001`。
+8. **"Redis 真实 + Mapper Mock"的测试组合**：缓存/锁是被测对象须用真实 Redis；DB 查询只需数次数+控制行为，用 `@MockBean` 替换 Mapper。`verify(mapper, times(1)).selectById(...)` 是并发断言的利器；并发测试用 `CountDownLatch` 同步 + `doneLatch.await` 加超时，线程内异常要兜住避免挂死。
+
+### 后续任务计划（Day 6 ~ Day 7）
 
 | 天 | 主要内容 | 前置依赖 |
 |----|----------|----------|
-| Day 4 ✅ | 商品缓存旁路、商品查询接口、管理端商品接口 | Day 3 ✅ |
-| Day 5 | 缓存穿透防护、缓存击穿防护（分布式锁）、单测 | Day 4 |
-| Day 6 | 活动管理、缓存预热、活动查询与校验接口 | Day 4 |
+| Day 6 | 活动管理、缓存预热、活动查询与校验接口 | Day 5 ✅ |
 | Day 7 | 集成测试、问题修复、阶段验收 | Day 5 + Day 6 |
 
 ---
@@ -215,5 +246,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-08-02（Day 4 商品缓存旁路完成）*
-*下次开始位置：Day 5 — 任务 5.1（缓存穿透防护：空值缓存）*
+*上次更新：2026-08-03（Day 5 缓存防护完成）*
+*下次开始位置：Day 6 — 任务 6.1（活动管理）*
