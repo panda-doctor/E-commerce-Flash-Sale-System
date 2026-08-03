@@ -106,7 +106,7 @@ public class ProductCacheProtectionTest {
  * 测试2：击穿防护 —— 8线程并发查询同一个存在的商品，只查询一次数据库
  */
     @Test
-    void testCacheBreakdown() throws Exception {
+    void testCacheBreakdown() throws Exception { 
         // 构造完整的商品对象（避免 convertToVO 时 NPE）
         Product mockProduct = new Product();
         mockProduct.setId(EXISTENT_PRODUCT_ID);
