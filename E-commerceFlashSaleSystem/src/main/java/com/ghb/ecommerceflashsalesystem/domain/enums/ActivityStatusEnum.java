@@ -5,7 +5,7 @@ import lombok.Getter;
 @Getter
 public enum ActivityStatusEnum {
     NOT_STARTED(0, "未开始"),
-    IN_PROGRESS(1, "进行中"),
+    RUNNING(1, "进行中"),
     ENDED(2, "已结束"),
     SOLD_OUT(3, "已售罄"),
     CANCELLED(4, "已取消");

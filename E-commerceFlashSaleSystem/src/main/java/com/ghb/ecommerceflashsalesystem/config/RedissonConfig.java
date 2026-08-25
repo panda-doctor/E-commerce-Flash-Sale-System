@@ -29,6 +29,9 @@ public class RedissonConfig {
                 .setConnectTimeout(5000)
                 .setTimeout(3000)
                 .setRetryAttempts(3)
+                .setIdleConnectionTimeout(30000)
+                //让空闲连接存活更久、建立/回收更少，可减少这类断连次数。
+                // 但对"启动瞬间 WSL reset"的根治有限，属于减缓。
                 .setRetryInterval(1500);
 
         // 仅当配置了密码时才设置，避免 Redis 无密码时发送 AUTH 命令

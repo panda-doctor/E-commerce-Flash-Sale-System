@@ -2,6 +2,9 @@
 # 轻量级电商秒杀系统 - 应用配置
 # =====================================================
 
+server:
+  port: 8081                      # 【新增】指定启动端口为 8081
+
 spring:
   application:
     name: E-commerceFlashSaleSystem

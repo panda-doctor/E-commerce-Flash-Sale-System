@@ -33,6 +33,24 @@ public class CacheKeyConstant {
      * 商品缓存互斥锁前缀
      */
     public static final String PRODUCT_LOCK_PREFIX = "product:lock:";
+
+    // ---- 活动缓存（新增） ----
+    /**
+     * 活动详情缓存前缀（Hash结构）
+     */
+    public static final String SECKILL_ACTIVITY_PREFIX = "seckill:activity:";
+
+    /**
+     * 秒杀实时库存前缀（String结构）
+     */
+    public static final String SECKILL_STOCK_PREFIX = "seckill:stock:";
+
+    /**
+     * 活动缓存额外保留时间（秒），活动结束后仍保留一段时间
+     */
+    public static final long SECKILL_CACHE_TTL_EXTRA = 60L;
+
+
 }
 /*
  * 3. 实际用途与意义

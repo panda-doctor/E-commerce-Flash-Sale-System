@@ -24,6 +24,7 @@
 6. **测试验证**：每个功能模块完成后必须通过 Maven 测试验证（`mvn test`），保证 BUILD SUCCESS。
 7. **问题记录**：遇到的技术问题和修复方案及时记录在 plan.md 的"经验教训"中，便于复盘。
 8. **代码注释约定**：panda 在代码编写过程中会在代码中添加个人理解的知识笔记（教学式注释），用于记录学习过程。导师审查时应忽略这类注释，不作删除要求，仅关注逻辑正确性。
+9. **plan.md 进度实时维护（导师负责）**：`docs/plan.md` 的进度状态由导师实时维护，panda 完成一个 Day 或任务后无需手动更新，只需告知导师进度即可。导师应在每个 Day/任务状态变化、修正完成后及时更新路线图、任务表和脚注，确保与代码实际进度一致。
 
 ---
 
@@ -32,7 +33,7 @@
 ```
 ■ 第 1 阶段：地基搭建与基础缓存（Day 1 ~ Day 7）
   ✅ Day 1 环境搭建  ✅ Day 2 实体与数据层  ✅ Day 3 公共组件  ✅ Day 4 商品缓存
-  ⏳ Day 5 缓存防护  ⏳ Day 6 活动管理    ⏳ Day 7 集成验收
+  ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ⏳ Day 7 集成验收
 □ 第 2 阶段：秒杀核心与原子库存扣减
 □ 第 3 阶段：高并发防护体系
 □ 第 4 阶段：排行榜、前端与全链路压测
@@ -180,10 +181,31 @@
 
 ### 后续任务计划（Day 6 ~ Day 7）
 
-| 天 | 主要内容 | 前置依赖 |
-|----|----------|----------|
-| Day 6 | 活动管理、缓存预热、活动查询与校验接口 | Day 5 ✅ |
-| Day 7 | 集成测试、问题修复、阶段验收 | Day 5 + Day 6 |
+| 天 | 主要内容 | 前置依赖 | 状态 |
+|----|----------|----------|------|
+| Day 6 | 活动管理、缓存预热、活动查询与校验接口 | Day 5 ✅ | ✅ 完成 |
+| Day 7 | 集成测试、问题修复、阶段验收 | Day 5 + Day 6 | ⏳ 待办 |
+
+**Day 6 细分任务进度：**
+
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| 6.1 活动相关 VO/DTO | ✅ | `SeckillActivityVO`、`ActivityRequest`、`ActivityCheckResponse` 已创建 |
+| 6.2 活动缓存服务 `SeckillCacheService` | ✅ | `preheatActivity` 已写，导师审查修正 3 处：库存键前缀（`seckill:stock:`）、失败分支改 try-catch 并标记 `PREHEAT_FAILED`、删多余 import（2026-08-24 复核时又删净残留的 `Calendar` import）；2026-08-25 全量 clean test-compile BUILD SUCCESS |
+| 6.3 活动服务 `SeckillActivityService` + 实现 | ✅ 已完成 | 3 方法（createActivity / getActivityDetail / checkActivity）编写完成；审查发现 3 处问题：SeckillCacheService 两个读方法编译错误（5 处类型误用，导师代修正并保留错误代码注释）、Impl 自注入循环依赖、checkActivity 缺 break（panda 自行修正）；2026-08-25 全量 clean test-compile BUILD SUCCESS |
+| 6.4 管理端活动控制器 `AdminSeckillController` | ✅ 已完成 | 创建 `/api/admin/seckill/activities` + 预热 `/{activityId}/preheat`；创建接口更新场景返回真实状态（导师代理修正，原固定 NOT_STARTED 保留为注释）；全量 clean test-compile BUILD SUCCESS（2026-08-25） |
+| 6.5 活动查询控制器 `SeckillActivityController` | ✅ | 查询详情 `GET /api/seckill/activities/{activityId}` + 校验 `GET .../check?userId=`；对应 interface.md 4.6/4.7；panda 修正两处：userId 绑定 `@PathVariable`→`@RequestParam`、`checkActivity` 传参顺序（activityId 在前）；全量 clean test-compile BUILD SUCCESS |
+| 6.6 Postman 全流程验证 | ✅ | 新建未来时间活动 → 预热接口 4.5 验证通过；活动详情/校验接口随 6.5 编译验证通过 |
+
+> 注：Day 6 从任务 6.2 起进度由导师实时维护到本表，避免与文档脱节。
+
+**Day 6 经验教训：**
+
+1. **种子活动时间过期导致预热报"活动已结束"**：schema.sql 里活动 1 时间是 `2026-07-27 20:00~21:00`，跑预热接口会命中 `startTime/endTime` 判定 `endTime.isBefore(now)` → 返回 40001"活动已结束，无法预热"。这不是代码 bug，是测试数据过期。正确做法：用创建接口 `POST /api/admin/seckill/activities` 新建一条 endTime 在未来的活动再预热（顺带验证创建接口），或单条 `UPDATE` 改活动时间。
+2. **项目无用户表，userId 由调用方透传**：schema.sql 5 张表没有 user 表，`user_id` 只存在于 `seckill_order`/`seckill_message_log` 作为订单归属字段，代表上游账号系统透传的业务编号。校验/幂等/排行榜都用它，无需也不能从本库查用户档案。
+3. **`@PathVariable` vs `@RequestParam` 语义**：`@PathVariable` 从 URL 路径占位符取（RESTful 资源 id），`@RequestParam` 从 `?key=value` 查询串取（筛选/操作人上下文）。userId 属调用方上下文，用 `@RequestParam`，与 interface.md 4.7 `?userId=` 一致。路径变量默认必填、参数名不一致需 `@PathVariable("name")` 显式指定。
+4. **两个同为 Long 的参数传参顺序颠倒编译检测不到**：`checkActivity(activityId, userId)` 接口里两个参数都是 `Long`，调用写成 `(userId, activityId)` 编译直接通过，但运行时查错用户/判错资格。核对接口签名与调用处参数顺序是审查必查项。
+5. **Redisson 启动断连日志非 bug**：应用启动后偶发 `IOException: 你的主机中的软件中止了一个已建立的连接`，是连接池预建连接撞上 WSL Docker 端口转发的 RST（连接重置）导致，Redisson 会自动重连，不影响功能。缓解方案 B：`RedissonConfig` 加 `setIdleConnectionTimeout(30000)`（默认 10 秒）让空闲连接存活更久、建立/回收更少。
 
 ---
 
@@ -224,10 +246,10 @@
 | GET | `/api/health` | ✅ | Day 3 |
 | GET | `/api/products/{productId}` | ✅ | Day 4 |
 | POST | `/api/admin/products` | ✅ | Day 4 |
-| POST | `/api/admin/seckill/activities` | ⏳ | Day 6 |
-| POST | `/api/admin/seckill/activities/{id}/preheat` | ⏳ | Day 6 |
-| GET | `/api/seckill/activities/{id}` | ⏳ | Day 6 |
-| GET | `/api/seckill/activities/{id}/check` | ⏳ | Day 6 |
+| POST | `/api/admin/seckill/activities` | ✅ | Day 6 |
+| POST | `/api/admin/seckill/activities/{id}/preheat` | ✅ | Day 6 |
+| GET | `/api/seckill/activities/{id}` | ✅ | Day 6 |
+| GET | `/api/seckill/activities/{id}/check` | ✅ | Day 6 |
 
 ---
 
@@ -246,5 +268,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-08-03（Day 5 缓存防护完成）*
-*下次开始位置：Day 6 — 任务 6.1（活动管理）*
+*上次更新：2026-08-26（导师复核 Day 6 收尾：6.5、6.6 标记完成，Day 6 全部完成。panda 修正 6.5 两处：userId 绑定改 `@RequestParam`、`checkActivity` 传参顺序；预热接口验证通过——先建未来时间新活动再预热；补 Day 6 经验教训 5 条）*
+*下次开始位置：Day 7 — 集成测试、问题修复、阶段验收*

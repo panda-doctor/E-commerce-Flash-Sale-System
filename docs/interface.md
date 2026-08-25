@@ -13,7 +13,7 @@
 本地开发默认地址：
 
 ```text
-http://localhost:8080
+http://localhost:8081
 ```
 
 统一接口前缀：
@@ -213,7 +213,7 @@ POST /api/admin/products
 POST /api/admin/seckill/activities
 ```
 
-用途：创建秒杀活动，配置商品、库存、开始时间和结束时间。
+用途：创建秒杀活动，配置商品、秒杀价、库存、开始时间和结束时间。
 
 请求体：
 
@@ -224,6 +224,7 @@ POST /api/admin/seckill/activities
   "activityName": "键盘限时秒杀",
   "startTime": "2026-07-27 20:00:00",
   "endTime": "2026-07-27 21:00:00",
+  "seckillPrice": 9900,
   "seckillStock": 100,
   "limitPerUser": 1
 }
