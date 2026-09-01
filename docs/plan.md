@@ -33,7 +33,7 @@
 ```
 ■ 第 1 阶段：地基搭建与基础缓存（Day 1 ~ Day 7）
   ✅ Day 1 环境搭建  ✅ Day 2 实体与数据层  ✅ Day 3 公共组件  ✅ Day 4 商品缓存
-  ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ⏳ Day 7 集成验收
+  ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ✅ Day 7 集成验收
 □ 第 2 阶段：秒杀核心与原子库存扣减
 □ 第 3 阶段：高并发防护体系
 □ 第 4 阶段：排行榜、前端与全链路压测
@@ -184,7 +184,7 @@
 | 天 | 主要内容 | 前置依赖 | 状态 |
 |----|----------|----------|------|
 | Day 6 | 活动管理、缓存预热、活动查询与校验接口 | Day 5 ✅ | ✅ 完成 |
-| Day 7 | 集成测试、问题修复、阶段验收 | Day 5 + Day 6 | ⏳ 待办 |
+| Day 7 | 集成测试、问题修复、阶段验收 | Day 5 + Day 6 | ✅ 完成 |
 
 **Day 6 细分任务进度：**
 
@@ -206,6 +206,28 @@
 3. **`@PathVariable` vs `@RequestParam` 语义**：`@PathVariable` 从 URL 路径占位符取（RESTful 资源 id），`@RequestParam` 从 `?key=value` 查询串取（筛选/操作人上下文）。userId 属调用方上下文，用 `@RequestParam`，与 interface.md 4.7 `?userId=` 一致。路径变量默认必填、参数名不一致需 `@PathVariable("name")` 显式指定。
 4. **两个同为 Long 的参数传参顺序颠倒编译检测不到**：`checkActivity(activityId, userId)` 接口里两个参数都是 `Long`，调用写成 `(userId, activityId)` 编译直接通过，但运行时查错用户/判错资格。核对接口签名与调用处参数顺序是审查必查项。
 5. **Redisson 启动断连日志非 bug**：应用启动后偶发 `IOException: 你的主机中的软件中止了一个已建立的连接`，是连接池预建连接撞上 WSL Docker 端口转发的 RST（连接重置）导致，Redisson 会自动重连，不影响功能。缓解方案 B：`RedissonConfig` 加 `setIdleConnectionTimeout(30000)`（默认 10 秒）让空闲连接存活更久、建立/回收更少。
+
+---
+
+### Day 7 — 集成测试、问题修复与阶段验收 ✅ 已完成（2026-09-01）
+
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| 7.1 全量 Postman 接口验证 | ✅ | 7 个接口（健康检查/商品管理/商品查询/活动管理/活动预热/活动查询/活动校验）手工验证通过 |
+| 7.2 集成测试 `Phase1IntegrationTest` | ✅ | 覆盖预热成功、防重预热、命中缓存不查库、未预热回源 DB、活动校验（进行中/已结束）、结束拒绝预热。**导师审查发现 7 处断言/逻辑问题**，panda 全部修正后 9 用例转绿 |
+| 7.3 缓存穿透集成测试 | ✅ | `testCachePenetration()`：独立 ID（999999L）连续查询 100 次，`verify(times(1))` 只打 1 次库，断言空值标记写入 |
+| 7.4 缓存击穿集成测试 | ✅ | `testCacheBreakdown()`：独立 ID（888888L），300ms 慢查询拉开并发窗口，8 线程 CountDownLatch，`verify(times(1))`，断言锁释放+缓存回写 |
+| 7.5 Bug 修复 | ✅ | 修复测试发现的问题（含 7.2 的 7 处断言/逻辑问题） |
+| 7.6 application.yaml 生产级配置复查 | ✅ | 连接池/超时/日志级别复核完成 |
+| 7.7 验收报告 `docs/phase1-review.md` | ✅ | 阶段验收报告输出 |
+
+**Day 7 经验教训：**
+
+1. **断言类型必须与实际取出类型对齐**：预热写 `seckillPrice` 为 Long，但经 GenericJackson 序列化往返后 HashSet 取出变 Integer，断言 `isEqualTo(9900L)` 失败，改 `isEqualTo(9900)`。序列化往返可能改变数值装箱类型，断言对齐实际类型。
+2. **`redisTemplate.delete()` 清理键要判「非空才删」**：`if (keys != null && keys.isEmpty())` 写反会导致 Redis 键（含空值标记）永远清不掉，污染相邻测试。正确 `!keys.isEmpty()`。
+3. **`reset(mock)` 会连 stub 一起清掉**：`reset` 不仅清调用记录，还会清掉 `thenReturn`。测试里 reset 后 mock 返回 null，若再 verify 调用次数会与意图不符。命中缓存场景应 `verify(times(0))` 且配合 reset，或不用 reset 直接统计预热那 1 次。
+4. **Redis 未启动时全量测试会「全崩」是环境问题，非代码 bug**：`Unable to connect to Redis server: 6379` → ApplicationContext 启动失败 → 15 个测试全 Errors（0 Failures），连之前通过的也连带。Root cause 是 WSL Docker 的 Redis 容器没起/没映射 6379。排查 `docker ps` → `redis-cli -n 1 ping`（应 PONG）。这是环境问题，不体现在单个断言里，容易误判成代码回归。
+5. **全量 `mvn test` 才能发现"单类过、整体挂"的连带问题**：单跑 `Phase1IntegrationTest` 是 9/9 绿，但全量因别的类 / 环境原因挂。Day 收尾必须以全量 BUILD SUCCESS 为准，不能只看单个测试类。
 
 ---
 
@@ -268,5 +290,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-08-26（导师复核 Day 6 收尾：6.5、6.6 标记完成，Day 6 全部完成。panda 修正 6.5 两处：userId 绑定改 `@RequestParam`、`checkActivity` 传参顺序；预热接口验证通过——先建未来时间新活动再预热；补 Day 6 经验教训 5 条）*
-*下次开始位置：Day 7 — 集成测试、问题修复、阶段验收*
+*上次更新：2026-09-01（导师复核 Day 7 收尾：7.1~7.6 全过、`Phase1IntegrationTest` 9 用例全绿，新增 7.3/7.4 穿透与击穿集成测试、更新 7.2 审查结论、补 Day 7 经验教训 5 条。期间两次环境/数据问题：①种子活动 preheat_status 被改脏→重置 0 修复；②WSL Docker Redis 未启动导致全量测试 15 个全 Errors→启动后 15/15 BUILD SUCCESS）*
+*下次开始位置：第 2 阶段 — 秒杀核心与原子库存扣减（见 [developlan.md](developlan.md)）*
