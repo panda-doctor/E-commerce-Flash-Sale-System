@@ -34,7 +34,7 @@
 ■ 第 1 阶段：地基搭建与基础缓存（Day 1 ~ Day 7）
   ✅ Day 1 环境搭建  ✅ Day 2 实体与数据层  ✅ Day 3 公共组件  ✅ Day 4 商品缓存
   ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ✅ Day 7 集成验收
-□ 第 2 阶段：秒杀核心与原子库存扣减
+🔄 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ✅ ~ Day 5）
 □ 第 3 阶段：高并发防护体系
 □ 第 4 阶段：排行榜、前端与全链路压测
 ```
@@ -231,6 +231,78 @@
 
 ---
 
+### 第 2 阶段开发计划（秒杀核心与原子库存扣减）
+
+> 阶段目标：实现真正的高并发秒杀核心 `/api/seckill/execute`，用 Redis Lua 脚本保证库存原子扣减、杜绝超卖，并用并发测试/JMeter 验证「库存精确到 0、永不超卖」。产出物对应 `docs/day.md` 第 2 阶段。
+
+- **现有基础（第 1 阶段遗产）**：`seckill:stock:{activityId}` 库存键 + `preheatActivity` 预热 ✅、`SeckillActivityService.checkActivity` 时间/状态校验雏形 ✅、`SeckillOrder` 实体与 Mapper ✅、`seckill:lock:` 锁前缀常量 ✅、`/api/seckill/check` 校验接口 ✅。
+- **本轮缺口**：`resources/lua/` 目录为空（Day 1 起补）、`/seckill/execute` 接口不存在、`seckill:user:{activityId}:{userId}` 幂等键只定义了常量未真正使用。
+
+#### Day 1 — 库存扣减 Lua 脚本与 RedisScript 配置
+
+| 序号 | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| 1.1 | 编写库存扣减 Lua 脚本 `decr_stock.lua` | ✅ | 已写 `src/main/resources/lua/decr_stock.lua`：键不存在/无法转数字/库存≤0 返回 -1，否则 `DECRBY` 返回扣后值 |
+| 1.2 | 配置 `RedisScript<Long>` Bean | ✅ | `RedisConfig.decrStockScript`：`DefaultRedisScript<Long>` + `ClassPathResource("lua/decr_stock.lua")` + `resultType=Long` |
+| 1.3 | Lua 脚本单元测试 | ✅ | `LuaStockDeductionTest` 4 场景全绿（真实 Redis）：正常扣 100→99 / 库存 0 返 -1 不扣 / 键不存在返 -1 / **10 线程并发抢 50 库存：成功 50、拦截 10、库存归 0 无超卖** |
+
+**Day 1 验收标准：** 脚本扣减原子、库存趋 0 不转负；单测 3 场景全绿。—— ✅ 达成（2026-09-03，全量 `mvn test` 19 用例 BUILD SUCCESS）
+
+**Day 1 经验教训：**
+1. **并发防超卖测试的"请求量要大于库存"**：初版 10 线程各只扣 1 次 = 共 10 次请求，50 库存根本扣不完（断言期望 0 实际 40）。正确姿势是让线程 `while(true)` 循环抢购直到脚本返回 -1 才退出，这样成功数恰=库存、超额请求被拦计数、库存精确归零——并发断言才有意义。
+2. **`redisTemplate.keys` 模式必须带通配符**：`keys("seckill:stock:")` 匹配不到 `seckill:stock:100`，需 `keys("seckill:stock:*")`；配套"非空才删"条件 `!keys.isEmpty()` 写反则永远清不掉（Day 7 教训 2 复现，本项目反复踩）。
+3. **测试中断残留键靠 setUp 全量清键兜底**：多场景共用 `stockKey` 时，一旦某用例异常中断残留键，后续"键不存在"场景会被污染间歇失败，`setUp` 清理不可省。
+4. **本机 Maven 命令损坏（阻塞性环境问题，导师介入修复）**：用户级 `MAVEN_HOME=D:\Maven\apache-maven-3.9.4` 已损坏/移动，`mvn`/`mvnw` 均报 `ClassNotFoundException: org.codehaus.plexus.classworlds.launcher.Launcher`。可用 Maven 3.9.16 在 wrapper 缓存 `~/.m2/wrapper/dists/apache-maven-3.9.16/<hash>/`。绕行启动方式（Git Bash；路径须用 `C:/...`，`/c/...` 传给 Windows 程序会转错）：
+   ```bash
+   MH='C:/Users/ghb19/.m2/wrapper/dists/apache-maven-3.9.16/<hash>'
+   java -classpath "$MH/boot/plexus-classworlds-2.11.0.jar" \
+     "-Dclassworlds.conf=$MH/bin/m2.conf" "-Dmaven.home=$MH" \
+     "-Dmaven.multiModuleProjectDirectory=<工程目录>" \
+     org.codehaus.plexus.classworlds.launcher.Launcher test
+   ```
+
+#### Day 2 — 秒杀核心接口 `/api/seckill/execute`
+
+| 序号 | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| 2.1 | 请求 DTO `SeckillRequest` | ⏳ | `@NotNull` activityId、userId |
+| 2.2 | `SeckillService.execute` | ⏳ | 链路：①活动时间校验（缓存/DB）②状态校验（非 ENDED/SOLD_OUT）③Lua 扣库存 ④成功返回「排队中」，失败抛 `SOLD_OUT(40902)` |
+| 2.3 | `SeckillExecuteController` | ⏳ | `POST /api/seckill/execute`（对应 interface.md 5.x） |
+| 2.4 | 接口验证 | ⏳ | 预热后执行：活动进行中扣到 0 / 已结束 40001 / 售罄 40902 / 参数缺失 40001 |
+
+**Day 2 验收标准：** 接口链路走通，库存扣减反映到 `seckill:stock:{id}`；`mvn test` 保证 BUILD SUCCESS。
+
+#### Day 3 — 并发防超卖验证（JMeter / 并发测试）
+
+| 序号 | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| 3.1 | 并发测试/脚本 | ⏳ | 100 并发抢 100 库存，断言最终库存==0、无负数、成功数==库存数 |
+| 3.2 | JMeter 脚本（可选） | ⏳ | `scripts/jmeter/` 增加秒杀执行压测脚本，验证并发下无超卖 |
+
+**Day 3 验收标准：** 并发超卖防护实证——库存精确到 0，成功订单数不超库存。
+
+#### Day 4 — 用户维度防重（SETNX + 凭证令牌）
+
+| 序号 | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| 4.1 | SETNX 幂等令牌 | ⏳ | `seckill:user:{activityId}:{userId}`，`setIfAbsent` 建令牌，过期时间（如 30 分钟），建成功才继续扣库存 |
+| 4.2 | 重复秒杀拦截 | ⏳ | 同一用户重复请求返回 `DUPLICATE(40901)`「请勿重复秒杀」 |
+| 4.3 | 验证 | ⏳ | 单用户连续请求只成功 1 次；`mvn test` BUILD SUCCESS |
+
+**Day 4 验收标准：** 同一用户不能重复下单，令牌键 TTL 生效。
+
+#### Day 5 — 令牌检查并入 Lua（原子整合）与阶段验收
+
+| 序号 | 任务 | 状态 | 说明 |
+|------|------|------|------|
+| 5.1 | Lua 整合脚本 `seckill_execute.lua` | ⏳ | 单脚本内完成：SETNX 幂等令牌 + 库存检查扣减，一条 Lua 保证防重与防超卖原子 |
+| 5.2 | execute 改用整合脚本 | ⏳ | 移除 service 层分步 SETNX，统一走 Lua（Day 4 的 SETNX 步骤并入） |
+| 5.3 | 阶段全量验收 | ⏳ | 全量 `mvn test` 15+ 用例 BUILD SUCCESS；并发下既无超卖防重不失效；plan.md 更新完成 |
+
+**Day 5 验收标准：** 高并发下无超卖且防重不失效；全量测试通过；第 2 阶段验收达成。
+
+---
+
 ## 四、数据库表结构参考
 
 ### 当前阶段使用的表
@@ -290,5 +362,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-01（导师复核 Day 7 收尾：7.1~7.6 全过、`Phase1IntegrationTest` 9 用例全绿，新增 7.3/7.4 穿透与击穿集成测试、更新 7.2 审查结论、补 Day 7 经验教训 5 条。期间两次环境/数据问题：①种子活动 preheat_status 被改脏→重置 0 修复；②WSL Docker Redis 未启动导致全量测试 15 个全 Errors→启动后 15/15 BUILD SUCCESS）*
-*下次开始位置：第 2 阶段 — 秒杀核心与原子库存扣减（见 [developlan.md](developlan.md)）*
+*上次更新：2026-09-03（第 2 阶段 Day 1 验收完成：decr_stock.lua + RedisScript Bean + 4 场景单测全绿含并发防超卖实证，全量 mvn test 19 用例 BUILD SUCCESS；路线图 Day 1 置 ✅）*
+*下次开始位置：第 2 阶段 Day 2 — 秒杀核心接口 `/api/seckill/execute`*

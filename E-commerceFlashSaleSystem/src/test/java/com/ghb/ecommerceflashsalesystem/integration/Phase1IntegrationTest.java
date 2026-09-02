@@ -4,7 +4,6 @@ package com.ghb.ecommerceflashsalesystem.integration;
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.common.util.IdGenerator;
-import com.ghb.ecommerceflashsalesystem.domain.dto.request.ProductRequest;
 import com.ghb.ecommerceflashsalesystem.domain.dto.response.ActivityCheckResponse;
 import com.ghb.ecommerceflashsalesystem.domain.entity.Product;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;
