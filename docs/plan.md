@@ -34,7 +34,7 @@
 ■ 第 1 阶段：地基搭建与基础缓存（Day 1 ~ Day 7）
   ✅ Day 1 环境搭建  ✅ Day 2 实体与数据层  ✅ Day 3 公共组件  ✅ Day 4 商品缓存
   ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ✅ Day 7 集成验收
-🔄 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ✅ Day 2 ✅ ~ Day 5）
+🔄 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ✅ Day 2 ✅ Day 3 ✅ Day 4 ✅ ~ Day 5）
 □ 第 3 阶段：高并发防护体系
 □ 第 4 阶段：排行榜、前端与全链路压测
 ```
@@ -285,24 +285,42 @@
 
 #### Day 3 — 并发防超卖验证（JMeter / 并发测试）
 
-#### Day 3 — 并发防超卖验证（JMeter / 并发测试）
-
 | 序号 | 任务 | 状态 | 说明 |
 |------|------|------|------|
-| 3.1 | 并发测试/脚本 | ⏳ | 100 并发抢 100 库存，断言最终库存==0、无负数、成功数==库存数 |
-| 3.2 | JMeter 脚本（可选） | ⏳ | `scripts/jmeter/` 增加秒杀执行压测脚本，验证并发下无超卖 |
+| 3.1 | 并发防超卖集成测试 | ✅ | `SeckillExecuteConcurrencyTest`：**200 并发抢 100 库存**（请求量 > 库存，断言更有意义），预热走真实 `preheatActivity`，并发调 `SeckillService.execute` 断言成功恰 100、拒绝恰 100（OUT_OF_STOCK）、Redis 最终库存 0 无超卖；mock 活动 `status` 故意用 `NOT_STARTED`，顺带回归 Day 2 时间窗设计（不依赖 DB status=RUNNING 也能抢） |
+| 3.2 | JMeter 脚本（可选） | ⏸ 延后 | 与 panda 商定：延后到第 4 阶段全链路压测（真实 HTTP 并发 + 订单数据）再补 `scripts/jmeter/` 脚本，本日不做 |
+| 3.3 | 遗留 bug 修复 | ✅ | `Phase1IntegrationTest.cleanRedisKeys` 判空条件写反（`keys.isEmpty()` → `!keys.isEmpty()`）顺手修正，测试键清理恢复正确 |
 
-**Day 3 验收标准：** 并发超卖防护实证——库存精确到 0，成功订单数不超库存。
+**Day 3 验收标准：** 并发超卖防护实证——库存精确到 0，成功订单数不超库存。—— ✅ 达成（2026-09-03，并发测试成功 100 / 拒绝 100 / 最终库存 0；全量 `mvn test` 20 用例 BUILD SUCCESS，既有用例无回归）
+
+**Day 3 经验教训：**
+
+1. **删除私有方法要连调用点一起删，否则报"找不到符号"**：只删 `reset()` 方法定义、保留 `reset(mock)` 调用，编译器找不到匹配方法；此时 IDE 自动导入的候选可能张冠李戴——本次误导入 `org.awaitility.Awaitility.reset`（无参方法，用于重置轮询配置），与带参调用签名不匹配照样编译失败。看清方法与参数签名再选 import。
+2. **`@MockBean` 默认每个测试方法后自动重置（MockReset.AFTER），无需手动 reset**：空壳 `reset()` 方法无任何作用还误导后来者；真正需要时用 `Mockito.reset(mock)`（会连 stub 一起清，必须重新打桩）。
+3. **并发断言要"请求量 > 库存"才有意义**：200 并发抢 100 库存，成功必须恰等于库存、拒绝恰等于超额；若请求量 == 库存，防超卖缺陷可能被掩盖（Day 1 教训在服务层链路的再次印证）。
+4. **mock 活动 `status` 用 `NOT_STARTED` 也能抢通**：实际验证了 Day 2 的设计决策——execute 以缓存时间窗口动态判定开放状态、status 仅辅助拦 CANCELLED，预热后无需手工把 DB status 改成 RUNNING。测试 mock 尽量贴近真实业务形态，能顺带覆盖决策回归。
+5. **测试键清理的 `!keys.isEmpty()` 是本项目反复踩点**：本次借 Day 3 把 Phase1IntegrationTest 里遗留的反写条件一并修正（Day 7 教训 2 / Day 1 教训 2 同源）。
 
 #### Day 4 — 用户维度防重（SETNX + 凭证令牌）
 
 | 序号 | 任务 | 状态 | 说明 |
 |------|------|------|------|
-| 4.1 | SETNX 幂等令牌 | ⏳ | `seckill:user:{activityId}:{userId}`，`setIfAbsent` 建令牌，过期时间（如 30 分钟），建成功才继续扣库存 |
-| 4.2 | 重复秒杀拦截 | ⏳ | 同一用户重复请求返回 `DUPLICATE(40901)`「请勿重复秒杀」 |
-| 4.3 | 验证 | ⏳ | 单用户连续请求只成功 1 次；`mvn test` BUILD SUCCESS |
+| 4.1 | 幂等常量 + SETNX 令牌 | ✅ | `CacheKeyConstant` 新增 `SECKILL_USER_PREFIX`（`seckill:user:`）与 `SECKILL_USER_TOKEN_TTL`（30 分钟）；`execute` 在时间窗/status 校验通过后、Lua 扣库存前执行 `setIfAbsent`，建成功才继续。期间令牌键曾误拼 `SECKILL_ACTIVITY_PREFIX`（活动前缀），导师代改为用户前缀并留复盘注释 |
+| 4.2 | 重复秒杀拦截 + 售罄回滚 | ✅ | `setIfAbsent` 返回 false → 抛 `BusinessException(DUPLICATE_PURCHASE=40901)`「请勿重复秒杀」；**售罄回滚设计**：Lua 返回 -1（库存不足）时先删除刚建的令牌再抛 `OUT_OF_STOCK`——"没抢到不锁死 30 分钟"，已抢到判定以订单落库为准 |
+| 4.3 | 幂等防重集成测试 | ✅ | `SeckillUserDedupTest` 5 用例全绿：单用户防重（第 2 次 40901）/ 不同用户互不影响 / 令牌 TTL>0 且 ≤1800s / 售罄回滚令牌不残留 / **同用户 50 线程并发仅 1 次成功**（SETNX 原子防重） |
 
-**Day 4 验收标准：** 同一用户不能重复下单，令牌键 TTL 生效。
+**Day 4 验收标准：** 同一用户不能重复下单，令牌键 TTL 生效。—— ✅ 达成（2026-09-03，`mvn test` 25 用例 BUILD SUCCESS）
+
+**Day 4 经验教训：**
+
+1. **键前缀第三次混用**：本次幂等令牌键误拼 `seckill:activity:`，应为 `seckill:user:`。项目里三类键前缀（activity Hash / stock String / user 令牌）极易混，拼键前先核对 `CacheKeyConstant`，与预热写入方保持一致（Day 2 库存键、Day 4 令牌键同源教训）。
+2. **测试方法缺闭合 `}` 会把后续用例"吞"进方法体**：`testTokenRollbackOnSoldOut` 少写一个 `}`，导致用例 5 的 `@Test` + 方法定义嵌套在方法内，编译报错且难定位。写完一个方法立刻闭合（`}` 对齐缩进是信号），或用 IDE 格式化让结构错误显形。
+3. **断言先想"刚写完的期望值"**：令牌刚 SETNX 成功，TTL 应接近 1800 秒，却断言 `isEqualTo(0L)`——期望值本身写反了。写断言前先在脑内过一遍状态时序。
+4. **售罄回滚是防重的必要补丁**：SETNX 建令牌 → Lua 扣减失败若不回滚，用户"没抢到却锁 30 分钟"，体验与语义都错。回滚语义会原样迁入 Day 5 的整合 Lua 脚本。
+5. **Redis 假死排查法（环境问题）**：容器进程在、TCP 端口通，但所有命令 PING 超时（全量测试表现为 25 用例全 Errors、0 Failures，Spring 上下文起不来）。排查：`wsl -d redis -- docker exec my-redis redis-cli -p 6379 -n 1 ping` 无 PONG 即假死 → `docker restart my-redis` 恢复。Day 7 教训 4 补充：除"容器没起"外还有"容器假死"这一形态。
+6. **SETNX 原子性可用并发验证**：同一 userId 50 线程并发 execute，恰好 1 次成功 + 49 次 `40901`，证明防重入口无竞态。
+
+#### Day 5 — 令牌检查并入 Lua（原子整合）与阶段验收
 
 #### Day 5 — 令牌检查并入 Lua（原子整合）与阶段验收
 
@@ -375,5 +393,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-03（第 2 阶段 Day 2 验收完成：`/api/seckill/execute` 接口链路走通，SeckillRequest/SeckillService/SeckillServiceImpl/SeckillExecuteController 落地，四场景接口验证通过，全量 mvn test 19 用例 BUILD SUCCESS；路线图 Day 2 置 ✅）*
-*下次开始位置：第 2 阶段 Day 3 — 并发防超卖验证（JMeter / 并发测试）*
+*上次更新：2026-09-03（第 2 阶段 Day 4 验收完成：`execute` 增加 SETNX 幂等令牌 + 售罄回滚，`SeckillUserDedupTest` 5 用例全绿（单用户防重/TTL/售罄回滚/同用户 50 并发仅 1 成功），全量 mvn test 25 用例 BUILD SUCCESS；期间修复令牌键前缀写错、测试方法缺闭合、TTL 断言错误，并处置 Redis 容器假死（restart my-redis）；路线图 Day 4 置 ✅；修正了更新 Day 3 时误引入的 Day 4 重复标题）*
+*下次开始位置：第 2 阶段 Day 5 — 令牌检查并入 Lua（原子整合）与阶段验收*

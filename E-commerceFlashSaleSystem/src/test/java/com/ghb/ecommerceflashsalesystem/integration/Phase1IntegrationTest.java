@@ -133,7 +133,7 @@ public class Phase1IntegrationTest {
         //调用 Redis 的 KEYS 命令。它会全量扫描 Redis 的键空间，把所有匹配 pattern 的键名以 Set 集合的形式一次性拉取到应用程序的内存（JVM 堆内存）中。
         //注意：redisTemplate.keys() 底层直接对应 Redis 的 KEYS 指令，执行期间会阻塞 Redis 单线程。
         Set<String> keys = redisTemplate.keys(pattern);
-        if (keys != null && keys.isEmpty()) {
+        if (keys != null && !keys.isEmpty()) {
             //isEmpty() 是 Java Collection（集合）接口提供的标准方法。
             //底层实现：它不是去数集合里有多少个元素，而是直接判断集合内部的 size 成员变量是否等于 0。这个操作的时间复杂度是 O(1)（极快，仅仅是比较一个整数）。
             //!keys.isEmpty() 意味着：“只要集合里至少有一个元素，就进入 if 代码块。”

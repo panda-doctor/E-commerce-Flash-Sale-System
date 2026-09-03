@@ -50,7 +50,15 @@ public class CacheKeyConstant {
      */
     public static final long SECKILL_CACHE_TTL_EXTRA = 60L;
 
+    /**
+     *用户秒杀幂等键前缀，完整键: seckill:user:{activityId}:{userId}
+     */
+    public static final String SECKILL_USER_PREFIX = "seckill:user:";
 
+    /**
+     * 幂等令牌 TTL（秒），30 分钟
+     */
+    public static final long SECKILL_USER_TOKEN_TTL = 30 * 60L;
 }
 /*
  * 3. 实际用途与意义

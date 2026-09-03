@@ -19,10 +19,12 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
 
 /**
- * 秒杀服务实现：第 2 阶段 Day 2 核心链路
- * 链路：查活动（缓存优先 -> DB 回源）-> 时间窗口校验 -> Lua 原子扣减库存 -> 返回 QUEUED / 抛异常
+ * 秒杀服务实现：第 2 阶段 Day 2/4 核心链路
+ * 链路：查活动（缓存优先 -> DB 回源）-> 时间窗口校验 -> status 辅助
+ *       -> SETNX 幂等令牌（防重复秒杀）-> Lua 原子扣减库存（售罄回滚令牌）-> 返回 QUEUED / 抛异常
  */
 @Slf4j
 @Service
@@ -99,16 +101,34 @@ public class SeckillServiceImpl implements SeckillService {
             throw new BusinessException(ResultCode.PARAM_ERROR, "活动已取消");
         }
 
-        // 4. Lua 原子扣减库存（修正 v1 错误点 4：库存键必须是 SECKILL_STOCK_PREFIX）
+        // 4. SETNX 幂等令牌（Day 4）：建成功才允许继续扣库存；建失败说明该用户已抢过，直接拒绝
+        // 【复盘】曾误用 SECKILL_ACTIVITY_PREFIX 拼令牌键（与 v1 库存键前缀错误同源），
+        //   正确应为 SECKILL_USER_PREFIX -> seckill:user:{activityId}:{userId}
+        String tokenKey = CacheKeyConstant.SECKILL_USER_PREFIX + activityId + ":" + userId;
+        Boolean tokenSet = redisTemplate.opsForValue().setIfAbsent(
+                tokenKey, "1",
+                CacheKeyConstant.SECKILL_USER_TOKEN_TTL,
+                TimeUnit.SECONDS
+        );
+        if (tokenSet == null || !tokenSet) {
+            // 令牌已存在 ⇒ 该用户已成功秒杀过该活动（或正在处理）
+            throw new BusinessException(ResultCode.DUPLICATE_PURCHASE, "请勿重复秒杀");
+        }
+
+        // 5. Lua 原子扣减库存（修正 v1 错误点 4：库存键必须是 SECKILL_STOCK_PREFIX）
         String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
         Long result = redisTemplate.execute(decrStockScript, Arrays.asList(stockKey), 1);
 
-        // 5. 扣减结果分支：>=0 扣减成功进入排队；<0 库存不足/键不存在
+        // 6. 扣减结果分支：>=0 扣减成功进入排队；<0 库存不足/键不存在
         if (result == null || result < 0) {
-            log.warn("库存不足或未预热，activityId={}, userId={}", activityId, userId);
+            // 售罄回滚（Day 4 设计取舍）：删除刚建的幂等令牌，避免「没抢到却锁 30 分钟」；
+            // 「已抢到」的最终判定以订单落库为准，售罄/失败不应残留令牌（Day 5 整合 Lua 时沿用此语义）
+            redisTemplate.delete(tokenKey);
+            log.warn("库存不足或未预热，已回滚幂等令牌，activityId={}, userId={}", activityId, userId);
             throw new BusinessException(ResultCode.OUT_OF_STOCK, "库存不足");
         }
 
+        // 7. 秒杀成功，返回排队中状态
         SeckillResponse seckillResponse = new SeckillResponse();
         seckillResponse.setActivityId(activityId);
         seckillResponse.setUserId(userId);
