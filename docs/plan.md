@@ -34,7 +34,7 @@
 ■ 第 1 阶段：地基搭建与基础缓存（Day 1 ~ Day 7）
   ✅ Day 1 环境搭建  ✅ Day 2 实体与数据层  ✅ Day 3 公共组件  ✅ Day 4 商品缓存
   ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ✅ Day 7 集成验收
-🔄 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ✅ ~ Day 5）
+🔄 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ✅ Day 2 ✅ ~ Day 5）
 □ 第 3 阶段：高并发防护体系
 □ 第 4 阶段：排行榜、前端与全链路压测
 ```
@@ -265,12 +265,25 @@
 
 | 序号 | 任务 | 状态 | 说明 |
 |------|------|------|------|
-| 2.1 | 请求 DTO `SeckillRequest` | ⏳ | `@NotNull` activityId、userId |
-| 2.2 | `SeckillService.execute` | ⏳ | 链路：①活动时间校验（缓存/DB）②状态校验（非 ENDED/SOLD_OUT）③Lua 扣库存 ④成功返回「排队中」，失败抛 `SOLD_OUT(40902)` |
-| 2.3 | `SeckillExecuteController` | ⏳ | `POST /api/seckill/execute`（对应 interface.md 5.x） |
-| 2.4 | 接口验证 | ⏳ | 预热后执行：活动进行中扣到 0 / 已结束 40001 / 售罄 40902 / 参数缺失 40001 |
+| 2.1 | 请求 DTO `SeckillRequest` | ✅ | `domain/dto/request/SeckillRequest.java`：`activityId`/`userId` `@NotNull` 带中文 message；`productId` 保留为可传非必填，类注释写明取舍（对齐接口文档 4.8 契约 + 冗余透传，服务端由活动推导商品信息） |
+| 2.2 | `SeckillService` + 实现 | ✅ | `service/seckill/SeckillService.java`（interface）+ `service/impl/SeckillServiceImpl.java`。链路：缓存优先查活动（未命中回源 DB，不存在 NOT_FOUND）→ 时间窗口动态校验（未开始/已结束 40001）→ status 仅辅助拦 CANCELLED → Lua 原子扣库存 → 返回 `result=QUEUED`；`-1` 抛 `OUT_OF_STOCK(40902)` |
+| 2.3 | `SeckillExecuteController` | ✅ | `controller/seckill/SeckillExecuteController.java`：`POST /api/seckill/execute`（对应 interface.md 4.8），`@Valid @RequestBody`，统一 `Result` 包装（本阶段不伪造 orderNo，留待异步下单阶段补齐） |
+| 2.4 | 接口验证 | ✅ | 预热后执行四场景验证通过（panda 汇报）：活动进行中连续扣到 0 / 已结束 40001 / 售罄 40902 / 参数缺失 40001 |
 
-**Day 2 验收标准：** 接口链路走通，库存扣减反映到 `seckill:stock:{id}`；`mvn test` 保证 BUILD SUCCESS。
+**Day 2 验收标准：** 接口链路走通，库存扣减反映到 `seckill:stock:{id}`；`mvn test` 保证 BUILD SUCCESS。—— ✅ 达成（2026-09-03，全量 `mvn test` 19 用例 BUILD SUCCESS，既有用例无回归）
+
+**Day 2 经验教训：**
+
+1. **Service 层结构必须遵循「接口 + Impl」约定**：v1 曾定义成 `abstract class SeckillServer`，且类内同时出现两个同签名 `execute`（一个有方法体、一个 abstract），Java 不允许同签名方法重复定义，编译直接失败。命名也要用业务语义的 Service（`Server` 含义是"服务器"），与 `ProductService`/`SeckillActivityService` 保持统一。
+2. **扣库存的 key 必须与预热 key 完全一致**：预热库存写入 `SECKILL_STOCK_PREFIX`（`seckill:stock:`），扣减时若误拼成活动 Hash 前缀 `SECKILL_ACTIVITY_PREFIX`，Lua 对 Hash 键执行 `GET` 会报 `WRONGTYPE`，接口直接 500、库存永不扣减（Day 6 已踩过"库存是独立 String 键"的同类错误，本次再次确认）。
+3. **秒杀主链查活动不要直接打库**：`execute` 第一步应复用 `SeckillCacheService` 缓存优先、未命中再 `selectById` 回源——绕过缓存等于把秒杀校验又压回数据库，与预热设计背道而驰。
+4. **活动开放判定以缓存时间窗口动态推导，不依赖 `status` 快照**：管理端建的活动 `status` 恒为创建值（0），预热写入缓存的是当时快照，**没有任何机制自动翻转为 RUNNING**。若强制 `status == RUNNING` 才放行，预热后到点的活动永远抢不到、验收无法构造场景。正确姿势：`now < startTime` → 未开始；`now ≥ endTime` → 已结束；`status` 仅作辅助（显式 `CANCELLED` 提前拦截），售罄交给 Lua 兜底。
+5. **错误码语义要对**：活动存在但未开放应返回 `PARAM_ERROR(40001)`，不是 `NOT_FOUND(40004)`（"资源未找到"仅用于活动/商品本身不存在）。
+6. **时间边界用 `!now.isBefore(endTime)` 而非 `isAfter`**：`now` 达到 `endTime` 那一刻即视为已结束。
+7. **`ActivityStatusEnum.fromValue` 对非法值返回 `null`**：紧接着调 `statusEnum.getDescription()` 会空指针，使用前必须判空。
+8. **导师代修代码按复盘注释保留原错误**：本轮 panda 审查后主动要求导师直接代改，旧错误写法（结构、直接查库、强 status 校验、错误库存前缀）以 `/* */` 注释保留在新文件对应位置，与正确代码就近对照，便于复习。
+
+#### Day 3 — 并发防超卖验证（JMeter / 并发测试）
 
 #### Day 3 — 并发防超卖验证（JMeter / 并发测试）
 
@@ -362,5 +375,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-03（第 2 阶段 Day 1 验收完成：decr_stock.lua + RedisScript Bean + 4 场景单测全绿含并发防超卖实证，全量 mvn test 19 用例 BUILD SUCCESS；路线图 Day 1 置 ✅）*
-*下次开始位置：第 2 阶段 Day 2 — 秒杀核心接口 `/api/seckill/execute`*
+*上次更新：2026-09-03（第 2 阶段 Day 2 验收完成：`/api/seckill/execute` 接口链路走通，SeckillRequest/SeckillService/SeckillServiceImpl/SeckillExecuteController 落地，四场景接口验证通过，全量 mvn test 19 用例 BUILD SUCCESS；路线图 Day 2 置 ✅）*
+*下次开始位置：第 2 阶段 Day 3 — 并发防超卖验证（JMeter / 并发测试）*
