@@ -58,4 +58,14 @@ public class RedisConfig {
         script.setResultType(Long.class);
         return script;
     }
+    /**
+     * 整合秒杀执行脚本（幂等 + 扣库存 + 回滚）
+     */
+    @Bean
+    public RedisScript<Long> seckillExecuteScript() {
+        DefaultRedisScript <Long> script = new DefaultRedisScript<>();
+        script.setLocation(new ClassPathResource("lua/seckill_execute.lua"));
+        script.setResultType(Long.class);
+        return script;
+    }
 }

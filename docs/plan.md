@@ -34,7 +34,7 @@
 ■ 第 1 阶段：地基搭建与基础缓存（Day 1 ~ Day 7）
   ✅ Day 1 环境搭建  ✅ Day 2 实体与数据层  ✅ Day 3 公共组件  ✅ Day 4 商品缓存
   ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ✅ Day 7 集成验收
-🔄 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ✅ Day 2 ✅ Day 3 ✅ Day 4 ✅ ~ Day 5）
+✅ 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ~ Day 5 全部完成，28 用例 BUILD SUCCESS）
 □ 第 3 阶段：高并发防护体系
 □ 第 4 阶段：排行榜、前端与全链路压测
 ```
@@ -322,15 +322,31 @@
 
 #### Day 5 — 令牌检查并入 Lua（原子整合）与阶段验收
 
-#### Day 5 — 令牌检查并入 Lua（原子整合）与阶段验收
-
 | 序号 | 任务 | 状态 | 说明 |
 |------|------|------|------|
-| 5.1 | Lua 整合脚本 `seckill_execute.lua` | ⏳ | 单脚本内完成：SETNX 幂等令牌 + 库存检查扣减，一条 Lua 保证防重与防超卖原子 |
-| 5.2 | execute 改用整合脚本 | ⏳ | 移除 service 层分步 SETNX，统一走 Lua（Day 4 的 SETNX 步骤并入） |
-| 5.3 | 阶段全量验收 | ⏳ | 全量 `mvn test` 15+ 用例 BUILD SUCCESS；并发下既无超卖防重不失效；plan.md 更新完成 |
+| 5.1 | Lua 整合脚本 `seckill_execute.lua` | ✅ | 单脚本原子完成「SETNX 令牌 + 库存检查扣减 + 售罄自动回滚」，头注释写明原子性理由（消除跨命令中间态）；`RedisConfig` 注册 `seckillExecuteScript` Bean；契约：KEYS[1] 库存 / KEYS[2] 令牌，返回 `>=0` 剩余库存 / `-1` 售罄（脚本内 DEL 令牌）/ `-2` 重复秒杀 |
+| 5.2 | execute 改用整合脚本 | ✅ | `SeckillServiceImpl` 移除分步 `setIfAbsent`（整段保留注释复盘），统一走脚本；`>=0`→QUEUED、`-1`→`OUT_OF_STOCK`、`-2`→`DUPLICATE_PURCHASE`、`null`→`SYSTEM_ERROR` 兜底；脚本参数改传数值（避免 String 序列化带引号致 `tonumber` 失效） |
+| 5.3 | 阶段全量验收 | ✅ | 新增 `SeckillExecuteScriptTest` 3 场景（成功 9 / 重复 -2 / 售罄回滚 -1）；`SeckillExecuteConcurrencyTest`（200 并发防超卖）+ `SeckillUserDedupTest`（防重/回滚）换脚本后回归全绿；全量 `mvn test` 28 用例 BUILD SUCCESS |
 
-**Day 5 验收标准：** 高并发下无超卖且防重不失效；全量测试通过；第 2 阶段验收达成。
+**Day 5 验收标准：** 高并发下无超卖且防重不失效；全量测试通过；第 2 阶段验收达成。—— ✅ 达成（2026-09-04）
+
+**✅ 第 2 阶段整体验收小结：**
+
+- **接口**：`/api/seckill/execute` 完整链路落地（查活动缓存优先 → 时间窗动态校验 → status 辅助 → Lua 原子「建令牌 + 扣库存 + 失败回滚」）；
+- **防超卖实证**：`SeckillExecuteConcurrencyTest` 200 并发抢 100，成功恰 100、拒绝恰 100、库存归 0；
+- **防重实证**：`SeckillUserDedupTest` 同用户 50 并发仅 1 成功（`SETNX`/Lua `EXISTS` 原子）；
+- **脚本级验证**：`SeckillExecuteScriptTest` 三返回码直测；
+- **历史遗留清零**：`Phase1IntegrationTest.cleanRedisKeys` 判空反写修复；
+- 第 2 阶段共沉淀 Lua 脚本 2 个、服务 1 组、测试 4 个类，全量 **28 用例 BUILD SUCCESS**。
+
+**Day 5 经验教训：**
+
+1. **脚本 ARGV 传 String 会被序列化器加引号**：`String.valueOf(ttl)` 经 GenericJackson 编码成 `"1800"`（含引号），Lua `tonumber` 得 nil，只能靠脚本 `or 1800` 兜底，常量一改就静默出错。脚本参数应传 `Integer/Long` 数值（序列化无引号），Day 1 已验证该路径。
+2. **注释块别吞掉方法收尾 `}`**：用 `/* */` 注释 Day 4 旧逻辑时把 `execute` 的闭合大括号一并注释，方法体一路延伸到 `getActivityVO`，导致"方法内嵌套方法"编译失败（`非法的表达式开始`）。注释保留旧代码时，先确认结构性括号没被包进去。
+3. **脚本返回值的每个码都要映射到业务分支**：`-2`（重复秒杀）曾落入兜底 else 变 `SYSTEM_ERROR(50000)`；脚本定契约后，Java 侧 `>=0/-1/-2/null` 逐一处理，缺一不可。
+4. **测试工具类 import 要看清来源**：误用 `org.assertj.core.util.Arrays.asList`（参数语义不同）编译失败，应使用 `java.util.Arrays`。
+5. **脚本级测试别预建被测前置状态**：`testScriptSoldOut` 若先建令牌，脚本 `EXISTS` 第一步就返回 `-2`，永远测不到售罄分支；正确姿势是让脚本自己走完「建令牌 → 库存 0 → 回滚 → -1」。
+6. **Lua 拼写陷阱**：`false` 误写 `flase` 是未定义变量，条件恒假成死代码（本次恰好被后续 `tonumber(false)→nil` 兜住，纯属侥幸）。
 
 ---
 
@@ -360,7 +376,7 @@
 | `product:detail:{productId}` | String | 商品详情缓存旁路 | Day 4 ✅ |
 | `seckill:activity:{activityId}` | Hash | 活动信息+时间窗口 | Day 6 |
 | `seckill:stock:{activityId}` | String | 秒杀实时库存 | Day 6 |
-| `seckill:user:{activityId}:{userId}` | String | 用户秒杀幂等标记 | Day 6 |
+| `seckill:user:{activityId}:{userId}` | String | 用户秒杀幂等令牌 | 第2阶段 Day 4 ✅ |
 
 ---
 
@@ -375,6 +391,7 @@
 | POST | `/api/admin/seckill/activities/{id}/preheat` | ✅ | Day 6 |
 | GET | `/api/seckill/activities/{id}` | ✅ | Day 6 |
 | GET | `/api/seckill/activities/{id}/check` | ✅ | Day 6 |
+| POST | `/api/seckill/execute` | ✅ | 第2阶段 Day 2/5（Lua 原子整合后完成） |
 
 ---
 
@@ -393,5 +410,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-03（第 2 阶段 Day 4 验收完成：`execute` 增加 SETNX 幂等令牌 + 售罄回滚，`SeckillUserDedupTest` 5 用例全绿（单用户防重/TTL/售罄回滚/同用户 50 并发仅 1 成功），全量 mvn test 25 用例 BUILD SUCCESS；期间修复令牌键前缀写错、测试方法缺闭合、TTL 断言错误，并处置 Redis 容器假死（restart my-redis）；路线图 Day 4 置 ✅；修正了更新 Day 3 时误引入的 Day 4 重复标题）*
-*下次开始位置：第 2 阶段 Day 5 — 令牌检查并入 Lua（原子整合）与阶段验收*
+*上次更新：2026-09-04（第 2 阶段整体验收完成：`/api/seckill/execute` 完整链路 + `seckill_execute.lua` 原子整合（令牌+扣减+回滚），`SeckillExecuteScriptTest` 3 场景直测，防超卖/防重并发实证回归全绿，全量 mvn test 28 用例 BUILD SUCCESS；期间修复脚本级测试 Arrays import 错误、售罄用例预建令牌逻辑错误及 service 遗留小项；路线图第 2 阶段置 ✅；修正了更新 Day 4 时误引入的 Day 5 重复标题）*
+*下次开始位置：第 3 阶段 Day 1 — 高并发防护体系（分布式锁防一人多抢 / 滑动窗口限流 / Redis Stream 异步削峰）*

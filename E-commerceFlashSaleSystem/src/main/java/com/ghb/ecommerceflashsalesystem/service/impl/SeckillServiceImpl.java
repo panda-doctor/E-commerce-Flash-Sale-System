@@ -19,12 +19,11 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
-import java.util.concurrent.TimeUnit;
 
 /**
- * 秒杀服务实现：第 2 阶段 Day 2/4 核心链路
+ * 秒杀服务实现：第 2 阶段 Day 2/4/5 核心链路
  * 链路：查活动（缓存优先 -> DB 回源）-> 时间窗口校验 -> status 辅助
- *       -> SETNX 幂等令牌（防重复秒杀）-> Lua 原子扣减库存（售罄回滚令牌）-> 返回 QUEUED / 抛异常
+ *       -> 整合 Lua 原子脚本（SETNX 幂等令牌 + 库存扣减 + 售罄自动回滚令牌）-> 返回 QUEUED / 抛异常
  */
 @Slf4j
 @Service
@@ -72,6 +71,7 @@ public class SeckillServiceImpl implements SeckillService {
     private final SeckillActivityMapper seckillActivityMapper;
     private final RedisTemplate<String, Object> redisTemplate;
     private final RedisScript<Long> decrStockScript;
+    private final RedisScript<Long> seckillExecuteScript;
 
     @Override
     public SeckillResponse execute(SeckillRequest request) {
@@ -100,10 +100,11 @@ public class SeckillServiceImpl implements SeckillService {
         if (statusEnum == ActivityStatusEnum.CANCELLED) {
             throw new BusinessException(ResultCode.PARAM_ERROR, "活动已取消");
         }
-
+/*
         // 4. SETNX 幂等令牌（Day 4）：建成功才允许继续扣库存；建失败说明该用户已抢过，直接拒绝
         // 【复盘】曾误用 SECKILL_ACTIVITY_PREFIX 拼令牌键（与 v1 库存键前缀错误同源），
         //   正确应为 SECKILL_USER_PREFIX -> seckill:user:{activityId}:{userId}
+
         String tokenKey = CacheKeyConstant.SECKILL_USER_PREFIX + activityId + ":" + userId;
         Boolean tokenSet = redisTemplate.opsForValue().setIfAbsent(
                 tokenKey, "1",
@@ -135,7 +136,44 @@ public class SeckillServiceImpl implements SeckillService {
         seckillResponse.setResult("QUEUED");
 
         log.info("秒杀成功，activityId={}, userId={}, 剩余库存={}", activityId, userId, result);
-        return seckillResponse;
+        return seckillResponse;*/
+
+
+        // 4. 执行整合 Lua 脚本（原子：建令牌 + 扣库存 + 失败回滚）
+        String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
+        String tokenKey = CacheKeyConstant.SECKILL_USER_PREFIX + activityId + ":" + userId;
+
+        Long result = redisTemplate.execute(seckillExecuteScript,
+                Arrays.asList(stockKey, tokenKey),
+                "1",
+                CacheKeyConstant.SECKILL_USER_TOKEN_TTL);
+
+        //处理返回值
+        if (result == null) {
+            // 脚本执行异常（理论上不应发生），打日志并降级为系统错误
+            log.error("秒杀脚本执行返回 null，activityId={}, userId={}", activityId, userId);
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, "系统繁忙，请稍后重试");
+        }
+
+        if (result >= 0) {
+            //扣减成功
+            SeckillResponse response = new SeckillResponse();
+            response.setActivityId(activityId);
+            response.setUserId(userId);
+            response.setResult("QUEUED");
+            log.info("秒杀成功，activityId={}, userId={}, 剩余库存={}", activityId, userId, result);
+            return response;
+        } else if (result == -1) {
+            // 库存不足（令牌已在脚本内回滚）
+            throw new BusinessException(ResultCode.OUT_OF_STOCK, "库存不足");
+        } else if (result == -2) {
+            // 重复秒杀（令牌已存在）
+            throw new BusinessException(ResultCode.DUPLICATE_PURCHASE, "请勿重复秒杀");
+        } else {
+            // 未知返回值（防御）
+            log.error("脚本返回未知值: {}, activityId={}, userId={}", result, activityId, userId);
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, "系统异常");
+        }
     }
 
     /**
