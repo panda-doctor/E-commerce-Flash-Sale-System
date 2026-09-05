@@ -16,4 +16,21 @@
         <result column="created_at" property="createdAt" jdbcType="TIMESTAMP"/>
         <result column="updated_at" property="updatedAt" jdbcType="TIMESTAMP"/>
     </resultMap>
+
+    <select id="selectByOrderNo" resultMap="BaseResultMap" parameterType="java.lang.String">
+        SELECT
+            id,
+            order_no,
+            activity_id,
+            product_id,
+            user_id,
+            seckill_price,
+            status,
+            stream_message_id,
+            failure_reason,
+            created_at,
+            updated_at
+        FROM seckill_order
+        WHERE order_no = #{orderNo,jdbcType=VARCHAR}
+    </select>
 </mapper>

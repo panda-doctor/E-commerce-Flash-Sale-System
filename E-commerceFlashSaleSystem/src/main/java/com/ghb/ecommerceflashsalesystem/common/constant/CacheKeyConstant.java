@@ -84,6 +84,12 @@ public class CacheKeyConstant {
      * 死信流（备用）
      */
     public static final String SECKILL_DEAD_STREAM = "seckill:order:dead:stream";
+
+
+    /**
+     *---- Stream 消费者组 ----
+     */
+    public static final String SECKILL_ORDER_GROUP = "seckill:order:group";
 }
 /*
  * 3. 实际用途与意义

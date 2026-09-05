@@ -35,7 +35,7 @@
   ✅ Day 1 环境搭建  ✅ Day 2 实体与数据层  ✅ Day 3 公共组件  ✅ Day 4 商品缓存
   ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ✅ Day 7 集成验收
 ✅ 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ~ Day 5 全部完成，28 用例 BUILD SUCCESS）
-🔄 第 3 阶段：高并发防护体系（Day 1 ✅ Day 2 ✅ ~ Day 5）
+🔄 第 3 阶段：高并发防护体系（Day 1 ✅ Day 2 ✅ Day 3 ✅ ~ Day 5）
 □ 第 4 阶段：排行榜、前端与全链路压测
 ```
 
@@ -361,7 +361,7 @@
 |---|---|---|---|
 | Day 1 | 滑动窗口限流 | ✅ | `rate_limit.lua`（ZSet 清过期成员 + 计数）接入 `execute` 最前置，超限返回 `42900` |
 | Day 2 | Stream 生产者削峰 | ✅ | `execute` 扣库存成功后发布消息到 `seckill:order:stream`，返回「排队中 + orderNo」 |
-| Day 3 | 消费者异步落单 | ⏳ | 消费者组读 Stream → 写 `seckill_order`（`uk_activity_user` 唯一键兜底）→ XACK |
+| Day 3 | 消费者异步落单 | ✅ | 消费者组读 Stream → 写 `seckill_order`（`uk_activity_user` 唯一键兜底）→ XACK |
 | Day 4 | 消费可靠性 | ⏳ | 失败重试、死信 `seckill:order:dead:stream`、`seckill_message_log` 落库追踪 |
 | Day 5 | 分布式锁落地 + 阶段验收 | ⏳ | Redisson 锁防护预热/库存重置等写入口并发；全量回归 + 验收 |
 
@@ -405,6 +405,28 @@
 4. **成交价随消息快照下发**：消费者落库不再查活动表，杜绝"活动改价后金额不一致"。
 5. **测试隔离"三件套"**：execute 成功会写 stream，凡调 execute 的测试类现在需清理 `rate:limit:*` + `seckill:user:*` + `seckill:order:stream` 三类键（Day 1 教训 4 的扩大版）。
 6. **Redis host 端口转发当日 3 次断连**：容器内 PONG 正常、host 连接被 reset（`An established connection was aborted`）→ `docker restart my-redis` 每次可恢复；若继续高频出现，建议 `wsl --shutdown` 重建网络再启动容器，并排查端口/资源占用。
+
+### 第 3 阶段 Day 3 进度 — 消费者异步落单 ✅
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| 3.1 常量 + Mapper | ✅ | `CacheKeyConstant` 增消费者组 `SECKILL_ORDER_GROUP`；`SeckillOrderMapper.selectByOrderNo` + XML 实现 |
+| 3.2 消费者组件 | ✅ | `stream/consumer/SeckillOrderConsumer`：`ensureGroup()`（`XGROUP CREATE ... MKSTREAM`，BUSYGROUP 幂等）；`consumePending(count)` 用消费者组 XREADGROUP 拉取新消息 |
+| 3.3 落库 + XACK | ✅ | `handle` 解析消息 → `selectByOrderNo` 查重 → 插入 `SeckillOrder`（成交价快照 / `status=CREATED` / streamMessageId）→ XACK；`DuplicateKeyException` 兜底视为已处理；失败不 ACK 留 PEL |
+| 3.4 订单查询接口 | ✅ | `OrderController`：`GET /api/seckill/orders/{orderNo}`（interface 4.9），未落库返回 `QUEUING`，已落库返回 `CREATED` 及明细 |
+| 3.5 集成测试 | ✅ | `SeckillConsumerIntegrationTest` 2 用例（真实 DB：插入未来活动 + 预热 + execute + 消费断言订单落库字段 / 重复消费不重复落库），tearDown 清理活动订单键 |
+| 3.6 全量回归 | ✅ | 默认不启动自动消费（手动调 `consumePending`，避免后台线程干扰测试） |
+
+**Day 3 验收标准：** execute 成功 → 消费者能转成订单且 XACK 不重复消费、DB 唯一键兜底不产生重复订单、查询接口可查 `CREATED`、全量 BUILD SUCCESS。—— ✅ 达成（2026-09-05，全量 `mvn test` 37 用例 BUILD SUCCESS）
+
+**Day 3 经验教训：**
+
+1. **BUSYGROUP 的判断要看 cause 链**：Spring Data Redis 把 lettuce 的 `RedisBusyException` 包装成外层 `RedisSystemException`（message 是笼统的 "Error in execution"），真实原因在 cause 里。只查 `e.getMessage()` 会漏判 → `@PostConstruct` 建组抛异常 → 全量测试中第一个 context 失败后触发 Spring 测试 **failure threshold=1**，后续所有新 context 的测试类全部"快速跳过"（表现为 0.001s 全 Error）——排查时先找首个 context 的根因，别被连锁失败误导。
+2. **`StreamRecords.objectBacked(bean)` 的双重序列化坑**：bean 字段经序列化器编码后再入 Stream，消费者 XREADGROUP 读回 MapRecord 时字段值会变成 **Base64 字符串**（`200` → `"MjAw"`），`Long.valueOf` 直接抛 `NumberFormatException`。修正：生产者用**明文 Map** 投递（字段全为可读字符串），消费者侧用 `toLong/toStr` 安全转换，不依赖强转。
+3. **Redis 容器重启即丢数据**：`my-redis` 无持久化配置，`docker restart` 后所有 key 清空 → 全量里首个 context 建组、后续 context 遇 BUSYGROUP。组创建必须幂等（MKSTREAM + cause 链判 BUSYGROUP）。
+4. **消费者组消息可靠性机制**：XREADGROUP 读到的消息 ACK 前进入 PEL，进程崩溃可重读；`XACK` 才移除——这是"宕机重启消息不丢"的基础，也是 Day 4 重试/死信的前提。
+5. **消费测试用真实 DB + 外键意识**：`seckill_order` 有 `fk_order_activity/product`，落库测试不能用 mock 活动，需插入真实活动（`product_id` 引用种子商品）并在 tearDown 清理，避免脏数据与跨用例污染。
+6. **常量/类名先行**：`CONSUMER_NAME` 曾用 `System.getenv("HOSTNAME")`（Windows 无此变量拼出 `consumer-null-*`），统一改 UUID；命名/常量先定义清楚再实现。
 
 ---
 
@@ -468,5 +490,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-05（第 3 阶段 Day 2 验收完成：`execute` 成功链路接入 Redis Stream 削峰——`SeckillOrderStreamProducer` + `OrderNoGenerator` + `SeckillOrderMessage`，返回真实 `orderNo`；修复 Stream 发送死代码位置与变量引用；`SeckillPublishStreamTest` 3 用例全绿（成功落流/重复不追加/售罄不产生）；全量 mvn test 35 用例 BUILD SUCCESS；路线图第 3 阶段 Day 2 置 ✅）*
-*下次开始位置：第 3 阶段 Day 3 — 消费者异步落单（消费者组读 Stream → 写 `seckill_order` → XACK + DB 唯一键兜底）*
+*上次更新：2026-09-05（第 3 阶段 Day 3 验收完成：`SeckillOrderConsumer` 消费者组异步落单——MKSTREAM 建组（BUSYGROUP 幂等）、明文 Map 投递、`seckill_order` 落库 + XACK + DB 唯一键兜底；`OrderController` 查询订单；`SeckillConsumerIntegrationTest` 2 用例全绿；全量 mvn test 37 用例 BUILD SUCCESS；路线图第 3 阶段 Day 3 置 ✅）*
+*下次开始位置：第 3 阶段 Day 4 — 消费可靠性（失败重试、死信 `seckill:order:dead:stream`、`seckill_message_log` 落库追踪）*
