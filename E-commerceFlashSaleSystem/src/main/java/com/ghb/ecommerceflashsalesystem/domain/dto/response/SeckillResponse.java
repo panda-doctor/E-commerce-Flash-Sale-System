@@ -19,5 +19,9 @@ public class SeckillResponse {
      */
     private String result;
 
+    /**
+     * 新增订单号
+     */
+    private String orderNo;
 
 }

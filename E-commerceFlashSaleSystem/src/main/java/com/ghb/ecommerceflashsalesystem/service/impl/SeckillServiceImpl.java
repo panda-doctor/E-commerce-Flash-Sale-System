@@ -3,14 +3,18 @@ package com.ghb.ecommerceflashsalesystem.service.impl;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
+import com.ghb.ecommerceflashsalesystem.common.util.OrderNoGenerator;
+import com.ghb.ecommerceflashsalesystem.domain.dto.message.SeckillOrderMessage;
 import com.ghb.ecommerceflashsalesystem.domain.dto.request.SeckillRequest;
 import com.ghb.ecommerceflashsalesystem.domain.dto.response.SeckillResponse;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;
 import com.ghb.ecommerceflashsalesystem.domain.enums.ActivityStatusEnum;
+import com.ghb.ecommerceflashsalesystem.domain.enums.OrderStatusEnum;
 import com.ghb.ecommerceflashsalesystem.domain.vo.SeckillActivityVO;
 import com.ghb.ecommerceflashsalesystem.mapper.SeckillActivityMapper;
 import com.ghb.ecommerceflashsalesystem.service.cache.SeckillCacheService;
 import com.ghb.ecommerceflashsalesystem.service.seckill.SeckillService;
+import com.ghb.ecommerceflashsalesystem.stream.producer.SeckillOrderStreamProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -70,13 +74,33 @@ public class SeckillServiceImpl implements SeckillService {
     private final SeckillCacheService seckillCacheService;
     private final SeckillActivityMapper seckillActivityMapper;
     private final RedisTemplate<String, Object> redisTemplate;
-    private final RedisScript<Long> decrStockScript;
     private final RedisScript<Long> seckillExecuteScript;
+    private final RedisScript<Long> rateLimitScript;
+    private final SeckillOrderStreamProducer seckillOrderStreamProducer;
 
     @Override
     public SeckillResponse execute(SeckillRequest request) {
         Long activityId = request.getActivityId();
         Long userId = request.getUserId();
+
+
+        // 0. 滑动窗口限流（最前置防刷闸门）：超限直接 42900，
+        //    保证无效/恶意请求到不了后面的活动查询与幂等扣减
+        String rateKey = CacheKeyConstant.RATE_LIMIT_PREFIX + userId;
+        long time = System.currentTimeMillis() / 1000; //秒级时间戳
+        String member = time + "-" + System.nanoTime(); //唯一成员标识
+        Long resultLimit = redisTemplate.execute(
+                rateLimitScript,
+                Arrays.asList(rateKey),
+                time,
+                CacheKeyConstant.RATE_LIMIT_WINDOW_SECONDS,
+                CacheKeyConstant.RATE_LIMIT_MAX_COUNT,
+                member
+        );
+
+        if (resultLimit == null || resultLimit == 0) {
+            throw new BusinessException(ResultCode.RATE_LIMITED, "请求过于频繁");
+        }
 
         // 1. 查询活动：缓存优先，未命中回源数据库（修正 v1 错误点 2）
         SeckillActivityVO activityVO = getActivityVO(activityId);
@@ -156,12 +180,35 @@ public class SeckillServiceImpl implements SeckillService {
         }
 
         if (result >= 0) {
-            //扣减成功
+            // 扣减成功 → 第 3 阶段 Day 2 接入 Stream 削峰：
+            // 顺序不可反——必须先扣库存成功、再发消息，消息是"已拥有库存"的凭证
+            // （曾把发送逻辑写在 if/else 全终止之后形成不可达代码，且误用 activity/scriptResult 变量）
+            String orderNo = OrderNoGenerator.generate();
+
+            // 消息体：活动信息从 activityVO 取（productId / 成交价快照，防活动改价后金额不一致）
+            SeckillOrderMessage message = SeckillOrderMessage.builder()
+                    .activityId(activityId)
+                    .productId(activityVO.getProductId())
+                    .userId(userId)
+                    .orderNo(orderNo)
+                    .seckillPrice(activityVO.getSeckillPrice())
+                    .requestTime(System.currentTimeMillis())
+                    .build();
+
+            // XADD 失败时库存已扣、令牌已建 → 本阶段先抛系统异常，消息补偿留待 Day 4
+            try {
+                seckillOrderStreamProducer.sendMessage(message);
+            } catch (Exception e) {
+                log.error("发送订单消息失败，orderNo={}, activityId={}, userId={}", orderNo, activityId, userId, e);
+                throw new BusinessException(ResultCode.SYSTEM_ERROR, "消息队列异常，请稍后重试");
+            }
+
             SeckillResponse response = new SeckillResponse();
             response.setActivityId(activityId);
             response.setUserId(userId);
             response.setResult("QUEUED");
-            log.info("秒杀成功，activityId={}, userId={}, 剩余库存={}", activityId, userId, result);
+            response.setOrderNo(orderNo);
+            log.info("秒杀成功，orderNo={}, 剩余库存={}", orderNo, result);
             return response;
         } else if (result == -1) {
             // 库存不足（令牌已在脚本内回滚）

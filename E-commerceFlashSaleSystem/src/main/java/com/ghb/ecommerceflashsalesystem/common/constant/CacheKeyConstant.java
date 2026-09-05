@@ -59,6 +59,31 @@ public class CacheKeyConstant {
      * 幂等令牌 TTL（秒），30 分钟
      */
     public static final long SECKILL_USER_TOKEN_TTL = 30 * 60L;
+
+    /**
+     * 限流键前缀，完整键: rate:limit:{userId}
+     */
+    public static final String RATE_LIMIT_PREFIX = "rate:limit:";
+
+    /**
+     * 限流时间窗口（秒），默认60秒
+     */
+    public static final long RATE_LIMIT_WINDOW_SECONDS = 60L;
+
+    /**
+     * 限流窗口内允许的最大请求次数，默认5次
+     */
+    public static final long RATE_LIMIT_MAX_COUNT = 5L;
+
+    /**
+     * 秒杀订单流（Stream Key）
+     */
+    public static final String SECKILL_ORDER_STREAM = "seckill:order:stream";
+
+    /**
+     * 死信流（备用）
+     */
+    public static final String SECKILL_DEAD_STREAM = "seckill:order:dead:stream";
 }
 /*
  * 3. 实际用途与意义

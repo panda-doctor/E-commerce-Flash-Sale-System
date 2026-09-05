@@ -35,7 +35,7 @@
   ✅ Day 1 环境搭建  ✅ Day 2 实体与数据层  ✅ Day 3 公共组件  ✅ Day 4 商品缓存
   ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ✅ Day 7 集成验收
 ✅ 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ~ Day 5 全部完成，28 用例 BUILD SUCCESS）
-□ 第 3 阶段：高并发防护体系
+🔄 第 3 阶段：高并发防护体系（Day 1 ✅ Day 2 ✅ ~ Day 5）
 □ 第 4 阶段：排行榜、前端与全链路压测
 ```
 
@@ -350,6 +350,64 @@
 
 ---
 
+### 第 3 阶段开发计划（高并发防护体系：分布式锁 / 限流 / Redis Stream 异步下单）
+
+> 阶段目标：把 `/api/seckill/execute` 从"预扣库存即返回"升级为完整秒杀闭环：**滑动窗口限流防刷 → Lua 原子扣减（已具备）→ Redis Stream 消息削峰 → 消费者异步落订单（DB 唯一键兜底）→ 消费可靠性（ACK/重试/死信 + 消息日志）→ Redisson 锁守护写入口并发**。
+
+- **现有基础（第 2 阶段遗产）**：`execute` Lua 原子「令牌+扣减+回滚」无超卖防重 ✅、`decr_stock.lua`/`seckill_execute.lua` + RedisScript Bean ✅、`seckill_order`/`seckill_message_log`/`seckill_activity_snapshot` 表已建且 `SeckillOrder` 实体已建 ✅、`CacheKeyConstant` 前缀收敛 ✅。
+- **本轮缺口**：限流键/脚本/服务不存在（`RATE_LIMITED(42900)` 常量未用）；Redis Stream 生产者/消费者与 `seckill:order:stream`/`seckill:order:dead:stream` 常量未建；`SeckillOrderMapper` 未真正落单、`execute` 无真实 `orderNo`；`seckill_message_log` 无实体与写入；Redisson 锁尚未用于秒杀写入口。
+
+| 天 | 主题 | 状态 | 核心产出 |
+|---|---|---|---|
+| Day 1 | 滑动窗口限流 | ✅ | `rate_limit.lua`（ZSet 清过期成员 + 计数）接入 `execute` 最前置，超限返回 `42900` |
+| Day 2 | Stream 生产者削峰 | ✅ | `execute` 扣库存成功后发布消息到 `seckill:order:stream`，返回「排队中 + orderNo」 |
+| Day 3 | 消费者异步落单 | ⏳ | 消费者组读 Stream → 写 `seckill_order`（`uk_activity_user` 唯一键兜底）→ XACK |
+| Day 4 | 消费可靠性 | ⏳ | 失败重试、死信 `seckill:order:dead:stream`、`seckill_message_log` 落库追踪 |
+| Day 5 | 分布式锁落地 + 阶段验收 | ⏳ | Redisson 锁防护预热/库存重置等写入口并发；全量回归 + 验收 |
+
+### 第 3 阶段 Day 1 进度 — 滑动窗口限流 ✅
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| 1.1 `rate_limit.lua` | ✅ | ZSet 滑窗：`ZREMRANGEBYSCORE` 清过期成员 → `ZCARD` 计数 → 达阈值返 `0` → 放行 `ZADD`+`EXPIRE` 返 `1`；头注释写明键/参数契约与"滑窗 vs 固定窗口、member 唯一性、EXPIRE 刷新"的理解 |
+| 1.2 RedisConfig Bean | ✅ | `rateLimitScript`（`RedisScript<Long>`）注册 |
+| 1.3 常量 | ✅ | `RATE_LIMIT_PREFIX`（`rate:limit:`）/ `RATE_LIMIT_WINDOW_SECONDS`(60s) / `RATE_LIMIT_MAX_COUNT`(5次) |
+| 1.4 execute 接入 | ✅ | 限流位于 execute **第 0 步**（早于活动查询/幂等），超限抛 `RATE_LIMITED(42900)`「请求过于频繁」 |
+| 1.5 测试 | ✅ | `RateLimitTest` 4 用例全绿：脚本级放行/拒绝（前 5 次 `1`、第 6 次 `0`）、真实滑窗清理（历史 score 成员被清后放行）、service 级限流最先（**不存在的活动也先 `42900` 而非 `NOT_FOUND`**）、不同用户隔离 |
+
+**Day 1 验收标准：** 单用户窗口内超阈值返回 `42900`、滑窗后恢复、不同用户隔离、全量 BUILD SUCCESS。—— ✅ 达成（2026-09-04，全量 `mvn test` 32 用例 BUILD SUCCESS）
+
+**Day 1 经验教训：**
+
+1. **限流闸门先于幂等，测试要认知链路顺序**：同用户高频请求会先被限流拦（`42900`）而非幂等拦（`40901`）；因此并发防重用例的并发度必须 ≤ 限流阈值，否则超额请求被限流"截胡"，`duplicateCount` 断言失败（`SeckillUserDedupTest.testConcurrentSameUser` 曾因此把 42900 当意外异常）。
+2. **限流放行语义不能用"同用户多次 execute 成功"验证**：第 2 次起会被秒杀幂等拦成 `40901`。放行/拒绝应**脚本级直测** `rateLimitScript`；service 级用"预填满限流键 → `execute` 抛 `42900`"验证接入与执行顺序。
+3. **滑窗"滑动"要真实**：用历史 score 成员 + 短窗口执行脚本，验证 `ZREMRANGEBYSCORE` 真的清掉过期成员后放行；"删键模拟滑动"只证明了"键空了能放行"，没测到滑窗清理逻辑。
+4. **限流键跨测试类残留**：`execute` 每次写 `rate:limit:{userId}`（TTL 60s），凡调用 execute 的测试类 setUp/tearDown 都要清 `rate:limit:*`；本次 Dedup 因其它类残留成员，第二次请求被 `42900` 顶掉预期的 `40901`。
+5. **ZSet member 必须唯一（时间戳 + 随机）**：同一秒内 member 相同会被 `ZADD` 覆盖导致计数丢失；放行时刷新 `EXPIRE`，活跃用户键不提前淘汰。
+
+### 第 3 阶段 Day 2 进度 — Redis Stream 生产者削峰 ✅
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| 2.1 消息常量 + 消息体 | ✅ | `CacheKeyConstant` 增 `SECKILL_ORDER_STREAM`（`seckill:order:stream`）与 `SECKILL_DEAD_STREAM`（备用）；`SeckillOrderMessage`（activityId/productId/userId/orderNo/seckillPrice/requestTime） |
+| 2.2 订单号生成 | ✅ | `OrderNoGenerator`：`SK` + `yyyyMMddHHmmssSSS` + 4 位序号，`synchronized` 线程安全，每毫秒 9999 上限 |
+| 2.3 Stream 生产者 | ✅ | `stream/producer/SeckillOrderStreamProducer`：`opsForStream().add(StreamRecords.objectBacked(msg).withStreamKey(...))`，返回 `RecordId` |
+| 2.4 execute 接入削峰 | ✅ | Lua `result>=0` → 生成 orderNo → 构建消息（`activityVO` 取 productId / 成交价快照防改价）→ XADD → 返回 `QUEUED + orderNo`；XADD 失败先抛系统异常，注明 Day 4 统一补偿 |
+| 2.5 测试与回归 | ✅ | 新增 `SeckillPublishStreamTest` 3 用例（成功 orderNo + Stream 恰 1 条 / 重复秒杀不追加 / 售罄不产生消息）；Concurrency/Dedup/RateLimit 补 stream 键清理 |
+
+**Day 2 验收标准：** execute 成功返回带 `orderNo` 的 `QUEUED` 且 Stream 可读回、失败路径不产生消息、全量 BUILD SUCCESS。—— ✅ 达成（2026-09-05，全量 `mvn test` 35 用例 BUILD SUCCESS）
+
+**Day 2 经验教训：**
+
+1. **新逻辑要放进对应分支，别写在"全分支终止"之后**：把 Stream 发送写在了 `if/else if/else`（每分支都 return/throw）之后 → 永远不可达的死代码；且误用 `activity`（应为 `activityVO`）、`scriptResult`（应为 `result`）变量。`mvn compile` 一次性抓出 3 个符号错误，写完必须编译验证。
+2. **重构注意成对括号**：方法闭合 `}` 与新逻辑重叠会产生"提前闭合类"的多余大括号（`getActivityVO` 掉到类外报错）；替换后检查括号配对或看方法缩进。
+3. **削峰顺序不可反**：必须先扣库存成功、再 XADD（消息 = 已拥有库存的凭证）；XADD 失败时库存已扣、令牌已建，本阶段抛系统异常、补偿留待 Day 4，不在本地自行做复杂回滚。
+4. **成交价随消息快照下发**：消费者落库不再查活动表，杜绝"活动改价后金额不一致"。
+5. **测试隔离"三件套"**：execute 成功会写 stream，凡调 execute 的测试类现在需清理 `rate:limit:*` + `seckill:user:*` + `seckill:order:stream` 三类键（Day 1 教训 4 的扩大版）。
+6. **Redis host 端口转发当日 3 次断连**：容器内 PONG 正常、host 连接被 reset（`An established connection was aborted`）→ `docker restart my-redis` 每次可恢复；若继续高频出现，建议 `wsl --shutdown` 重建网络再启动容器，并排查端口/资源占用。
+
+---
+
 ## 四、数据库表结构参考
 
 ### 当前阶段使用的表
@@ -410,5 +468,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-04（第 2 阶段整体验收完成：`/api/seckill/execute` 完整链路 + `seckill_execute.lua` 原子整合（令牌+扣减+回滚），`SeckillExecuteScriptTest` 3 场景直测，防超卖/防重并发实证回归全绿，全量 mvn test 28 用例 BUILD SUCCESS；期间修复脚本级测试 Arrays import 错误、售罄用例预建令牌逻辑错误及 service 遗留小项；路线图第 2 阶段置 ✅；修正了更新 Day 4 时误引入的 Day 5 重复标题）*
-*下次开始位置：第 3 阶段 Day 1 — 高并发防护体系（分布式锁防一人多抢 / 滑动窗口限流 / Redis Stream 异步削峰）*
+*上次更新：2026-09-05（第 3 阶段 Day 2 验收完成：`execute` 成功链路接入 Redis Stream 削峰——`SeckillOrderStreamProducer` + `OrderNoGenerator` + `SeckillOrderMessage`，返回真实 `orderNo`；修复 Stream 发送死代码位置与变量引用；`SeckillPublishStreamTest` 3 用例全绿（成功落流/重复不追加/售罄不产生）；全量 mvn test 35 用例 BUILD SUCCESS；路线图第 3 阶段 Day 2 置 ✅）*
+*下次开始位置：第 3 阶段 Day 3 — 消费者异步落单（消费者组读 Stream → 写 `seckill_order` → XACK + DB 唯一键兜底）*

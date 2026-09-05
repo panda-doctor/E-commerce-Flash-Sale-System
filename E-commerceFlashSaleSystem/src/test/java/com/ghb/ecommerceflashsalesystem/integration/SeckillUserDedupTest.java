@@ -47,6 +47,7 @@ public class SeckillUserDedupTest {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
+    private static final String STREAM_KEY = CacheKeyConstant.SECKILL_ORDER_STREAM;
     private static final Long ACTIVITY_ID = 100L;
     private static final Long USER_A = 1001L;
     private static final Long USER_B = 1002L;
@@ -58,6 +59,7 @@ public class SeckillUserDedupTest {
         cleanKeys(CacheKeyConstant.SECKILL_ACTIVITY_PREFIX + ACTIVITY_ID);
         cleanKeys(CacheKeyConstant.SECKILL_STOCK_PREFIX + ACTIVITY_ID);
         cleanKeys(CacheKeyConstant.SECKILL_USER_PREFIX + "*");
+        cleanKeys(CacheKeyConstant.RATE_LIMIT_PREFIX + "*");
 
         // Mock 活动
         SeckillActivity activity = new SeckillActivity();
@@ -85,12 +87,14 @@ public class SeckillUserDedupTest {
         cleanKeys(CacheKeyConstant.SECKILL_ACTIVITY_PREFIX + ACTIVITY_ID);
         cleanKeys(CacheKeyConstant.SECKILL_STOCK_PREFIX + ACTIVITY_ID);
         cleanKeys(CacheKeyConstant.SECKILL_USER_PREFIX + "*");
+        cleanKeys(CacheKeyConstant.RATE_LIMIT_PREFIX + "*");
     }
 
     private void cleanKeys(String pattern) {
         Set<String> keys = redisTemplate.keys(pattern);
         if (keys != null && !keys.isEmpty()){
             redisTemplate.delete(keys);
+            redisTemplate.delete(STREAM_KEY);
         }
     }
 
@@ -178,10 +182,12 @@ public class SeckillUserDedupTest {
         assertThat(redisTemplate.hasKey(key)).isFalse();
     }
 
-    // ---------- 用例5（加分）：同一用户并发 50 线程，仅 1 次成功 ----------
+    // ---------- 用例5（加分）：同一用户并发，仅 1 次成功 ----------
+    // 并发度取限流阈值：限流闸门在幂等之前，同用户并发若超过 RATE_LIMIT_MAX_COUNT，
+    // 超额请求会被 42900 拦截（属限流语义而非幂等），因此取阈值个并发来验证幂等原子性。
     @Test
     void testConcurrentSameUser() throws InterruptedException {
-        int threadCount = 50;
+        int threadCount = (int) CacheKeyConstant.RATE_LIMIT_MAX_COUNT;
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch doneLatch = new CountDownLatch(threadCount);
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);

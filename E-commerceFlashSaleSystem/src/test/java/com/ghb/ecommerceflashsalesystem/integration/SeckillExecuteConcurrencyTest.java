@@ -38,6 +38,7 @@ import static org.mockito.Mockito.when;
 
 public class SeckillExecuteConcurrencyTest {
 
+    private static final String STREAM_KEY = CacheKeyConstant.SECKILL_ORDER_STREAM;
     @Autowired
     private SeckillService seckillService;
 
@@ -60,6 +61,7 @@ public class SeckillExecuteConcurrencyTest {
         //清理Redis测试键
         cleanRedisKeys(CacheKeyConstant.SECKILL_ACTIVITY_PREFIX + ACTIVITY_ID);
         cleanRedisKeys(CacheKeyConstant.SECKILL_STOCK_PREFIX + ACTIVITY_ID);
+        cleanRedisKeys(CacheKeyConstant.RATE_LIMIT_PREFIX + "*");
 
         // @MockBean 默认在每个测试方法结束后自动重置 mock（MockReset.AFTER），无需手动 reset。
         // 【复盘】曾误写空壳 reset() 方法与 Awaitility.reset() 静态导入：
@@ -98,6 +100,7 @@ public class SeckillExecuteConcurrencyTest {
         //清理测试键
         cleanRedisKeys(CacheKeyConstant.SECKILL_ACTIVITY_PREFIX + ACTIVITY_ID);
         cleanRedisKeys(CacheKeyConstant.SECKILL_STOCK_PREFIX + ACTIVITY_ID);
+        cleanRedisKeys(CacheKeyConstant.RATE_LIMIT_PREFIX + "*");
         log.info("测试后清理 Redis 键");
     }
 
@@ -105,6 +108,7 @@ public class SeckillExecuteConcurrencyTest {
         Set<String> keys = redisTemplate.keys(pattern);
         if (keys != null && !keys.isEmpty()){
             redisTemplate.delete(keys);
+            redisTemplate.delete(STREAM_KEY);
         }
     }
     @Test
