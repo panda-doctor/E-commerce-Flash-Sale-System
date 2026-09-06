@@ -35,7 +35,7 @@
   ✅ Day 1 环境搭建  ✅ Day 2 实体与数据层  ✅ Day 3 公共组件  ✅ Day 4 商品缓存
   ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ✅ Day 7 集成验收
 ✅ 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ~ Day 5 全部完成，28 用例 BUILD SUCCESS）
-🔄 第 3 阶段：高并发防护体系（Day 1 ✅ Day 2 ✅ Day 3 ✅ ~ Day 5）
+🔄 第 3 阶段：高并发防护体系（Day 1 ✅ Day 2 ✅ Day 3 ✅ Day 4 ✅ ~ Day 5）
 □ 第 4 阶段：排行榜、前端与全链路压测
 ```
 
@@ -362,7 +362,7 @@
 | Day 1 | 滑动窗口限流 | ✅ | `rate_limit.lua`（ZSet 清过期成员 + 计数）接入 `execute` 最前置，超限返回 `42900` |
 | Day 2 | Stream 生产者削峰 | ✅ | `execute` 扣库存成功后发布消息到 `seckill:order:stream`，返回「排队中 + orderNo」 |
 | Day 3 | 消费者异步落单 | ✅ | 消费者组读 Stream → 写 `seckill_order`（`uk_activity_user` 唯一键兜底）→ XACK |
-| Day 4 | 消费可靠性 | ⏳ | 失败重试、死信 `seckill:order:dead:stream`、`seckill_message_log` 落库追踪 |
+| Day 4 | 消费可靠性 | ✅ | 失败重试、死信 `seckill:order:dead:stream`、`seckill_message_log` 落库追踪 |
 | Day 5 | 分布式锁落地 + 阶段验收 | ⏳ | Redisson 锁防护预热/库存重置等写入口并发；全量回归 + 验收 |
 
 ### 第 3 阶段 Day 1 进度 — 滑动窗口限流 ✅
@@ -428,6 +428,27 @@
 5. **消费测试用真实 DB + 外键意识**：`seckill_order` 有 `fk_order_activity/product`，落库测试不能用 mock 活动，需插入真实活动（`product_id` 引用种子商品）并在 tearDown 清理，避免脏数据与跨用例污染。
 6. **常量/类名先行**：`CONSUMER_NAME` 曾用 `System.getenv("HOSTNAME")`（Windows 无此变量拼出 `consumer-null-*`），统一改 UUID；命名/常量先定义清楚再实现。
 
+### 第 3 阶段 Day 4 进度 — 消费可靠性（重试 / 死信 / 消息日志） ✅
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| 4.1 日志实体 + Mapper | ✅ | `SeckillMessageLog` 实体 + `SeckillMessageLogMapper` + `MessageLogStatusEnum`（PENDING/SUCCESS/FAILED/DEAD） |
+| 4.2 常量 | ✅ | 死信流复用 `SECKILL_DEAD_STREAM`；新增 `MESSAGE_MAX_RETRY`（默认 3） |
+| 4.3 消费接日志 | ✅ | `handle` 按 `stream_message_id` 查/建 PENDING 日志；成功置 SUCCESS；失败置 FAILED + retry+1 + error_message（截断 1023） |
+| 4.4 重试 + 死信 | ✅ | 未达阈值**不 ACK 留 PEL**（可重试）；达阈值 XADD 死信流（明文 Map 带原字段+错误）→ 日志 DEAD → ACK 原消息 |
+| 4.5 重试入口 | ✅ | `consumerRetry(count)`：`XREADGROUP ... STREAMS stream 0` 从 PEL 拾起未 ACK 消息（与 `consumePending` 的 `>` 互补） |
+| 4.6 测试 + 回归 | ✅ | `SeckillMessageReliabilityTest` 2 用例：成功日志 SUCCESS+订单落库 / 手工投递坏消息（活动 999999 触发外键失败）→ retry 递增留 PEL → 达阈值转死信（日志 DEAD + 死信流 1 条） |
+
+**Day 4 验收标准：** 成功/失败/死信三态日志流转正确；失败未超限可重试、超限进死信并 ACK；全量 BUILD SUCCESS。—— ✅ 达成（2026-09-06，全量 `mvn test` 39 用例 BUILD SUCCESS）
+
+**Day 4 经验教训：**
+
+1. **重构大方法时先画清楚 try/catch 归属**：`handle` 嵌套两层 try，外层缺 `catch/finally` 直接编译失败，且连累后续方法"需要 class/interface/enum"连环报错；业务分支还**丢失了订单 `insert`**——只 ACK 不落库是最危险的一类 bug，审查时必须核对"副作用语句是否还在"。
+2. **`@TableField(fill = ...)` 必须配套 `MetaObjectHandler`**：`SeckillMessageLog.createdAt/updatedAt` 标了自动填充但项目没有处理器 → `INSERT` 显式带 NULL → MySQL strict 模式报 `Column 'created_at' cannot be null`。已新增 `MybatisPlusMetaObjectHandler`（只对带 fill 注解的字段生效）。
+3. **死信/消息投递统一用明文 Map**：死信若沿用 `ObjectRecord.create` 又会踩 Day 3 的 Base64 序列化坑；字段全字符串化投递，消费者端 `toLong/toStr` 安全转换是通用约定。
+4. **"失败不 ACK 留 PEL"就是重试机制**：`XREADGROUP 0` 读 PEL 重投；ACK 则失去重试机会；达阈值 XACK + 转死信让主 Stream 不积压。
+5. **错误信息入库要截断**：`error_message` 是 VARCHAR(1024)，`e.getMessage()` 可能超长导致再次落库失败，入库前 `substring(0, 1023)` 兜底。
+
 ---
 
 ## 四、数据库表结构参考
@@ -490,5 +511,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-05（第 3 阶段 Day 3 验收完成：`SeckillOrderConsumer` 消费者组异步落单——MKSTREAM 建组（BUSYGROUP 幂等）、明文 Map 投递、`seckill_order` 落库 + XACK + DB 唯一键兜底；`OrderController` 查询订单；`SeckillConsumerIntegrationTest` 2 用例全绿；全量 mvn test 37 用例 BUILD SUCCESS；路线图第 3 阶段 Day 3 置 ✅）*
-*下次开始位置：第 3 阶段 Day 4 — 消费可靠性（失败重试、死信 `seckill:order:dead:stream`、`seckill_message_log` 落库追踪）*
+*上次更新：2026-09-06（第 3 阶段 Day 4 验收完成：消费失败重试 + 死信流转 + `seckill_message_log` 落库——新增 `SeckillMessageLog` 实体/Mapper/`MessageLogStatusEnum`，`handle` 接日志与 `handleFailure`（PEL 重试 / 死信 ACK），`consumerRetry` 从 PEL 重投；补 `MybatisPlusMetaObjectHandler` 修复 created_at 为空；`SeckillMessageReliabilityTest` 2 用例全绿；全量 mvn test 39 用例 BUILD SUCCESS；路线图第 3 阶段 Day 4 置 ✅）*
+*下次开始位置：第 3 阶段 Day 5 — 分布式锁落地 + 第 3 阶段阶段验收*

@@ -90,6 +90,12 @@ public class CacheKeyConstant {
      *---- Stream 消费者组 ----
      */
     public static final String SECKILL_ORDER_GROUP = "seckill:order:group";
+
+
+    /**
+     * ---- 消息可靠性 ----
+     */
+    public static final long MESSAGE_MAX_RETRY = 3;   // 最大重试次数
 }
 /*
  * 3. 实际用途与意义
