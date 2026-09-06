@@ -96,6 +96,13 @@ public class CacheKeyConstant {
      * ---- 消息可靠性 ----
      */
     public static final long MESSAGE_MAX_RETRY = 3;   // 最大重试次数
+
+    // ---- 分布式锁 ----
+    /**
+     * 秒杀管理操作锁前缀
+     * 完整键: seckill:lock:preheat:{activityId}
+     */
+    public static final String SECKILL_LOCK_PREFIX = "seckill:lock:";
 }
 /*
  * 3. 实际用途与意义

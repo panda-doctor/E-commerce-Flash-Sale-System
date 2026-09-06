@@ -35,7 +35,7 @@
   ✅ Day 1 环境搭建  ✅ Day 2 实体与数据层  ✅ Day 3 公共组件  ✅ Day 4 商品缓存
   ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ✅ Day 7 集成验收
 ✅ 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ~ Day 5 全部完成，28 用例 BUILD SUCCESS）
-🔄 第 3 阶段：高并发防护体系（Day 1 ✅ Day 2 ✅ Day 3 ✅ Day 4 ✅ ~ Day 5）
+✅ 第 3 阶段：高并发防护体系（Day 1 ~ Day 5 全部完成，40 用例 BUILD SUCCESS）
 □ 第 4 阶段：排行榜、前端与全链路压测
 ```
 
@@ -363,7 +363,7 @@
 | Day 2 | Stream 生产者削峰 | ✅ | `execute` 扣库存成功后发布消息到 `seckill:order:stream`，返回「排队中 + orderNo」 |
 | Day 3 | 消费者异步落单 | ✅ | 消费者组读 Stream → 写 `seckill_order`（`uk_activity_user` 唯一键兜底）→ XACK |
 | Day 4 | 消费可靠性 | ✅ | 失败重试、死信 `seckill:order:dead:stream`、`seckill_message_log` 落库追踪 |
-| Day 5 | 分布式锁落地 + 阶段验收 | ⏳ | Redisson 锁防护预热/库存重置等写入口并发；全量回归 + 验收 |
+| Day 5 | 分布式锁落地 + 阶段验收 | ✅ | Redisson 锁防护预热/库存重置等写入口并发；全量回归 + 验收 |
 
 ### 第 3 阶段 Day 1 进度 — 滑动窗口限流 ✅
 
@@ -449,6 +449,32 @@
 4. **"失败不 ACK 留 PEL"就是重试机制**：`XREADGROUP 0` 读 PEL 重投；ACK 则失去重试机会；达阈值 XACK + 转死信让主 Stream 不积压。
 5. **错误信息入库要截断**：`error_message` 是 VARCHAR(1024)，`e.getMessage()` 可能超长导致再次落库失败，入库前 `substring(0, 1023)` 兜底。
 
+### 第 3 阶段 Day 5 进度 — 分布式锁落地 + 阶段验收 ✅
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| 5.1 锁常量 | ✅ | `CacheKeyConstant` 增 `SECKILL_LOCK_PREFIX`（`seckill:lock:`，预热锁键 `seckill:lock:preheat:{activityId}`） |
+| 5.2 预热加锁 | ✅ | `preheatActivity` 用 Redisson `tryLock(wait=5s, lease=30s)` + **锁内双重检查**（重新查库防等锁期间已被预热）→ `doPreheat` → `finally` + `isHeldByCurrentThread` 释放、中断恢复位；注释写明"预热需锁 / execute 不需锁（Lua 已原子）"取舍 |
+| 5.3 库存重置 | ✅ | `resetStock`：DB 配置库存刷回 `seckill:stock:` 并刷新 TTL，同加锁防并发（运维 / 压测前重置） |
+| 5.4 并发预热测试 | ✅ | `PreheatConcurrencyTest`：8 线程并发预热恰 1 成功 + 7 个「不要重复」拒绝 + `update` 恰 1 次 + 活动/库存缓存存在 + 锁键释放 |
+| 5.5 阶段验收 | ✅ | 全量 `mvn test` 40 用例 BUILD SUCCESS（2026-09-06）；本表 + 第 3 阶段整体验收小结如下 |
+
+**✅ 第 3 阶段整体验收小结（2026-09-06）：**
+
+- **链路闭环达成**：`execute` 限流（ZSet 滑窗 Lua）→ Lua 原子（幂等令牌 + 扣减 + 售罄回滚）→ Stream 削峰（明文 Map 发布 + orderNo）→ 消费者组异步落单（DB 唯一键兜底 + XACK）→ 消费可靠性（PEL 重试 / 死信流 / `seckill_message_log`）→ 分布式锁守护预热/库存重置等写入口；
+- **能力实证（40 用例）**：防超卖（200 并发成功恰 100）、防重（同用户并发仅 1 成功）、限流（滑窗放行/拒绝/真实滑动）、Stream（发布/消费/XACK/幂等）、可靠性（成功/失败重试/死信三态）、预热并发（1 成功 + update 1 次 + 锁释放）；
+- **Redis 键收敛**：`rate:limit:` / `seckill:user:` / `seckill:order:stream`+`group` / `seckill:order:dead:stream` / `seckill:lock:` / 消息追踪表 `seckill_message_log`；
+- **生产注意**：`my-redis` 无持久化、`docker restart` 即丢数据（期间多次踩坑，正式部署应开启 RDB/AOF）；Windows→WSL host 端口转发偶断需 restart 恢复。
+
+**Day 5 经验教训：**
+
+1. **分布式锁与 Lua 原子的分工**：预热是"查状态→写缓存→更新 DB"的多步读改写，必须锁串行化；execute 的单键原子（防重+扣减）已由 Lua 完成，主链加锁反而降并发。选型先看操作是否"单命令可原子"。
+2. **锁内必须双重检查**：等锁期间别人可能已完成，拿到锁后要重新读库状态，不能信任拿锁前读到的旧快照。
+3. **`tryLock(wait, lease)` + `finally` 释放**：wait 防无限等待、lease 防持锁崩溃死锁；释放前 `isHeldByCurrentThread()` 判断，防止误释放他人锁。
+4. **`InterruptedException` 要恢复中断位**：`Thread.currentThread().interrupt()` 后再抛业务异常，别吞中断。
+5. **大文件编辑易结构错乱**：本次曾出现无关 import（Redisson/kafka 误导入）、`doPreheat` 重复定义、`resetStock` 跑到类外、残缺语句（`long ttl = ...; } + 常量;`）——保存前用 `mvn compile` 验证。
+6. **测试匹配要对着真实文案**：识别"已被预热"应匹配服务端真实消息（含「不要重复」），不能自造「活动已预热」子串，否则被拒线程全部落入意外异常。
+
 ---
 
 ## 四、数据库表结构参考
@@ -460,13 +486,13 @@
 | `product` | `Product.java` | `ProductMapper.java` |
 | `seckill_activity` | `SeckillActivity.java` | `SeckillActivityMapper.java` |
 | `seckill_order` | `SeckillOrder.java` | `SeckillOrderMapper.java` |
+| `seckill_message_log` | `SeckillMessageLog.java` | `SeckillMessageLogMapper.java` |
 
 ### 后续阶段使用的表
 
 | 表名 | 阶段 | 说明 |
 |------|------|------|
-| `seckill_message_log` | 第 2-3 阶段 | 消息消费日志 |
-| `seckill_activity_snapshot` | 第 3-4 阶段 | 运行指标快照 |
+| `seckill_activity_snapshot` | 第 4 阶段 | 运行指标快照 |
 
 ---
 
@@ -478,6 +504,10 @@
 | `seckill:activity:{activityId}` | Hash | 活动信息+时间窗口 | Day 6 |
 | `seckill:stock:{activityId}` | String | 秒杀实时库存 | Day 6 |
 | `seckill:user:{activityId}:{userId}` | String | 用户秒杀幂等令牌 | 第2阶段 Day 4 ✅ |
+| `rate:limit:{userId}` | ZSet | 用户滑动窗口限流 | 第3阶段 Day 1 ✅ |
+| `seckill:order:stream` | Stream | 秒杀下单消息（削峰） | 第3阶段 Day 2 ✅ |
+| `seckill:order:dead:stream` | Stream | 消费失败死信 | 第3阶段 Day 4 ✅ |
+| `seckill:lock:preheat:{activityId}` / `seckill:lock:reset:{activityId}` | String(锁) | 预热/库存重置分布式锁 | 第3阶段 Day 5 ✅ |
 
 ---
 
@@ -493,6 +523,7 @@
 | GET | `/api/seckill/activities/{id}` | ✅ | Day 6 |
 | GET | `/api/seckill/activities/{id}/check` | ✅ | Day 6 |
 | POST | `/api/seckill/execute` | ✅ | 第2阶段 Day 2/5（Lua 原子整合后完成） |
+| GET | `/api/seckill/orders/{orderNo}` | ✅ | 第3阶段 Day 3（未落库返回 QUEUING） |
 
 ---
 
@@ -511,5 +542,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-06（第 3 阶段 Day 4 验收完成：消费失败重试 + 死信流转 + `seckill_message_log` 落库——新增 `SeckillMessageLog` 实体/Mapper/`MessageLogStatusEnum`，`handle` 接日志与 `handleFailure`（PEL 重试 / 死信 ACK），`consumerRetry` 从 PEL 重投；补 `MybatisPlusMetaObjectHandler` 修复 created_at 为空；`SeckillMessageReliabilityTest` 2 用例全绿；全量 mvn test 39 用例 BUILD SUCCESS；路线图第 3 阶段 Day 4 置 ✅）*
-*下次开始位置：第 3 阶段 Day 5 — 分布式锁落地 + 第 3 阶段阶段验收*
+*上次更新：2026-09-06（第 3 阶段整体验收完成：分布式锁守护预热/库存重置写入口（`preheatActivity` 双重检查 + `resetStock`），`PreheatConcurrencyTest` 8 线程恰 1 成功/update 恰 1 次/锁释放全绿；全量 mvn test 40 用例 BUILD SUCCESS；路线图第 3 阶段置 ✅）*
+*下次开始位置：第 4 阶段（路线图：排行榜 / 指标快照 / 前端页面 / 全链路压测）——Day 拆分待布置时细化*
