@@ -103,6 +103,22 @@ public class CacheKeyConstant {
      * 完整键: seckill:lock:preheat:{activityId}
      */
     public static final String SECKILL_LOCK_PREFIX = "seckill:lock:";
+
+    // ---- 榜单 ----
+    /**
+     * 秒杀成功榜前缀，完整键：seckill:rank:{activityId}
+     */
+    public static final String SECKILL_RANK_PREFIX = "seckill:rank:";
+
+    /**
+     * 榜单默认返回 TOP N
+     */
+    public static final int RANK_DEFAULT_TOP = 10;
+
+    /**
+     * 榜单允许的最大 TOP N
+     */
+    public static final int RANK_MAX_TOP = 100;
 }
 /*
  * 3. 实际用途与意义

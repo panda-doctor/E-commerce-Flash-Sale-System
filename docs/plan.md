@@ -36,7 +36,7 @@
   ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ✅ Day 7 集成验收
 ✅ 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ~ Day 5 全部完成，28 用例 BUILD SUCCESS）
 ✅ 第 3 阶段：高并发防护体系（Day 1 ~ Day 5 全部完成，40 用例 BUILD SUCCESS）
-□ 第 4 阶段：排行榜、前端与全链路压测
+🔄 第 4 阶段：排行榜、前端与全链路压测（Day 1 ~ Day 6 推进中）
 ```
 
 ---
@@ -475,6 +475,47 @@
 5. **大文件编辑易结构错乱**：本次曾出现无关 import（Redisson/kafka 误导入）、`doPreheat` 重复定义、`resetStock` 跑到类外、残缺语句（`long ttl = ...; } + 常量;`）——保存前用 `mvn compile` 验证。
 6. **测试匹配要对着真实文案**：识别"已被预热"应匹配服务端真实消息（含「不要重复」），不能自造「活动已预热」子串，否则被拒线程全部落入意外异常。
 
+### 第 4 阶段开发计划（排行榜 / 运行指标 / 前端演示 / 全链路压测）
+
+> 阶段目标：把"能扛高并发"升级为"看得见、可演示、可量化"——订单成功上实时榜（ZSet），活动运行指标可查（计数键 + `seckill_activity_snapshot` 快照），浏览器一键完成秒杀演示闭环（前端页 + 订单轮询 + 榜单轮询），最后用 JMeter 全链路压测出具报告（补第 3 阶段 3.2 延后项）。
+
+- **现有基础（第 3 阶段遗产）**：`execute` 全链路（限流 → Lua 原子 → Stream 发布）✅、消费者异步落单 + 幂等 + XACK（`seckill_order` 唯一键兜底）✅、`seckill_activity_snapshot` 表已建（schema.sql 5 表之一，尚未使用）✅、契约已定（database.md：`seckill:rank:{activityId}`；interface.md 4.11 `/api/rank/top10`、4.12 `/api/admin/.../metrics`）✅、`static/` 与 `templates/` 空目录待用 ✅。
+- **本轮缺口**：榜单 ZSet 写入与 topN 接口不存在；指标**计数键**不存在（execute 三处拒绝分支未埋点 INCR）、快照采集与 metrics 接口不存在；前端零页面；`scripts/jmeter/` 未建；早期遗留文档（day.md 等）仍未对账。
+
+| 天 | 主题 | 状态 | 核心产出 |
+|---|---|---|---|
+| Day 1 | 实时秒杀成功榜 | ✅ | 消费者成功落单即上榜（按活动隔离）；`GET /api/rank/top10?activityId=` 返回 Top10 |
+| Day 2 | 活动运行指标 | ⏳ | execute 拒绝/成功埋点计数键 + 快照定时落库 + `GET /api/admin/seckill/activities/{id}/metrics` |
+| Day 3 | 前端秒杀演示页 | ⏳ | Vue3(CDN)+Thymeleaf 秒杀页：商品卡 / 活动倒计时 / 秒杀按钮 / 订单轮询 / 榜单轮询 |
+| Day 4 | 联调与可演示闭环 | ⏳ | 按钮状态机全态（未开始/进行中/排队/重复/售罄/结束）+ 异常反馈 + 浏览器端到端抢通 |
+| Day 5 | 全链路 JMeter 压测 | ⏳ | `scripts/jmeter/` + 5000 并发（多 userId 绕单用户限流）+ 压测报告（库存精确性/限流拒绝/端到端延迟/Redis 指标） |
+| Day 6 | 复盘与总结 | ⏳ | 异常与边界补充、学习笔记沉淀（notework/day）、《Redis 实战总结》、阶段验收与提交 |
+
+**阶段验收标准：**
+1. **可演示闭环**：浏览器一键完成「秒杀 → 排队 → 轮询订单 → CREATED → 排行榜刷新」，按钮状态随活动窗口/库存/令牌实时正确；
+2. **压测报告**：5000 并发下库存精确归 0、DB 成功订单数不超库存、限流按预期拒绝、端到端延迟与 Redis 资源可量化；
+3. **学习收口**：六类 Redis 企业问题（缓存/原子/分布式锁/限流/消息/排行）各有代码位置与笔记对应，文档/进度/代码同步收尾。
+
+### 第 4 阶段 Day 1 进度 — 实时秒杀成功榜 ✅（2026-09-07）
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| 1.1 常量 | ✅ | `CacheKeyConstant` 增 `SECKILL_RANK_PREFIX`（`seckill:rank:`，完整键 `seckill:rank:{activityId}`）+ `RANK_DEFAULT_TOP`(10) / `RANK_MAX_TOP`(100) |
+| 1.2 榜单服务 | ✅ | `SeckillRankService` + Impl：`recordSuccess` 用 **ZADD NX**（`addIfAbsent`），score=**抢单成功时刻**（execute 侧 `requestTime`，越早越靠前）；`topN` 用 `ZRANGE` 升序 + `IN(userIds)` 批量回查订单回填 `orderNo`；入榜失败仅 warn 不外抛 |
+| 1.3 消费者埋点 | ✅ | `handle` 订单"最终成功"路径统一 `recordSuccess`（首次 insert / 幂等命中 / `DuplicateKey` 兜底 / SUCCESS 终态补录），NX 幂等不重复计分，不阻塞 ACK |
+| 1.4 排行榜接口 | ✅ | `RankController`：`GET /api/rank/top10?activityId=`（`@NotNull` 必填，message「活动ID不能为空」）；`top` 可选、默认 10、上限 100 |
+| 1.5 集成测试 | ✅ | `SeckillRankTest` 5 用例全绿：全链先后序（score 严格递增）/ 幂等重放不重分 / 防重回归榜不变 / 10 用户并发恰好 10 人无重复 / 空榜返回空 |
+
+**Day 1 验收标准：** 成功订单实时入榜且与 DB 先后一致；重复与重放不重复计分；TOP-N 接口契约对齐 interface 4.11。—— ✅ 达成（2026-09-07，全量 `mvn test` 45 用例 BUILD SUCCESS）
+
+**Day 1 经验教训：**
+
+1. **改 `handle` 结构别把整块判断挪到 `return` 之后**：本想把"SUCCESS 终态补录榜单"复制进 `DuplicateKey` 分支，结果终态块落在 `return;` 后成为**不可达语句**（编译直接失败），且 `DuplicateKey` 分支被展开成裸 `updateById` 绕过了 `markSuccess`。导师代修：终态块还原到原位置，三条成功路径统一走"`recordSuccess`（NX 幂等）→ `markSuccess` → `ack`"。
+2. **榜单 score 不能取"消费者处理时刻"**：同一消费批次的多条消息会落在同一毫秒入榜，把 execute 的先后序彻底打乱（测试 sleep 拉开的是抢单时刻，断言 score 严格递增必 flaky）。正确 score = **消息里携带的业务时间戳**——本系统 `SeckillOrderMessage.requestTime` 早在第 2 阶段就随消息下发，直接复用即可。这印证了"消息体带业务发生时间"的价值。
+3. **ZADD NX 天然幂等，化解"落库与上榜不同事务"的恰好一次难题**：member=userId 已存在时 `addIfAbsent` 不覆盖不重复；PEL 重放 / 幂等命中 / 终态补录反复触发都不脏榜。若用 `ZINCRBY` 计数则必须严格只在"首次 insert"调用，重放即重复加分。
+4. **代码审查注意点**：测试类出现误 import（`org.w3c.dom.stylesheets.LinkStyle`）与同类型字段重复 `@Autowired`（`rankService`/`seckillRankService` 注入两遍）；组装 VO 时声明了 `orderNo` 局部变量却忘了塞进 builder（接口契约字段为 null）——IDE 自动补全与"声明未使用"都是审查信号。
+5. **榜单与订单的先后关系**：`topN` 回查订单用 `orderByAsc(created_at)` 保证与榜单序一致；`toMap` 前可安全假设同活动同用户唯一单（DB `uk_activity_user` 兜底）。
+
 ---
 
 ## 四、数据库表结构参考
@@ -508,6 +549,7 @@
 | `seckill:order:stream` | Stream | 秒杀下单消息（削峰） | 第3阶段 Day 2 ✅ |
 | `seckill:order:dead:stream` | Stream | 消费失败死信 | 第3阶段 Day 4 ✅ |
 | `seckill:lock:preheat:{activityId}` / `seckill:lock:reset:{activityId}` | String(锁) | 预热/库存重置分布式锁 | 第3阶段 Day 5 ✅ |
+| `seckill:rank:{activityId}` | ZSet | 秒杀成功榜（member=userId，score=抢单成功时刻） | 第4阶段 Day 1 ✅ |
 
 ---
 
@@ -542,5 +584,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-06（第 3 阶段整体验收完成：分布式锁守护预热/库存重置写入口（`preheatActivity` 双重检查 + `resetStock`），`PreheatConcurrencyTest` 8 线程恰 1 成功/update 恰 1 次/锁释放全绿；全量 mvn test 40 用例 BUILD SUCCESS；路线图第 3 阶段置 ✅）*
-*下次开始位置：第 4 阶段（路线图：排行榜 / 指标快照 / 前端页面 / 全链路压测）——Day 拆分待布置时细化*
+*上次更新：2026-09-07（第 4 阶段 Day 1 实时秒杀成功榜完成：`SeckillRankService` ZADD NX 上榜（score=抢单 requestTime）/ `topN` DB 回填 orderNo / 消费者三分支统一埋点 / `RankController` `/api/rank/top10`；导师代修 handle 结构损坏与 score 语义错位，补 VO orderNo 回填；`SeckillRankTest` 5 用例全绿；全量 mvn test 45 用例 BUILD SUCCESS；规划表 Day 1 置 ✅）*
+*下次开始位置：第 4 阶段 Day 2 — 活动运行指标快照与查询*

@@ -8,6 +8,7 @@ import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillOrder;
 import com.ghb.ecommerceflashsalesystem.domain.enums.MessageLogStatusEnum;
 import com.ghb.ecommerceflashsalesystem.mapper.SeckillMessageLogMapper;
 import com.ghb.ecommerceflashsalesystem.mapper.SeckillOrderMapper;
+import com.ghb.ecommerceflashsalesystem.service.rank.SeckillRankService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +45,7 @@ public class SeckillOrderConsumer {
     private final SeckillOrderMapper seckillOrderMapper;
     private final SeckillMessageLogMapper seckillMessageLogMapper;
 
+    private final SeckillRankService rankService;
     private static final String STREAM_KEY = CacheKeyConstant.SECKILL_ORDER_STREAM;
     private static final String GROUP_NAME = CacheKeyConstant.SECKILL_ORDER_GROUP;
     // 【复盘】曾用 System.getenv("HOSTNAME")，Windows 无此环境变量会拼出 consumer-null-xxx；改 UUID 保证唯一
@@ -157,6 +159,10 @@ public class SeckillOrderConsumer {
             if (status == MessageLogStatusEnum.SUCCESS.getCode()
                     || status == MessageLogStatusEnum.DEAD.getCode()) {
                 log.info("消息已是终态，直接ACK: messageId={}", messageId);
+                // SUCCESS 终态补录一次榜单（NX 幂等：兼容早期"已落库但未入榜"的消息，重复调用不脏榜）
+                if (status == MessageLogStatusEnum.SUCCESS.getCode()) {
+                    rankService.recordSuccess(message.getActivityId(), message.getUserId(), message.getRequestTime());
+                }
                 ack(record);
                 return;
             }
@@ -174,11 +180,14 @@ public class SeckillOrderConsumer {
                     order.setStreamMessageId(messageId);
                     seckillOrderMapper.insert(order); // 必须真正落库（曾因重构丢失此句导致只 ACK 不建单）
                 }
+                // 订单成功（首次 insert 或幂等命中已存在单）即入榜；NX 幂等，重复触发不重复加分
+                rankService.recordSuccess(message.getActivityId(), message.getUserId(), message.getRequestTime());
                 markSuccess(logEntity, message.getOrderNo());
                 ack(record);
             } catch (DuplicateKeyException e) {
-                // DB 唯一键兜底（uk_activity_user / uk_order_no）：视为已处理
+                // DB 唯一键兜底（uk_activity_user / uk_order_no）：视为已处理，同属订单成功路径
                 log.warn("订单唯一键冲突，幂等处理: orderNo={}", message.getOrderNo());
+                rankService.recordSuccess(message.getActivityId(), message.getUserId(), message.getRequestTime());
                 markSuccess(logEntity, message.getOrderNo());
                 ack(record);
             } catch (Exception e) {
