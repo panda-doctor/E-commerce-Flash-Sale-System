@@ -485,9 +485,9 @@
 | 天 | 主题 | 状态 | 核心产出 |
 |---|---|---|---|
 | Day 1 | 实时秒杀成功榜 | ✅ | 消费者成功落单即上榜（按活动隔离）；`GET /api/rank/top10?activityId=` 返回 Top10 |
-| Day 2 | 活动运行指标 | ⏳ | execute 拒绝/成功埋点计数键 + 快照定时落库 + `GET /api/admin/seckill/activities/{id}/metrics` |
-| Day 3 | 前端秒杀演示页 | ⏳ | Vue3(CDN)+Thymeleaf 秒杀页：商品卡 / 活动倒计时 / 秒杀按钮 / 订单轮询 / 榜单轮询 |
-| Day 4 | 联调与可演示闭环 | ⏳ | 按钮状态机全态（未开始/进行中/排队/重复/售罄/结束）+ 异常反馈 + 浏览器端到端抢通 |
+| Day 2 | 活动运行指标 | ✅ | execute 拒绝/成功埋点计数键 + 快照落库 + `GET /api/admin/seckill/activities/{id}/metrics` |
+| Day 3 | 前端秒杀看板（AI 执行） | ✅ | 独立 Vue3+Vite 工程 `frontend/`：秒杀大厅（倒计时/状态机/订单轮询）+ 管理控制台 + 实时手速榜 + 运行指标面板 |
+| Day 4 | 联调与可演示闭环（AI 执行） | ✅ | 自动消费调度 + check 口径统一 + 端到端验证：建单 CREATED / 榜单刷新 / check=ALLOW |
 | Day 5 | 全链路 JMeter 压测 | ⏳ | `scripts/jmeter/` + 5000 并发（多 userId 绕单用户限流）+ 压测报告（库存精确性/限流拒绝/端到端延迟/Redis 指标） |
 | Day 6 | 复盘与总结 | ⏳ | 异常与边界补充、学习笔记沉淀（notework/day）、《Redis 实战总结》、阶段验收与提交 |
 
@@ -516,6 +516,64 @@
 4. **代码审查注意点**：测试类出现误 import（`org.w3c.dom.stylesheets.LinkStyle`）与同类型字段重复 `@Autowired`（`rankService`/`seckillRankService` 注入两遍）；组装 VO 时声明了 `orderNo` 局部变量却忘了塞进 builder（接口契约字段为 null）——IDE 自动补全与"声明未使用"都是审查信号。
 5. **榜单与订单的先后关系**：`topN` 回查订单用 `orderByAsc(created_at)` 保证与榜单序一致；`toMap` 前可安全假设同活动同用户唯一单（DB `uk_activity_user` 兜底）。
 
+### 第 4 阶段 Day 2 进度 — 活动运行指标 ✅（2026-09-07）
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| 2.1 常量 | ✅ | `CacheKeyConstant` 增 `SECKILL_METRIC_PREFIX`（Hash 键 `seckill:metric:{activityId}`）+ 字段常量 `rateLimitReject` / `duplicateReject` / `soldOutReject` |
+| 2.2 execute 拒绝埋点 | ✅ | 三类拒绝在抛异常前 `HINCRBY 1`（限流 42900 → rateLimit / Lua -2 → duplicate / Lua -1 → soldOut）；私有 `incrementMetric` try/catch 容错仅 warn，不阻断主链 |
+| 2.3 MetricsService | ✅ | `collectMetrics` 实时聚合（库存按 Number 转 int / 订单数与成功数同取 DB 口径统一 / 积压=XLEN−订单数近似在途并注释局限 / Hash 计数 HMGET）；`captureSnapshot` 快照落库 `seckill_activity_snapshot` |
+| 2.4 管理端接口 | ✅ | `AdminMetricsController`：`GET /api/admin/seckill/activities/{activityId}/metrics`（对齐 4.12）+ `POST .../snapshot` 手动打点（压测/复盘用） |
+| 2.5 实体/Mapper | ✅ | `SeckillActivitySnapshot` + `SeckillActivitySnapshotMapper`（BaseMapper） |
+| 2.6 集成测试 | ✅ | `SeckillMetricsTest` 6 用例全绿：售罄 / 重复 / 限流（1 成功+4 重复后第 6 次限流）/ 聚合一致性（含 XLEN=2 而积压=0 口径验证）/ 快照落库 / 空活动兜底 |
+
+**Day 2 验收标准：** execute 三类拒绝实时计数与 DB 核对一致；metrics 接口字段与 Redis/DB 一致；快照落库可用。—— ✅ 达成（2026-09-07，全量 `mvn test` 51 用例 BUILD SUCCESS）
+
+**Day 2 经验教训：**
+
+1. **`RedisCallback` 里"调用 `serialize` 却丢了返回值、再去引用未定义的变量"**：`redisTemplate.execute((RedisCallback<Long>) conn -> { getStringSerializer().serialize(key); return conn.xLen(keyBytes); })` ——序列化结果必须接住，`keyBytes` 要先定义后引用（典型编译错，已修）。
+2. **限流埋点字段误填 `METRIC_FIELD_DUPLICATE`**：邻近分支常量复制粘贴是埋点 bug 高发点。写完按"抛出的 `ResultCode` ↔ 埋点字段"逐条核对（42900↔rateLimit / -2↔duplicate / -1↔soldOut）。
+3. **无用/重复注入要审查**：误重复注入 `streamProducer`（与已有字段同类型）、注入 `rankService` 但 execute 全程未用（榜单在订单落库的消费者侧记，execute 抢单成功≠落库成功）——`@RequiredArgsConstructor` 不报错，但不代表依赖合理。
+4. **Stream"积压"不能直接取 `XLEN`**：消息 XACK 后不会 XDEL，`XLEN` 恒等于历史总投递量。用 `XLEN − 该活动已落库订单数` 近似"已入队未落库的在途消息"，注释其"多活动共享单键会低估他活动积压"的局限。
+5. **`limit_per_user` 不是防重开关**：系统按"每人一单"令牌语义防重（第 2 次即 `DUPLICATE`），原用例"限购 10=同用户连抢 5 次成功"的假设不成立。触发限流靠第 0 步对每请求计数：1 成功 + 4 重复后第 6 次被 `RATE_LIMITED`。
+6. **测试方法缺闭合大括号把后续 `@Test` 吞进方法体**（Day 2/4 教训重演）：本日 3 个用例嵌套错乱致编译失败，重写文件为 6 个平级方法。写完用 IDE 折叠或格式化让结构错误显形。
+7. **误 import 与本需求无关的类**（Redisson `BucketSetOperation`、Spring `ReactiveSetOperations`）：自动导入要挑包，不是"能补全"就正确。
+
+### 第 4 阶段 Day 3/4 进度 — 前端看板 + 联调闭环 ✅（2026-09-07，AI 执行）
+
+> panda 指定：前端部分全部由导师执行，使用 Vue 3 搭建独立工程 `frontend/`（不再用 Thymeleaf 方案）；参考仓库 `shopping_mall`（经探查为空目录，无复用价值）、`ui-ux-pro-max-skill-main`（取其语义色 token / tabular 数字 / 状态反馈设计规范）、`frontend-slides-main`（仅作视觉灵感，非组件库）。
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| 3.1 前端工程 | ✅ | `frontend/`：Vite 5 + Vue 3.4（script setup）+ Vue Router 4；`/api` dev proxy → `:8081` 免跨域；语义色 CSS token（CTA 橙 `#ea580c`、成功绿、破坏红），倒计时/价格/榜单数字统一 tabular-nums |
+| 3.2 秒杀大厅 `/` | ✅ | 活动定位条（输入 id / 引导创建）→ 活动+商品卡 → **倒计时状态机**（开抢前禁购、进行中解锁、售罄/结束/取消拦截）→ 一键秒杀 → 排队轮询订单（900ms×60）→ 成功后榜单即时刷新；40901 自动去榜单同步自己已入队订单；未预热提供"立即预热" |
+| 3.3 管理控制台 `/admin` | ✅ | 新建演示活动（秒后开始/时长/价格元→分/库存/限购）→ 自动预热 → 跳转大厅；既有活动预热工具；演示小贴士 |
+| 3.4 排行榜 / 指标面板 | ✅ | `RankBoard`（3s 轮询，前三奖牌高亮 + stagger 入场，score 毫秒展示为"抢到时间"）；`MetricsPanel`（4s 轮询：库存/成功订单/队列积压/三类拒绝 + 手动打点快照按钮） |
+| 4.1 自动消费调度 | ✅ | **联调关键补丁**：原系统无自动消费，execute 入队后无人建单（订单恒 QUEUING、榜单不更新）。新增 `StreamConsumerScheduler`（`@EnableScheduling`，新消息 150ms / PEL 重试 5s），开关 `flash.stream.auto-poll`（main yaml=true；15 个集成测试统一加 `@SpringBootTest(properties="flash.stream.auto-poll=false")` 隔离，避免后台轮询与用例手动驱动竞态） |
+| 4.2 check 口径统一 | ✅ | `checkActivity` 原按缓存 status 快照（NOT_STARTED）判不可参与，与 execute 的时间窗动态口径矛盾（UI 显示"未开始"却可抢通）；重构为与 execute 一致：CANCELLED 拦截 → 实时时间窗 → 实时库存；`Phase1IntegrationTest.testCheckActivityEnded` 同步语义化（ENDED 需 endTime 已过） |
+| 4.3 端到端联调验证 | ✅ | 脚本化全链路：创建活动→预热→check=ALLOW→双用户 execute→自动消费→订单 CREATED→榜单 2 人且先抢者居首→metrics 成功数一致；Vite 代理 200；浏览器预览 `http://localhost:5173` 可完整演示 |
+
+**Day 3/4 验收标准：** 浏览器一键完成「创建并预热 → 倒计时开抢 → 秒杀 → 排队 → 订单 CREATED → 排行榜刷新 → 指标实时」，按钮状态随窗口/库存/令牌正确。—— ✅ 达成（2026-09-07，全量 `mvn test` 51 用例 BUILD SUCCESS + 端到端脚本验证）
+
+**Day 3/4 经验教训（联调暴露的系统级问题）：**
+
+1. **"入队成功"≠"订单落库"——削峰必须有自动消费调度**：此前 Stream 消费者只在集成测试被手动拉起，浏览器/JMeter 场景下消息无人消费，订单恒 QUEUING。调度器必须与测试隔离：用 `@ConditionalOnProperty` 开关 + 测试注解显式关闭；曾尝试 Windows `cmd set 环境变量` 方式传开关不可靠（Spring 环境变量 relaxed binding 未按预期生效），最终落地"配置常开 + 测试 properties 覆盖"。
+2. **check 与 execute 的"活动是否开放"口径必须同源**：check 若用预热缓存里的 status 快照、execute 用实时时间窗，前端就会"提示未开始却能抢成功"。统一规则：`CANCELLED 显式拦截 → 实时时间窗（未开始/已结束）→ 实时库存（售罄）`，status 仅辅助。
+3. **前端契约以真实 Controller/VO 为准，而非 interface.md 理想值**：联调前逐个核对（Result 结构 / 分与元 / `QUEUED`/`QUEUING`/`CREATED` 枚举 / metrics 字段 / 活动详情字段），避免按文档理想写死。
+4. **全局共享 Stream 键使"队列积压=XLEN−本活动订单数"在多活动并存时失真**：该口径对单活动演示/压测准确，界面与实现注释均明确局限，多活动看板需 PEL/单活动流方向优化（Day 5 压测前如需可再议）。
+5. **Vite dev proxy 免 CORS**：前后端分离（5173 → 8081 `/api` 代理），无需后端额外 CORS 配置。
+6. **UI 数字抖动**：倒计时/价格/榜单用 `font-variant-numeric: tabular-nums`；榜单前三用"数字徽章+颜色"双重标注（不只靠色）；动效 ≤300ms 且 `prefers-reduced-motion` 降级。
+
+**运行方式：** 后端 `mvn spring-boot:run`（:8081）→ 前端 `cd frontend && npm install && npm run dev`（:5173）→ 浏览器开 http://localhost:5173（详见 `frontend/README.md`）。
+
+### 第 4 阶段增强①：图片存储方案 — 本地磁盘 / 阿里云 OSS 双策略 ✅（2026-09-07）
+
+- **抽象**：`ImageStorageService`（策略接口）+ `AbstractImageStorage`（扩展名白名单 / 5MB 上限 / UUID 安全命名，防脚本文件与路径穿越）+ `LocalImageStorageService` / `OssImageStorageService` 双实现，`@ConditionalOnProperty(storage.type=local|oss)` 同一时刻仅一个 bean 生效。
+- **接入**：`POST /api/admin/files/image`（multipart）→ 返回 `{url, storageType}`；`FileStorageWebConfig` 把 `/uploads/**` 映射到本地目录（磁盘读取）；返回 URL 已按当前请求主机拼接（本地上传实测回显 200，非图片格式拒绝 `40001`）。
+- **商品回填闭环**：前端管理控制台新增「商品主图管理」（载入商品 → 上传图片 → 保存商品 image_url → 清缓存），活动广场卡片与详情页即时展示（`ActivityItemVO.productImage` / `ProductVO.imageUrl` 链路已通）。
+- **OSS 策略**：AccessKey 按 panda 要求**硬编码**在 `OssImageStorageService` 内（占位值，注释标注生产务必改为环境变量/配置中心注入并轮换）；切 `storage.type=oss` 即用，SDK 依赖 `aliyun-sdk-oss` 已加入 pom。
+- 全量 `mvn test` 51 用例 BUILD SUCCESS。
+
 ---
 
 ## 四、数据库表结构参考
@@ -528,12 +586,11 @@
 | `seckill_activity` | `SeckillActivity.java` | `SeckillActivityMapper.java` |
 | `seckill_order` | `SeckillOrder.java` | `SeckillOrderMapper.java` |
 | `seckill_message_log` | `SeckillMessageLog.java` | `SeckillMessageLogMapper.java` |
+| `seckill_activity_snapshot` | `SeckillActivitySnapshot.java` | `SeckillActivitySnapshotMapper.java` |
 
 ### 后续阶段使用的表
 
-| 表名 | 阶段 | 说明 |
-|------|------|------|
-| `seckill_activity_snapshot` | 第 4 阶段 | 运行指标快照 |
+（暂无——5 张表已全部投入使用）
 
 ---
 
@@ -550,6 +607,7 @@
 | `seckill:order:dead:stream` | Stream | 消费失败死信 | 第3阶段 Day 4 ✅ |
 | `seckill:lock:preheat:{activityId}` / `seckill:lock:reset:{activityId}` | String(锁) | 预热/库存重置分布式锁 | 第3阶段 Day 5 ✅ |
 | `seckill:rank:{activityId}` | ZSet | 秒杀成功榜（member=userId，score=抢单成功时刻） | 第4阶段 Day 1 ✅ |
+| `seckill:metric:{activityId}` | Hash | 活动拒绝计数（rateLimit/duplicate/soldOut 字段） | 第4阶段 Day 2 ✅ |
 
 ---
 
@@ -566,6 +624,9 @@
 | GET | `/api/seckill/activities/{id}/check` | ✅ | Day 6 |
 | POST | `/api/seckill/execute` | ✅ | 第2阶段 Day 2/5（Lua 原子整合后完成） |
 | GET | `/api/seckill/orders/{orderNo}` | ✅ | 第3阶段 Day 3（未落库返回 QUEUING） |
+| GET | `/api/rank/top10` | ✅ | 第4阶段 Day 1（榜单 Top N，`?activityId=` 必填） |
+| GET | `/api/admin/seckill/activities/{id}/metrics` | ✅ | 第4阶段 Day 2（活动实时运行指标） |
+| POST | `/api/admin/seckill/activities/{id}/snapshot` | ✅ | 第4阶段 Day 2（手动打点指标快照） |
 
 ---
 
@@ -584,5 +645,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-07（第 4 阶段 Day 1 实时秒杀成功榜完成：`SeckillRankService` ZADD NX 上榜（score=抢单 requestTime）/ `topN` DB 回填 orderNo / 消费者三分支统一埋点 / `RankController` `/api/rank/top10`；导师代修 handle 结构损坏与 score 语义错位，补 VO orderNo 回填；`SeckillRankTest` 5 用例全绿；全量 mvn test 45 用例 BUILD SUCCESS；规划表 Day 1 置 ✅）*
-*下次开始位置：第 4 阶段 Day 2 — 活动运行指标快照与查询*
+*上次更新：2026-09-07（第 4 阶段 Day 3/4 前端看板与联调闭环完成（AI 执行）：`frontend/` Vue3+Vite 独立工程（秒杀大厅倒计时状态机/订单轮询/手速榜/指标面板 + 管理控制台）；后端联调补丁——`StreamConsumerScheduler` 自动消费（`flash.stream.auto-poll` 开关 + 15 测试隔离）、`checkActivity` 与 execute 时间窗口径统一、`Phase1IntegrationTest` 语义同步；端到端验证 CREATED/榜单/ALLOW 全通；全量 mvn test 51 用例 BUILD SUCCESS；规划表 Day 3/4 置 ✅）*
+*下次开始位置：第 4 阶段 Day 5 — JMeter 全链路压测（5000 并发）与压测报告*
