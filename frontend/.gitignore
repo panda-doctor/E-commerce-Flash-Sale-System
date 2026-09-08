@@ -2,3 +2,8 @@ node_modules/
 dist/
 *.log
 .DS_Store
+
+# 过程产物与工具缓存（不入库）
+*.png
+.playwright-cli/
+.workbuddy/
