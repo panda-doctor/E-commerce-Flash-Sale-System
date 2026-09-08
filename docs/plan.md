@@ -574,6 +574,18 @@
 - **OSS 策略**：AccessKey 按 panda 要求**硬编码**在 `OssImageStorageService` 内（占位值，注释标注生产务必改为环境变量/配置中心注入并轮换）；切 `storage.type=oss` 即用，SDK 依赖 `aliyun-sdk-oss` 已加入 pom。
 - 全量 `mvn test` 51 用例 BUILD SUCCESS。
 
+### 第 4 阶段 Day 5 — JMeter 全链路压测 ✅（2026-09-08）
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| 压测脚本 | ✅ | `scripts/jmeter/`：`seckill_main.jmx`（5000 唯一用户 execute 主压，可 `-J` 参数化）、`seckill_load.jmx`（预埋+主压+重复/限流分段版）、`run_load.ps1`、README |
+| 执行与结果 | ✅ | 5000 请求 ramp90s：**0 错误**，吞吐 55.5/s，avg 24ms / p50 17 / p90 23 / p99 510ms；后端守恒 order=1000=库存、soldOutReject=4000、redisStock=0（无超卖） |
+| 压测暴露 Bug 修复 | ✅ | **`OrderNoGenerator` 双时钟源毫秒错位 → 订单号并发碰撞**（uk_order_no 幂等兜底吞单："库存 0 订单 999"）；修复为单一时钟源 + 单毫秒超限让位；复测日志 1000/1000 无重复、订单=库存 |
+| 报告 | ✅ | `docs/load-test-report.md`（含修复前后对比、防超卖/削峰/幂等结论与调优建议） |
+
+**Day 5 验收：** 5000 并发下库存精确归零、成功订单数=库存、拒绝分布守恒、延迟与资源可量化。—— ✅ 达成（2026-09-08）
+**Day 5 经验教训：** ① 唯一 ID 的"时钟源一致性"是并发唯一性暗坑（判定时钟与输出文本必须同一来源）；② 压测客户端同机短 ramp 会因端口/TIME_WAIT 产生连接失败，需区分"客户端注入失败"与"系统错误"；③ 业务拒绝（HTTP200+code≠0）与 HTTP 层错误要分开统计，权威口径取后端计数；④ JMeter UDV 是静态值，参数化必须走 `${__P(...)}` 属性，`-J` 才能覆盖。
+
 ---
 
 ## 四、数据库表结构参考
