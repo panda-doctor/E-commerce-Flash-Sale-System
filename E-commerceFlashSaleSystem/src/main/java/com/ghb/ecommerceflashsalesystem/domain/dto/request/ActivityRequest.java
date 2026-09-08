@@ -1,8 +1,9 @@
 package com.ghb.ecommerceflashsalesystem.domain.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
@@ -63,8 +64,10 @@ public class ActivityRequest {
      * 每用户限购数量（必填）
      * E2：秒杀为"一人一单"——订单表 uk_activity_user（user+activity）唯一键硬约束，
      * 本参数仅支持 1（传其他值会被服务层拒绝），避免出现"配置 >1 却不生效"的误导。
+     * 注解层 @Min/@Max 夹逼 =1（Controller @Valid 第一道闸），Service 层再兜底二次校验。
      */
     @NotNull(message = "限购数量不能为空")
-    @Min(value = 1, message = "限购数量必须为 1")
+    @Min(value = 1, message = "限购数量固定为 1（一人一单）")
+    @Max(value = 1, message = "限购数量固定为 1（一人一单）")
     private Integer limitPerUser;
 }

@@ -171,6 +171,16 @@ public class CreateBusinessValidationTest {
                         e -> assertThat(e.getCode()).isEqualTo(ResultCode.PARAM_ERROR.getCode()));
     }
 
+    @Test
+    void activityUpdate_limitPerUserNotOne_rejected() {
+        // E2 更新分支同样复用同一校验入口：更新时限购非 1 也在落库前被业务码拦截
+        LocalDateTime start = LocalDateTime.now().plusHours(3);
+        assertThatThrownBy(() -> seckillActivityService.createActivity(
+                buildActivityRequest(12345L, PRODUCT_ID, start, start.plusHours(1), 2)))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(ResultCode.PARAM_ERROR.getCode()));
+    }
+
     // ---------- helpers ----------
 
     private ProductRequest buildProductRequest(Long productId, long originalPrice, int totalStock) {
