@@ -199,7 +199,7 @@ onBeforeUnmount(() => clearInterval(timer))
   background: var(--surface-3);
 }
 .rk-1 {
-  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  background: linear-gradient(135deg, #fbbf24, #ff9500);
   color: #7c2d12;
   box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25);
 }

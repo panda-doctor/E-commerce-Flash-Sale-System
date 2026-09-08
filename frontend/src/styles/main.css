@@ -1,53 +1,64 @@
 /* ============================================================
    闪电秒杀 2.0 · 设计系统（Design System）
    设计理念：深色戏剧化 Hero + 洁净内容区 + 秒杀红强调
-   语义色规范：CTA 秒杀红 #FF2D55 / 成功绿 #059669 / 破坏红 #DC2626
+   语义色规范：CTA 秒杀红 #FF2D55 / 成功绿 #34c759 / 破坏红 #DC2626
    ============================================================ */
 :root {
-  /* ---- 中性色（冷调高级灰） ---- */
-  --bg: #f5f6f9;
-  --bg-2: #eef0f4;
+  /* ============================================================
+     语义色板（《秒杀商城 UI 设计方案》规范）
+     - 主色 秒杀红 #FF2D55
+     - 辅助色 橙金 #FF9500（限时/预热/预告标识）
+     - 成功绿 #34C759
+     - 中性：背景 #F5F5F7 / 卡片 #FFFFFF / 标题 #1D1D1F /
+            正文 #6E6E73 / 辅助 #B0B0B5
+     - 禁止在组件内硬编码颜色，一律引用本组 token
+     ============================================================ */
+  /* ---- 中性色（方案暖灰五级） ---- */
+  --bg: #f5f5f7;
+  --bg-2: #ededf0;
   --surface: #ffffff;
-  --surface-2: #f4f5f8;
-  --surface-3: #eaecf1;
-  --border: #e6e8ee;
-  --border-strong: #d2d6de;
+  --surface-2: #f7f7f9;
+  --surface-3: #ececf0;
+  --border: #e6e6ea;
+  --border-strong: #d1d1d6;
 
-  --text: #14161c;
-  --text-2: #646b78;
-  --text-3: #a0a6b2;
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #b0b0b5;
 
-  /* ---- 方案主色：秒杀红 ---- */
+  /* ---- 方案主色：秒杀红 #FF2D55 ---- */
   --accent: #ff2d55;
   --accent-hover: #e02a4d;
   --accent-soft: rgba(255, 45, 85, 0.1);
   --accent-ring: rgba(255, 45, 85, 0.3);
 
-  --success: #059669;
-  --success-soft: rgba(5, 150, 105, 0.1);
+  /* ---- 功能色：成功 #34C759 / 破坏（兜底红）/ 辅助橙金 #FF9500 ---- */
+  --success: #34c759;
+  --success-soft: rgba(52, 199, 89, 0.12);
   --danger: #dc2626;
   --danger-soft: rgba(220, 38, 38, 0.09);
-  --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.12);
+  --warning: #ff9500;
+  --warning-soft: rgba(255, 149, 0, 0.14);
   --info: #2563eb;
   --info-soft: rgba(37, 99, 235, 0.1);
 
-  /* ---- 层级（用阴影而非颜色） ---- */
-  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
-  --shadow-2: 0 4px 8px -2px rgba(15, 23, 42, 0.05), 0 12px 28px -8px rgba(15, 23, 42, 0.12);
-  --shadow-3: 0 10px 20px -4px rgba(15, 23, 42, 0.08), 0 24px 48px -12px rgba(15, 23, 42, 0.18);
+  /* ---- 阴影（方案两层级：轻-普通卡 / 重-热抢悬浮；外加中性浮层） ---- */
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.1);
+  --shadow-3: 0 16px 40px rgba(0, 0, 0, 0.14);
+  --shadow-hot: 0 8px 24px rgba(255, 45, 85, 0.15); /* 秒杀进行中卡/悬浮重影 */
   --shadow-glow: 0 8px 32px -6px rgba(255, 45, 85, 0.35);
 
-  /* ---- 圆角（4/8/12/16/20 节奏） ---- */
+  /* ---- 圆角（方案：按钮 8 / 商品卡 12 / 大模块容器 16） ---- */
   --radius-s: 8px;
   --radius-m: 12px;
   --radius-l: 16px;
   --radius-xl: 20px;
   --radius-2xl: 24px;
 
-  /* ---- 数字等宽防抖动 ---- */
-  --font-num: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'JetBrains Mono', Consolas,
-    'Courier New', monospace;
+  /* ---- 数字：DIN / Roboto Mono 等宽，防倒计时/价格跳动 ---- */
+  --font-num: 'DIN Alternate', 'DIN', 'Roboto Mono', ui-monospace, 'SFMono-Regular',
+    Consolas, 'Courier New', monospace;
 
   /* ---- 过渡曲线 ---- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -65,8 +76,9 @@ body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  /* 方案字体：中文苹方 / HarmonyOS Sans，西文 SF/Segoe */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 16px;
@@ -181,7 +193,7 @@ select {
   gap: 8px;
   padding: 0 22px;
   height: 46px;
-  border-radius: 12px;
+  border-radius: var(--radius-s); /* 方案：按钮 8px */
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -229,7 +241,7 @@ select {
   height: 38px;
   padding: 0 16px;
   font-size: 14px;
-  border-radius: 10px;
+  border-radius: var(--radius-s);
 }
 
 /* ---------- 表单基元 ---------- */
@@ -264,7 +276,7 @@ select {
 }
 .pill-go {
   color: #fff;
-  background: #059669;
+  background: #34c759;
 }
 .pill-soft {
   color: #555;

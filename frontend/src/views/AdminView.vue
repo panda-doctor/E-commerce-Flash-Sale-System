@@ -596,7 +596,7 @@ function openExisting() {
   background: linear-gradient(135deg, #0d0e14 0%, #1a0f1e 100%);
   border-radius: var(--radius-l);
   color: #fff;
-  box-shadow: 0 4px 8px -2px rgba(15, 23, 42, 0.05), 0 12px 28px -8px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 4px 8px -2px rgba(0, 0, 0, 0.05), 0 12px 28px -8px rgba(0, 0, 0, 0.12);
   position: relative;
   overflow: hidden;
 }
@@ -741,7 +741,7 @@ function openExisting() {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-l);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 .prod-panel,
 .form-panel {
@@ -795,7 +795,7 @@ function openExisting() {
 }
 .pnum.pnum-hot { color: #fff; background: linear-gradient(135deg, #ff2d55 0%, #ff5e3a 100%); }
 .pnum.pnum-blue { color: #fff; background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%); }
-.pnum.pnum-orange { color: #fff; background: linear-gradient(135deg, #f59e0b 0%, #fb923c 100%); }
+.pnum.pnum-orange { color: #fff; background: linear-gradient(135deg, #ff9500 0%, #fb923c 100%); }
 .pnum.pnum-green { color: #fff; background: linear-gradient(135deg, #10b981 0%, #34d399 100%); }
 .pnum.pnum-purple { color: #fff; background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); }
 
@@ -1065,7 +1065,7 @@ function openExisting() {
 .thumb-mask {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.55);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1079,7 +1079,7 @@ function openExisting() {
   position: absolute;
   bottom: 8px;
   right: 8px;
-  background: rgba(15, 23, 42, 0.75);
+  background: rgba(0, 0, 0, 0.75);
   color: #fff;
   font-size: 10.5px;
   font-weight: 600;
@@ -1229,8 +1229,8 @@ function openExisting() {
   flex-wrap: wrap;
   font-size: 13.5px;
   color: var(--text-2);
-  background: rgba(5, 150, 105, 0.1);
-  border: 1px solid rgba(5, 150, 105, 0.18);
+  background: rgba(52, 199, 89, 0.1);
+  border: 1px solid rgba(52, 199, 89, 0.18);
   border-radius: 10px;
   padding: 9px 12px;
 }
@@ -1275,7 +1275,7 @@ function openExisting() {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-l);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
   gap: 9px;

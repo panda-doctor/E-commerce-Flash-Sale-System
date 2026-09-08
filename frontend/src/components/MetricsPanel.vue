@@ -207,7 +207,7 @@ onBeforeUnmount(() => clearInterval(timer))
 }
 .cell.ok {
   background: var(--success-soft);
-  border-color: rgba(5, 150, 105, 0.18);
+  border-color: rgba(52, 199, 89, 0.18);
 }
 .cell.ok .v {
   color: var(--success);

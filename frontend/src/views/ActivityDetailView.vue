@@ -869,8 +869,8 @@ onBeforeUnmount(() => {
   background: var(--cta-hover);
 }
 .buy-btn.is-ok {
-  background: #059669;
-  box-shadow: 0 6px 18px -6px rgba(5, 150, 105, 0.5);
+  background: #34c759;
+  box-shadow: 0 6px 18px -6px rgba(52, 199, 89, 0.5);
 }
 .buy-btn .spin {
   width: 18px;
@@ -890,13 +890,13 @@ onBeforeUnmount(() => {
   color: var(--text-2);
 }
 .hint.ok {
-  color: #059669;
+  color: #34c759;
   font-weight: 700;
 }
 .note {
   margin: 0;
   font-size: 13px;
-  color: #059669;
+  color: #34c759;
 }
 .note.bad {
   color: var(--warning);
@@ -943,11 +943,11 @@ onBeforeUnmount(() => {
   animation: blink 1.1s ease infinite;
 }
 .result.won {
-  background: rgba(5, 150, 105, 0.1);
-  color: #047857;
+  background: rgba(52, 199, 89, 0.1);
+  color: #2a9e48;
 }
 .result.won .dot {
-  background: #059669;
+  background: #34c759;
 }
 .result.lost,
 .result.duplicated {
@@ -1133,7 +1133,7 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.97);
   backdrop-filter: blur(10px);
   border-top: 1px solid var(--border);
-  box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.1);
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.1);
 }
 .bb-price {
   display: flex;
@@ -1279,8 +1279,8 @@ onBeforeUnmount(() => {
   animation: popIn 0.4s var(--ease-spring);
 }
 .m-ico.won {
-  background: linear-gradient(135deg, #059669, #047857);
-  box-shadow: 0 10px 28px -6px rgba(5, 150, 105, 0.55);
+  background: linear-gradient(135deg, #34c759, #2a9e48);
+  box-shadow: 0 10px 28px -6px rgba(52, 199, 89, 0.55);
 }
 .m-ico.fail {
   background: linear-gradient(135deg, #9ca3af, #6b7280);

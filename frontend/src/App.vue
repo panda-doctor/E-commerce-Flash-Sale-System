@@ -111,7 +111,7 @@ onBeforeUnmount(() => clearInterval(healthTimer))
   backdrop-filter: blur(14px) saturate(1.4);
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
   border-bottom: 1px solid var(--border);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 2px 12px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 .topbar-inner {
   max-width: 1280px;
@@ -359,7 +359,7 @@ onBeforeUnmount(() => clearInterval(healthTimer))
   flex: 1;
 }
 .toast-success {
-  border-color: rgba(5, 150, 105, 0.3);
+  border-color: rgba(52, 199, 89, 0.3);
 }
 .toast-success .toast-ico {
   background: var(--success);
