@@ -120,8 +120,10 @@ const checkBad = computed(() => check.value && !check.value.canJoin)
 const fallbackChar = computed(() => (activity.value?.activityName || '秒').slice(0, 1))
 
 /* ---- 销量进度（方案：已抢 x% · 仅剩 x 件）----
-   totalStock 由列表卡片经路由 query 传入（详情 VO 无总量字段），深链进入时兜底为 null */
+   总量优先取详情 VO 的 totalStock（后端已补）；列表卡片跳转附带 ?total= 作旧链接兜底 */
 const totalStock = computed(() => {
+  const fromActivity = Number(activity.value?.totalStock)
+  if (Number.isFinite(fromActivity) && fromActivity > 0) return fromActivity
   const q = Number(route.query.total)
   return Number.isFinite(q) && q > 0 ? q : null
 })

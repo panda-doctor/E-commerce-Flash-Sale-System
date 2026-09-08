@@ -164,6 +164,8 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
         vo.setSeckillPrice(activity.getSeckillPrice());
         // 未预热时，库存取数据库的 seckill_stock
         vo.setStock(activity.getSeckillStock());
+        // 配置总库存：详情页"已抢 %"进度数据源（预热缓存路径在 getActivityFromCache 补）
+        vo.setTotalStock(activity.getSeckillStock());
         vo.setLimitPerUser(activity.getLimitPerUser());
 
         // 状态转换

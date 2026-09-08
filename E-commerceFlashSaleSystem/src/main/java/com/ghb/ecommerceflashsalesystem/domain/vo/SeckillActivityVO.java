@@ -55,6 +55,11 @@ public class SeckillActivityVO {
     private Integer stock;
 
     /**
+     * 活动配置总库存（DB seckill_stock；供前端计算"已抢 % / 仅剩"）
+     */
+    private Integer totalStock;
+
+    /**
      * 每用户限购数量
      */
     private Integer limitPerUser;

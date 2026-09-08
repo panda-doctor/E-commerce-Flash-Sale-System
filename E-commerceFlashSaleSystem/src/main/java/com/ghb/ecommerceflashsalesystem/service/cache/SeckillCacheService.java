@@ -218,6 +218,11 @@ public class SeckillCacheService {
         vo.setLimitPerUser(Integer.valueOf(entries.get("limitPerUser").toString()));
         vo.setStatus(ActivityStatusEnum.fromValue(Integer.parseInt(entries.get("status").toString())));
         vo.setStock(realStock);
+        // 配置总库存：预热时已写入 Hash 的 seckillStock 字段（供详情"已抢 %"进度计算）
+        Object seckillStockObj = entries.get("seckillStock");
+        if (seckillStockObj != null) {
+            vo.setTotalStock(Integer.valueOf(seckillStockObj.toString()));
+        }
         return vo;
     }
 
