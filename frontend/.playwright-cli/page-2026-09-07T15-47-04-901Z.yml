@@ -1,0 +1,26 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - link "⚡ 闪电秒杀 LIVE DASHBOARD" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e8]: ⚡
+        - generic [ref=e9]:
+          - generic [ref=e10]: 闪电秒杀
+          - generic [ref=e11]: LIVE DASHBOARD
+      - navigation [ref=e12]:
+        - link "活动广场" [ref=e13] [cursor=pointer]:
+          - /url: /
+        - link "AI 客服" [ref=e14] [cursor=pointer]:
+          - /url: /ai-service
+        - link "管理控制台" [ref=e15] [cursor=pointer]:
+          - /url: /admin
+      - generic [ref=e16]:
+        - generic "后端状态：up" [ref=e17]:
+          - generic [ref=e19]: 服务正常
+        - generic [ref=e20]:
+          - generic [ref=e21]: 演示用户
+          - spinbutton "演示用户ID" [ref=e22]: "1001"
+  - main [ref=e23]
+  - contentinfo [ref=e24]:
+    - generic [ref=e25]: 闪电秒杀 · 轻量级电商秒杀系统实时看板
+    - generic [ref=e26]: Lua 原子防超卖 · 消息削峰异步建单 · 限购防重

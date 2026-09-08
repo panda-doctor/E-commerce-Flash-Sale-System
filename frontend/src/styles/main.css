@@ -1,0 +1,326 @@
+/* ============================================================
+   闪电秒杀 2.0 · 设计系统（Design System）
+   设计理念：深色戏剧化 Hero + 洁净内容区 + 秒杀红强调
+   语义色规范：CTA 秒杀红 #FF2D55 / 成功绿 #059669 / 破坏红 #DC2626
+   ============================================================ */
+:root {
+  /* ---- 中性色（冷调高级灰） ---- */
+  --bg: #f5f6f9;
+  --bg-2: #eef0f4;
+  --surface: #ffffff;
+  --surface-2: #f4f5f8;
+  --surface-3: #eaecf1;
+  --border: #e6e8ee;
+  --border-strong: #d2d6de;
+
+  --text: #14161c;
+  --text-2: #646b78;
+  --text-3: #a0a6b2;
+
+  /* ---- 方案主色：秒杀红 ---- */
+  --accent: #ff2d55;
+  --accent-hover: #e02a4d;
+  --accent-soft: rgba(255, 45, 85, 0.1);
+  --accent-ring: rgba(255, 45, 85, 0.3);
+
+  --success: #059669;
+  --success-soft: rgba(5, 150, 105, 0.1);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.09);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.12);
+  --info: #2563eb;
+  --info-soft: rgba(37, 99, 235, 0.1);
+
+  /* ---- 层级（用阴影而非颜色） ---- */
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-2: 0 4px 8px -2px rgba(15, 23, 42, 0.05), 0 12px 28px -8px rgba(15, 23, 42, 0.12);
+  --shadow-3: 0 10px 20px -4px rgba(15, 23, 42, 0.08), 0 24px 48px -12px rgba(15, 23, 42, 0.18);
+  --shadow-glow: 0 8px 32px -6px rgba(255, 45, 85, 0.35);
+
+  /* ---- 圆角（4/8/12/16/20 节奏） ---- */
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+
+  /* ---- 数字等宽防抖动 ---- */
+  --font-num: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'JetBrains Mono', Consolas,
+    'Courier New', monospace;
+
+  /* ---- 过渡曲线 ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* 数字防抖动：倒计时 / 价格 / 排名分数一律使用 */
+.hnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* 通用面板 */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-1);
+}
+
+.skeleton {
+  border-radius: 8px;
+  background: linear-gradient(90deg, #eef1f5 25%, #e2e7ed 37%, #eef1f5 63%);
+  background-size: 400% 100%;
+  animation: sk 1.2s ease infinite;
+}
+@keyframes sk {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* 尊重动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ============================================================
+   电商升级 · 设计基元（第二阶段扩展）
+   ============================================================ */
+:root {
+  --cta: #ff2d55;
+  --cta-hover: #e02a4d;
+  --cta-soft: rgba(255, 45, 85, 0.1);
+  --grad-cta: linear-gradient(120deg, #ff2d55 0%, #ff5e3a 100%);
+  --grad-cta-deep: linear-gradient(120deg, #ff2d55 0%, #ff6b3d 50%, #ff8a2f 100%);
+  --aux: #ff9500;
+  --aux-soft: rgba(255, 149, 0, 0.14);
+  --brand-deep: #0d0e14;
+  --brand-deep-2: #1a0f1e;
+  --hero-glow: radial-gradient(circle at 30% 50%, rgba(255, 45, 85, 0.45), transparent 60%);
+
+  /* 字号阶梯 */
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-15: 15px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --fs-28: 28px;
+  --fs-34: 34px;
+  --fs-44: 44px;
+
+  /* 间距 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+
+  --maxw: 1200px;
+}
+
+/* ---------- 通用按钮 ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 22px;
+  height: 46px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  transition: transform 0.16s var(--ease-out), box-shadow 0.16s var(--ease-out),
+    filter 0.16s var(--ease-out), background-color 0.16s var(--ease-out);
+  user-select: none;
+  white-space: nowrap;
+}
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.btn:not(:disabled):active {
+  transform: scale(0.985);
+}
+.btn-cta {
+  color: #fff;
+  background: var(--grad-cta);
+  box-shadow: 0 6px 18px -6px rgba(255, 45, 85, 0.55);
+}
+.btn-cta:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px -8px rgba(255, 45, 85, 0.62);
+}
+.btn-outline {
+  color: var(--cta);
+  border: 1.5px solid rgba(255, 45, 85, 0.45);
+  background: #fff;
+}
+.btn-outline:hover:not(:disabled) {
+  border-color: var(--cta);
+  background: var(--cta-soft);
+}
+.btn-ghost {
+  color: #4b5160;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+.btn-sm {
+  height: 38px;
+  padding: 0 16px;
+  font-size: 14px;
+  border-radius: 10px;
+}
+
+/* ---------- 表单基元 ---------- */
+.field {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: #fff;
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+.field:focus {
+  outline: none;
+  border-color: var(--cta);
+  box-shadow: 0 0 0 3px var(--cta-soft);
+}
+
+/* ---------- 标签 ---------- */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.pill-hot {
+  color: #fff;
+  background: var(--grad-cta);
+}
+.pill-go {
+  color: #fff;
+  background: #059669;
+}
+.pill-soft {
+  color: #555;
+  background: var(--surface-2);
+}
+.pill-info-soft {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+/* ---------- 金额 ---------- */
+.price-yen {
+  color: var(--cta);
+  font-weight: 900;
+  font-family: var(--font-num);
+  letter-spacing: -0.3px;
+}
+.price-line {
+  color: var(--text-3);
+  text-decoration: line-through;
+  font-family: var(--font-num);
+}
+
+/* ---------- 布局 ---------- */
+.container {
+  width: 100%;
+  max-width: var(--maxw);
+  margin: 0 auto;
+}
+.grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(252px, 1fr));
+  gap: 18px;
+}
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.24s var(--ease-out), transform 0.24s var(--ease-out);
+}
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+/* ---------- 自定义滚动条 ---------- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-3);
+}
