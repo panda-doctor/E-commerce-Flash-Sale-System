@@ -698,5 +698,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-08（第 4 阶段增强② AI 客服完成（AI 执行）：后端 `/api/support/chat` 对接 OpenAI 兼容大模型（百炼/DeepSeek/OpenAI 等），system prompt 注入实时商品/活动目录、历史取最近 10 条；配置 `ai.llm.*` + `AI_LLM_API_KEY` 环境变量，未配置返 50300；前端 `/ai-service` 去 mock 接真接口、侧栏热门活动实时化；OSS 密钥硬编码改配置化（`aliyun.oss.*` + 环境变量，`docs/storage.md`）；新增 AI 4 + unit 2 + OSS 2 = 8 用例；全量 mvn test 59 用例 BUILD SUCCESS；规划表六接口补 `/api/support/chat`。随后完成全量代码审计与整改（见"复盘前置：审计整改"小节，R1~R5/C1~C6 落地 + E 待议，期间回归修复 4+4 → 全量 mvn test **62 用例 BUILD SUCCESS**）；整改代码**尚未 git 提交**）*
-*下次开始位置：①审计整改收尾（E2~E6 待议项、前端改动验证、全量整改代码 git 提交）；②Day 6 — 复盘总结、学习笔记沉淀与《Redis 实战总结》收尾（或按需继续增强）*
+*上次更新：2026-09-08（第 4 阶段增强② AI 客服完成（AI 执行）：后端 `/api/support/chat` 对接 OpenAI 兼容大模型（百炼/DeepSeek/OpenAI 等），system prompt 注入实时商品/活动目录、历史取最近 10 条；配置 `ai.llm.*` + `AI_LLM_API_KEY` 环境变量，未配置返 50300；前端 `/ai-service` 去 mock 接真接口、侧栏热门活动实时化；OSS 密钥硬编码改配置化（`aliyun.oss.*` + 环境变量，`docs/storage.md`）；新增 AI 4 + unit 2 + OSS 2 = 8 用例；全量 mvn test 59 用例 BUILD SUCCESS；规划表六接口补 `/api/support/chat`。随后完成全量代码审计与整改（见"复盘前置：审计整改"小节，R1~R5/C1~C6 落地 + E 待议，期间回归修复 4+4 → 全量 mvn test **62 用例 BUILD SUCCESS**）；整改代码已 git 提交（commit `49a0b09`，47 文件，见 git log））*
+*下次开始位置：①审计整改收尾（E2~E6 待议项、前端改动验证、整改代码 git push）；②Day 6 — 复盘总结、学习笔记沉淀与《Redis 实战总结》收尾（或按需继续增强）*
