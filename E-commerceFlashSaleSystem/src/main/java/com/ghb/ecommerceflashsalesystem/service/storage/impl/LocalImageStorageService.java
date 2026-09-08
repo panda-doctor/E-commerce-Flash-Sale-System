@@ -20,7 +20,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
 /**
- * 本地磁盘图片存储（storage.type=local，默认）
+ * 本地磁盘图片存储（aliyun.oss.enabled=false 或缺省时的兜底）
  *
  * 落盘目录：{storage.local.dir:uploads}/{yyyyMM}/uuid.ext（按月份分目录）
  * 访问：通过 FileStorageWebConfig 把 /uploads/** 映射到本地目录（磁盘读取，零额外成本）。
@@ -28,7 +28,7 @@ import java.time.format.DateTimeFormatter;
  */
 @Slf4j
 @Service
-@ConditionalOnProperty(name = "storage.type", havingValue = "local")
+@ConditionalOnProperty(name = "aliyun.oss.enabled", havingValue = "false", matchIfMissing = true)
 public class LocalImageStorageService extends AbstractImageStorage {
 
     @Value("${storage.local.dir:uploads}")

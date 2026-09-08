@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 管理端图片上传（本地 / 阿里云 OSS 双策略，由 storage.type 决定）
+ * 管理端图片上传（本地磁盘 / 阿里云 OSS 双策略，由 aliyun.oss.enabled 决定）
  *
  * POST /api/admin/files/image   multipart 字段名 file
  * 返回：{ url, storageType }，url 可直接作为商品 imageUrl 落库/回填。
