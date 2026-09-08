@@ -14,7 +14,11 @@ public enum ResultCode {
     DUPLICATE_PURCHASE(40901, "重复秒杀"),
     OUT_OF_STOCK(40902, "库存不足"),
     RATE_LIMITED(42900, "请求过于频繁"),
-    SYSTEM_ERROR(50000, "系统错误");
+    SYSTEM_ERROR(50000, "系统错误"),
+    /** AI 客服：外部大模型服务未配置（ai.llm.api-key 等缺失） */
+    AI_SERVICE_UNCONFIGURED(50300, "AI 服务未配置"),
+    /** AI 客服：外部大模型调用失败（网络/超时/非 2xx/响应异常） */
+    AI_SERVICE_ERROR(50301, "AI 服务调用失败");
 
     private final int code;
     private final String description;

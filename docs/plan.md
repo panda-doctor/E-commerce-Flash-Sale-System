@@ -571,7 +571,7 @@
 - **抽象**：`ImageStorageService`（策略接口）+ `AbstractImageStorage`（扩展名白名单 / 5MB 上限 / UUID 安全命名，防脚本文件与路径穿越）+ `LocalImageStorageService` / `OssImageStorageService` 双实现，`@ConditionalOnProperty(storage.type=local|oss)` 同一时刻仅一个 bean 生效。
 - **接入**：`POST /api/admin/files/image`（multipart）→ 返回 `{url, storageType}`；`FileStorageWebConfig` 把 `/uploads/**` 映射到本地目录（磁盘读取）；返回 URL 已按当前请求主机拼接（本地上传实测回显 200，非图片格式拒绝 `40001`）。
 - **商品回填闭环**：前端管理控制台新增「商品主图管理」（载入商品 → 上传图片 → 保存商品 image_url → 清缓存），活动广场卡片与详情页即时展示（`ActivityItemVO.productImage` / `ProductVO.imageUrl` 链路已通）。
-- **OSS 策略**：AccessKey 按 panda 要求**硬编码**在 `OssImageStorageService` 内（占位值，注释标注生产务必改为环境变量/配置中心注入并轮换）；切 `storage.type=oss` 即用，SDK 依赖 `aliyun-sdk-oss` 已加入 pom。
+- **OSS 策略**：凭据全部**配置化**（`application.yaml` 的 `aliyun.oss.*`：`enabled` 开关 + `endpoint`/`bucket-name`/`domain` + 密钥），密钥支持 `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` 环境变量覆盖，不落 Git；`aliyun.oss.enabled=true` 即激活（默认走 OSS，bucket `panda-tea` / 北京地域），缺密钥时上传返回可读错误且不发网络请求；`false` 回落本地磁盘。SDK 依赖 `aliyun-sdk-oss` 已加入 pom。接入/切换指引见 `docs/storage.md`。
 - 全量 `mvn test` 51 用例 BUILD SUCCESS。
 
 ### 第 4 阶段 Day 5 — JMeter 全链路压测 ✅（2026-09-08）
@@ -585,6 +585,15 @@
 
 **Day 5 验收：** 5000 并发下库存精确归零、成功订单数=库存、拒绝分布守恒、延迟与资源可量化。—— ✅ 达成（2026-09-08）
 **Day 5 经验教训：** ① 唯一 ID 的"时钟源一致性"是并发唯一性暗坑（判定时钟与输出文本必须同一来源）；② 压测客户端同机短 ramp 会因端口/TIME_WAIT 产生连接失败，需区分"客户端注入失败"与"系统错误"；③ 业务拒绝（HTTP200+code≠0）与 HTTP 层错误要分开统计，权威口径取后端计数；④ JMeter UDV 是静态值，参数化必须走 `${__P(...)}` 属性，`-J` 才能覆盖。
+
+### 第 4 阶段增强②：AI 智能客服（OpenAI 兼容大模型）✅（2026-09-08）
+
+- **后端**：`POST /api/support/chat`（`AiSupportController`）→ `AiChatServiceImpl` 将「系统人设 + **实时商品/秒杀目录**（system prompt 注入：在售商品 + 进行中/未开始活动，无向量库的教学取舍，注释写明）+ 前端带回最近 10 条对话历史（角色归一化/长度护栏）」组装为 OpenAI messages → `OpenAiCompatibleChatClient`（Spring `RestClient`，POST `{base-url}/chat/completions`，兼容百炼兼容模式 / DeepSeek / OpenAI）；回复纯文本透传（`ChatReplyVO.reply`）。
+- **配置**：`ai.llm.base-url / api-key / model / temperature / max-tokens / timeout-seconds`（application.yaml；api-key 用 `${AI_LLM_API_KEY:}` 支持环境变量注入）；密钥或地址缺失时返回 **50300** 可读提示，绝不用空配置外呼；调用失败（网络/超时/非 2xx/结构异常）返回 **50301**。
+- **前端**：`/ai-service` AI 客服页由纯 mock 改为真实对话（`api.aiChat` 携带多轮历史；加载失败以错误气泡展示后端可读提示）；侧栏「热门活动」替换原假"热门商品"，来源后端活动列表、可点击跳详情；「新建对话 / 清空」重置会话；LLM 回复按纯文本气泡渲染。
+- **测试**：`AiSupportChatIntegrationTest` 4 用例（消息序列与 system 目录断言 / 15 轮历史截最近 10 + 角色归一 + 未知角色过滤 / 空问题 40001 / 超长 40001）；`AiClientUnconfiguredTest` 2 用例（缺 key / 缺 base-url 在发网络前抛 50300，客户端为懒初始化便于纯单测）；`OssStoragePolicyIntegrationTest` 2 用例。
+- **OSS 配置化**：密钥硬编码 → `application.yaml aliyun.oss.*`（`enabled` + `endpoint/bucket-name/domain`）+ 环境变量覆盖（见增强①更新与 `docs/storage.md`）。
+- 全量 `mvn test` **59 用例 BUILD SUCCESS**；前端 `npm run build` 通过。
 
 ---
 
@@ -639,6 +648,7 @@
 | GET | `/api/rank/top10` | ✅ | 第4阶段 Day 1（榜单 Top N，`?activityId=` 必填） |
 | GET | `/api/admin/seckill/activities/{id}/metrics` | ✅ | 第4阶段 Day 2（活动实时运行指标） |
 | POST | `/api/admin/seckill/activities/{id}/snapshot` | ✅ | 第4阶段 Day 2（手动打点指标快照） |
+| POST | `/api/support/chat` | ✅ | 增强② AI 客服（外部 OpenAI 兼容大模型，未配置密钥返 50300） |
 
 ---
 
@@ -657,5 +667,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-07（第 4 阶段 Day 3/4 前端看板与联调闭环完成（AI 执行）：`frontend/` Vue3+Vite 独立工程（秒杀大厅倒计时状态机/订单轮询/手速榜/指标面板 + 管理控制台）；后端联调补丁——`StreamConsumerScheduler` 自动消费（`flash.stream.auto-poll` 开关 + 15 测试隔离）、`checkActivity` 与 execute 时间窗口径统一、`Phase1IntegrationTest` 语义同步；端到端验证 CREATED/榜单/ALLOW 全通；全量 mvn test 51 用例 BUILD SUCCESS；规划表 Day 3/4 置 ✅）*
-*下次开始位置：第 4 阶段 Day 5 — JMeter 全链路压测（5000 并发）与压测报告*
+*上次更新：2026-09-08（第 4 阶段增强② AI 客服完成（AI 执行）：后端 `/api/support/chat` 对接 OpenAI 兼容大模型（百炼/DeepSeek/OpenAI 等），system prompt 注入实时商品/活动目录、历史取最近 10 条；配置 `ai.llm.*` + `AI_LLM_API_KEY` 环境变量，未配置返 50300；前端 `/ai-service` 去 mock 接真接口、侧栏热门活动实时化；OSS 密钥硬编码改配置化（`storage.oss.*` + 环境变量，`docs/storage.md`）；新增 AI 4 + unit 2 + OSS 2 = 8 用例；全量 mvn test 59 用例 BUILD SUCCESS；规划表六接口补 `/api/support/chat`）*
+*下次开始位置：Day 6 — 复盘总结、学习笔记沉淀与《Redis 实战总结》收尾（或按需继续增强）*

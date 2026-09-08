@@ -64,6 +64,8 @@ http://localhost:8081
 | `40902` | 库存不足 |
 | `42900` | 请求过于频繁 |
 | `50000` | 系统异常 |
+| `50300` | AI 服务未配置（缺 `ai.llm.api-key` / `ai.llm.base-url`） |
+| `50301` | AI 服务调用失败（网络 / 超时 / 大模型返回异常） |
 
 ### 2.5 常用状态枚举
 
@@ -110,6 +112,7 @@ http://localhost:8081
 | 用户订单 | `GET` | `/api/seckill/users/{userId}/orders` | 查询用户秒杀订单 |
 | 排行榜 | `GET` | `/api/rank/top10` | 查询秒杀成功排行榜 |
 | 管理端指标 | `GET` | `/api/admin/seckill/activities/{activityId}/metrics` | 查询活动运行指标 |
+| AI 客服 | `POST` | `/api/support/chat` | AI 客服对话（接入外部 OpenAI 兼容大模型） |
 
 ## 四、接口详情
 
@@ -535,6 +538,52 @@ GET /api/admin/seckill/activities/{activityId}/metrics
   "timestamp": 1785124800000
 }
 ```
+
+### 4.13 AI 客服对话
+
+```text
+POST /api/support/chat
+```
+
+用途：AI 购物助手对话。后端将「系统人设 + 实时商品/秒杀场次目录 + 前端带回的最近历史」组装后调用
+外部 OpenAI 兼容大模型（阿里云百炼兼容模式 / DeepSeek / OpenAI 等），返回文本回复。
+
+请求示例：
+
+```json
+{
+  "message": "今天有什么秒杀？",
+  "history": [
+    { "role": "user", "content": "你好" },
+    { "role": "assistant", "content": "我在的，有什么可以帮你？" }
+  ]
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `message` | string | 是 | 用户问题，≤500 字 |
+| `history` | array | 否 | 最近对话上下文（时间正序），后端最多取最近 10 条、单条 ≤600 字 |
+
+响应示例：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "reply": "目前有机械键盘 Pro 正在秒杀，10:00 场还剩 9 件，先到先得～"
+  },
+  "requestId": "202607271200001016",
+  "timestamp": 1785124800000
+}
+```
+
+说明：
+
+- 无登录体系、服务端不落会话：前端在本地维护消息，把最近几轮随请求带回即可续上下文。
+- 需在后端配置 `ai.llm.base-url` 与 `ai.llm.api-key`（支持 `AI_LLM_API_KEY` 环境变量），否则返回 `50300`。
+- 大模型调用失败（网络/超时/非 2xx/响应异常）返回 `50301`，回复仅供参考。
 
 ## 五、核心链路约定
 

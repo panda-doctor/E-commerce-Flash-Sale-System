@@ -41,4 +41,7 @@ export const api = {
     return http.postForm('/api/admin/files/image', fd)
   },
   saveProduct: (body) => http.post('/api/admin/products', body),
+
+  // AI 客服（请求 { message, history } → 返回 data.reply）
+  aiChat: (body) => http.post('/api/support/chat', body),
 }

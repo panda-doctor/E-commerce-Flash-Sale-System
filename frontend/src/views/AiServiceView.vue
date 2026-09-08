@@ -1,25 +1,30 @@
 <script setup>
 import { ref, nextTick, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { api } from '../api'
+import { fenToYuan } from '../utils/format'
 
 /* ============================================================
-   AI 客服 · 仅界面布局与 UI 演示
-   不实现真实 AI 对话能力，使用 mock 数据展示对话场景
-   真实功能由后端实现
+   AI 客服 · 对接真实后端大模型
+   对话走 POST /api/support/chat（后端调 OpenAI 兼容大模型，见
+   E-commerceFlashSaleSystem AiSupportController / AiChatServiceImpl）
    ============================================================ */
 
 // AI 助手信息
 const aiName = '小闪'
 const aiAvatar = '🤖'
+const WELCOME_TEXT =
+  '你好！我是小闪，商场的 AI 购物助手 ⚡\n我可以帮你快速了解商品情况、查询秒杀场次、推荐高性价比好物。\n试试问我：「今天有什么秒杀？」或点击下方快捷问题吧～'
 
-// 对话消息列表（mock 初始场景）
-const messages = ref([
-  {
-    role: 'ai',
-    type: 'text',
-    content: '你好！我是小闪，商场的 AI 购物助手 ⚡\n我可以帮你快速了解商品情况、查询秒杀场次、推荐高性价比好物。\n试试问我：「今天有什么秒杀？」或点击下方快捷问题吧～',
-    time: '刚刚',
-  },
-])
+const router = useRouter()
+
+// 对话消息列表（初始为欢迎语）
+const messages = ref([{ role: 'ai', type: 'text', content: WELCOME_TEXT, time: '刚刚' }])
+// 提交给后端的多轮历史（不含欢迎语与"正在输入"），随请求带回保持上下文
+const historyMsgs = ref([])
+
+// 实时秒杀活动列表（侧栏"热门活动"，来源 GET /api/seckill/activities）
+const hotActivities = ref([])
 
 // 正在输入指示
 const typing = ref(false)
@@ -34,50 +39,49 @@ const quickQuestions = [
   { icon: '🎁', text: '有什么新品上架', q: '最近有什么新品上架？' },
 ]
 
-// 热门商品（mock）
-const hotProducts = [
-  { id: 1, name: '机械键盘 Pro', price: '¥299', tag: '秒杀中', img: '⌨️' },
-  { id: 2, name: '无线鼠标 Air', price: '¥149', tag: '即将开抢', img: '🖱️' },
-  { id: 3, name: '降噪耳机 Max', price: '¥899', tag: '热销', img: '🎧' },
-  { id: 4, name: '智能手表 S2', price: '¥1299', tag: '新品', img: '⌚' },
-]
-
-// mock 回复模板
-const mockReplies = {
-  default: {
-    role: 'ai',
-    type: 'products',
-    content: '为你找到以下商品，正在热销中，快来看看吧 👇',
-    products: [
-      { id: 1, name: '机械键盘 Pro', desc: '青轴 · RGB 背光 · 宏编程', price: '¥299', origin: '¥499', tag: '秒杀中', tagColor: 'red' },
-      { id: 2, name: '无线鼠标 Air', desc: '2.4G · 静音 · 长续航', price: '¥149', origin: '¥229', tag: '即将开抢', tagColor: 'orange' },
-    ],
-    time: '刚刚',
-  },
-  seckill: {
-    role: 'ai',
-    type: 'text',
-    content: '🔥 今天有以下秒杀场次正在火热进行中：\n\n• 10:00  机械键盘 Pro  ¥299（原价 ¥499）\n• 14:00  无线鼠标 Air  ¥149（原价 ¥229）\n• 20:00  降噪耳机 Max  ¥899（原价 ¥1599）\n\n每场限量 30 件，先到先得！要我帮你预约提醒吗？',
-    time: '刚刚',
-  },
-  recommend: {
-    role: 'ai',
-    type: 'products',
-    content: '根据你的浏览记录，为你精选高性价比好物 👇',
-    products: [
-      { id: 3, name: '降噪耳机 Max', desc: '主动降噪 · 蓝牙 5.3 · 40h 续航', price: '¥899', origin: '¥1599', tag: '省 ¥700', tagColor: 'green' },
-      { id: 4, name: '智能手表 S2', desc: '心率 · 血氧 · 50m 防水', price: '¥1299', origin: '¥1899', tag: '新品', tagColor: 'blue' },
-      { id: 5, name: '便携充电宝', desc: '20000mAh · 65W 快充', price: '¥129', origin: '¥199', tag: '热销', tagColor: 'red' },
-    ],
-    time: '刚刚',
-  },
+// 活动状态 -> 侧栏标签（文案 + 颜色类）
+const ACTIVITY_TAG = {
+  RUNNING: { text: '秒杀中', cls: 'red' },
+  NOT_STARTED: { text: '即将开抢', cls: 'orange' },
+  ENDED: { text: '已结束', cls: 'blue' },
+  SOLD_OUT: { text: '已售罄', cls: 'gray' },
+  CANCELLED: { text: '已取消', cls: 'gray' },
 }
 
-function getReply(question) {
-  const q = question.toLowerCase()
-  if (q.includes('秒杀') || q.includes('开抢') || q.includes('场次')) return mockReplies.seckill
-  if (q.includes('推荐') || q.includes('性价比') || q.includes('新品')) return mockReplies.recommend
-  return mockReplies.default
+// 侧栏实时热门活动：取后端活动列表中"进行中 + 即将开抢"的最近几场
+async function loadActivities() {
+  try {
+    const list = (await api.listActivities()) || []
+    const hot = list
+      .filter((a) => a.status === 'RUNNING' || a.status === 'NOT_STARTED')
+      .sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)))
+      .slice(0, 5)
+    hotActivities.value = hot.map((a) => {
+      const tag = ACTIVITY_TAG[a.status] || { text: a.status, cls: 'blue' }
+      return {
+        activityId: a.activityId,
+        name: a.productName || a.activityName || `活动 #${a.activityId}`,
+        price: fenToYuan(a.seckillPrice),
+        origin: a.originalPrice ? fenToYuan(a.originalPrice) : '',
+        image: a.productImage || '',
+        tag: tag.text,
+        tagCls: tag.cls,
+      }
+    })
+  } catch (e) {
+    hotActivities.value = []
+  }
+}
+
+function goActivity(id) {
+  router.push(`/activity/${id}`)
+}
+
+// 清空对话 / 新建对话：重置消息与历史
+function resetChat() {
+  historyMsgs.value = []
+  messages.value = [{ role: 'ai', type: 'text', content: WELCOME_TEXT, time: '刚刚' }]
+  scrollToBottom()
 }
 
 // 输入与发送
@@ -102,21 +106,36 @@ async function sendText(text) {
   if (!q) return
   inputText.value = ''
   pushMessage({ role: 'user', type: 'text', content: q })
-  // 模拟 AI 思考延迟
   typing.value = true
   scrollToBottom()
-  await new Promise((r) => setTimeout(r, 1400))
-  typing.value = false
-  pushMessage(getReply(q))
+  try {
+    // 多轮上下文：取最近 10 条已确认对话随请求带回
+    const history = historyMsgs.value.slice(-10)
+    const data = await api.aiChat({ message: q, history })
+    const reply = data?.reply?.trim() || '（未收到回复，请稍后再试）'
+    pushMessage({ role: 'ai', type: 'text', content: reply })
+    historyMsgs.value.push({ role: 'user', content: q })
+    historyMsgs.value.push({ role: 'assistant', content: reply })
+  } catch (e) {
+    // 后端返回 50300（未配置密钥）/50301（调用失败）等，message 已含可读提示
+    pushMessage({
+      role: 'ai',
+      type: 'text',
+      content: `抱歉，${e?.message || 'AI 服务暂时不可用，请稍后重试'}`,
+    })
+  } finally {
+    typing.value = false
+  }
 }
 
 function askQuick(q) {
   sendText(q)
 }
 
-// 初始化：展示快捷问题入口
+// 初始化：载入实时活动 + 定位到底部
 onMounted(() => {
   scrollToBottom()
+  loadActivities()
 })
 </script>
 
@@ -162,7 +181,7 @@ onMounted(() => {
       <!-- 左侧侧边栏 -->
       <aside class="ai-sidebar">
         <!-- 新建对话 -->
-        <button class="new-chat">
+        <button class="new-chat" @click="resetChat">
           <span class="nc-ico">✚</span>
           <span>新建对话</span>
         </button>
@@ -182,22 +201,26 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 热门商品 -->
+        <!-- 热门活动（实时：来自后端活动列表） -->
         <div class="side-section">
           <div class="side-head">
             <span class="side-ico">🔥</span>
-            <h3>热门商品</h3>
+            <h3>热门活动</h3>
           </div>
-          <div class="hot-list">
-            <div v-for="p in hotProducts" :key="p.id" class="hot-item">
-              <span class="hot-ico">{{ p.img }}</span>
+          <div v-if="hotActivities.length" class="hot-list">
+            <div v-for="p in hotActivities" :key="p.activityId" class="hot-item" @click="goActivity(p.activityId)">
+              <span class="hot-ico">
+                <img v-if="p.image" :src="p.image" alt="" />
+                <span v-else class="hot-emoji">🛍️</span>
+              </span>
               <div class="hot-info">
                 <span class="hot-name">{{ p.name }}</span>
                 <span class="hot-price">{{ p.price }}</span>
               </div>
-              <span class="hot-tag" :class="`hot-tag-${p.tag === '秒杀中' ? 'red' : p.tag === '即将开抢' ? 'orange' : p.tag === '热销' ? 'green' : 'blue'}`">{{ p.tag }}</span>
+              <span class="hot-tag" :class="`hot-tag-${p.tagCls}`">{{ p.tag }}</span>
             </div>
           </div>
+          <p v-else class="hot-empty">暂无可抢活动，去管理台创建并预热吧～</p>
         </div>
 
         <!-- 能力说明 -->
@@ -221,7 +244,7 @@ onMounted(() => {
             </div>
           </div>
           <div class="chat-bar-right">
-            <button class="cb-btn" title="清空对话">🗑</button>
+            <button class="cb-btn" title="清空对话" @click="resetChat">🗑</button>
             <button class="cb-btn" title="语音输入">🎤</button>
             <button class="cb-btn" title="更多">⋯</button>
           </div>
@@ -309,7 +332,7 @@ onMounted(() => {
               <span>发送</span>
             </button>
           </div>
-          <p class="input-tip">AI 助手基于商场商品数据为你服务，回复仅供参考 · 界面为 UI 演示，真实功能由后端实现</p>
+          <p class="input-tip">回复由后端接入的大模型实时生成，回答基于商城在售商品与秒杀场次，仅供参考</p>
         </div>
       </section>
     </div>
@@ -644,6 +667,25 @@ onMounted(() => {
 .hot-tag-orange { color: var(--aux); background: var(--aux-soft); }
 .hot-tag-green { color: var(--success); background: var(--success-soft); }
 .hot-tag-blue { color: var(--info); background: var(--info-soft); }
+.hot-tag-gray { color: var(--text-3); background: var(--surface-3); }
+.hot-ico img {
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.hot-emoji {
+  font-size: 20px;
+  line-height: 1;
+}
+.hot-empty {
+  margin: 0;
+  padding: 8px 2px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-3);
+  text-align: center;
+}
 
 /* 能力说明卡 */
 .capability {
