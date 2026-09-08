@@ -21,6 +21,12 @@ security:
 flash:
   stream:
     auto-poll: true
+  # 秒杀 execute 防刷限流（滑动窗口，粒度 rate:limit:{activityId}:{userId}）
+  # 运行期可用环境变量 FLASH_RATE_LIMIT_WINDOW_SECONDS / FLASH_RATE_LIMIT_MAX_COUNT 覆盖；
+  # 默认值须与 CacheKeyConstant.RATE_LIMIT_WINDOW_SECONDS / RATE_LIMIT_MAX_COUNT 保持一致。
+  rate-limit:
+    window-seconds: 60
+    max-count: 5
 
 # =====================================================
 # 阿里云 OSS 图片存储（商品主图上传）

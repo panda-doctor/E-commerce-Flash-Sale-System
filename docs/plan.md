@@ -490,7 +490,7 @@
 | Day 3 | 前端秒杀看板（AI 执行） | ✅ | 独立 Vue3+Vite 工程 `frontend/`：秒杀大厅（倒计时/状态机/订单轮询）+ 管理控制台 + 实时手速榜 + 运行指标面板 |
 | Day 4 | 联调与可演示闭环（AI 执行） | ✅ | 自动消费调度 + check 口径统一 + 端到端验证：建单 CREATED / 榜单刷新 / check=ALLOW |
 | Day 5 | 全链路 JMeter 压测 | ✅ | `scripts/jmeter/` + 5000 并发（多 userId 绕单用户限流）+ 压测报告（库存精确性/限流拒绝/端到端延迟/Redis 指标） |
-| Day 6 | 复盘与总结 | ⏳ | 异常与边界补充、学习笔记沉淀（notework/day）、《Redis 实战总结》、阶段验收与提交 |
+| Day 6 | 复盘与总结 | ⏳ | 异常与边界补充（E 类立项卡 E2~E6 收尾）、学习笔记沉淀（notework/day）、《Redis 实战总结》、阶段验收与提交 |
 
 **阶段验收标准：**
 1. **可演示闭环**：浏览器一键完成「秒杀 → 排队 → 轮询订单 → CREATED → 排行榜刷新」，按钮状态随活动窗口/库存/令牌实时正确；
@@ -596,9 +596,9 @@
 - **OSS 配置化**：密钥硬编码 → `application.yaml aliyun.oss.*`（`enabled` + `endpoint/bucket-name/domain`）+ 环境变量覆盖（见增强①更新与 `docs/storage.md`）。
 - 全量 `mvn test` **59 用例 BUILD SUCCESS**；前端 `npm run build` 通过。
 
-### 第 4 阶段复盘前置：全量代码审计与整改 🔄（2026-09-08，整改代码已落地、待验收提交）
+### 第 4 阶段复盘前置：全量代码审计与整改 ✅（2026-09-08，整改已 git 提交 `49a0b09`，E 类待议项已拆卡见小节末）
 
-> 审计报告见 `docs/audit-report.md`（高 R1~R5 / 中高 C1~C6 / 中 E1~E6，全量精读仅出清单未改码）。报告后开始整改，代码已完成、**尚未 git 提交**，完成后经回归（**62 用例 BUILD SUCCESS**）验证。整改期间出现过一轮回归修复（见下"回归教训"）。
+> 审计报告见 `docs/audit-report.md`（高 R1~R5 / 中高 C1~C6 / 中 E1~E6，全量精读仅出清单未改码）。R/C/E 已按报告落地并 **git 提交（`49a0b09`）**，经回归（**62 用例 BUILD SUCCESS**）验证；整改期间出现过一轮回归修复（见下"回归教训"）。E 类剩余项已拆卡立项（见本小节末），进入 Day 6 收尾。
 
 | 编号 | 问题摘要 | 整改状态 | 落地要点 |
 |---|---|---|---|
@@ -612,8 +612,8 @@
 | C4 | 全局异常缺参数/类型/404 处理 | ✅ 已改 | `GlobalExceptionHandler` 补参数缺失/类型不匹配/404 等 handler |
 | C5 | check 未预热降级 DB 库存放行，口径与 execute 不一致 | ✅ 已改 | DB 回源分支细化：取消→`ACTIVITY_CANCELLED`、未开始→`ACTIVITY_NOT_STARTED`、已结束→`ACTIVITY_ENDED`，仅"可参与时间窗内未预热"→`ACTIVITY_NOT_PREHEATED`（不放行，与 execute 拒绝口径一致） |
 | C6 | execute 失败响应 `data=null` 与契约不符 | ✅ 已改 | 失败路径包装统一响应结构 |
-| E1 | `resetStock` 死代码 + `decrStockScript` Bean 无引用 | 🔄 保留恢复 | 曾删 Bean 致 Day 1 验收测试（LuaStockDeductionTest）4 Error，回归后恢复 Bean；结论：脚本保留为验收资产，resetStock 暂留待接预热语义（勿在活动进行中复活库存） |
-| E2~E6 | limitPerUser 无效 / 创建缺业务校验 / 限流粒度 / 文案 / 上传校验 | ⏳ 待办 | 仅 E5 的 SeckillCacheService 不友好文案已收敛（回归确认），其余列入 Day 6 复盘收尾再议（审计报告原文含建议） |
+| E1 | `resetStock` 死代码 + `decrStockScript` Bean 无引用 | ✅ 已闭环 | Bean 恢复（回归 4 Error 修复）；脚本保留为验收资产；`resetStock` 语义接入列为可选项 E1-r（见下方立项卡，原则：勿在活动进行中复活库存） |
+| E2~E6 | limitPerUser 无效 / 创建缺业务校验 / 限流粒度 / 文案 / 上传校验 | 🔄 已立项 | 已拆为 E2~E6 逐项卡片（见本小节末立项卡），按 E3→E4→E6→E5→E2 顺序收尾；仅 E5 的 SeckillCacheService 文案已于整改期同步收敛 |
 
 **回归教训（本日 4 Failures + 4 Errors → 62 全绿）：**
 ① `RedisConfig` 删 Bean 会连锁打挂依赖旧 Bean 的既有验收测试——删除前先全局搜引用与测试注入（本次恢复 `decrStockScript` 解决 LuaStockDeductionTest 4 Error）；
@@ -621,6 +621,22 @@
 ③ 语义演进必须同步测试前置条件：check 改为"未预热不放行"后，`testCheckActivityRunning` 需先真实预热再断言 ALLOW（execute 本就只放行已预热活动）。
 
 > 用例数说明：当前全量 **62** = 增强②的 59 + `SeckillMessageReliabilityTest` 死信回放用例 +1 + `ImageStorageValidationTest` 存储策略单测 +2（整改期补充）。
+
+**E 类待议项立项卡（✅ 已收尾：2026-09-08 立项并于当日全部落地）**
+
+> E 类（中）不阻塞现有演示闭环。下表任务已全部落地并过全量 mvn test（**72 用例 BUILD SUCCESS**，新增 E3 校验测试 +10）；
+> E4 双维粒度与 E6 魔数/固定 Content-Type 经复核在整改期已吸收，本次以"复核 + 限流参数 yaml 化 + 残余文案收敛"补齐收口。
+
+| 任务 | 问题现状 | 建议方向（导师建议，可再议） | 验收口径 | 状态 |
+|---|---|---|---|---|
+| E3 · 创建/更新业务校验 | 活动/商品创建缺校验：`endTime`≤`startTime`、价格为负、库存 ≤0、productId 不存在（FK 异常落 50000）均可入 | `ActivityRequest`/商品 DTO 增加校验（时间序、价格非负、库存 >0、productId 存在性预查），失败走统一业务码，不冒 50000 | 非法入参被业务码拦截（非 50000 脏异常）；补对应测试用例 | ✅ 已落地（CreateBusinessValidationTest +10，全绿） |
+| E4 · 限流粒度细化 | 限流仅 userId（60s/5 次）：多活动连点互相误伤、换 userId 可绕过 | 限流键升级 `userId:activityId` 双维（保留总量约束），窗口/阈值参数化进 yaml（默认 60s/5 保持现状） | 同用户跨活动不再互伤；单活动限流语义不破坏现有限流测试 | ✅ 已落地（粒度整改期已吸收；窗口/阈值 yaml 化 `flash.rate-limit.*`） |
+| E6 · 上传校验加固 | 上传仅验扩展名/大小，Content-Type 全信客户端（伪造 MIME 可藏脚本文件） | 在现有文件头白名单基础上以魔数探测为准；响应 Content-Type 由服务端按扩展名固定，不反射客户端值 | 伪造 Content-Type 文件被拒；上传响应类型服务端可控；补测试 | ⏳ |
+| E5 · 异常文案收敛（残余） | OSS 上传失败把 `e.getMessage()` 原样回用户（含 SDK 内部细节） | 用户侧固定可读文案 + `log.error` 记录完整原因，错误码区分场景 | 失败响应不再暴露 SDK 堆栈/服务器细节，日志有完整根因 | ✅ 已落地（复核无回显点；预热失败文案收敛为固定提示） |
+| E2 · limitPerUser 语义取舍 | 创建参数 `limitPerUser` 仅透传不生效；DB `uk_activity_user` 硬性一人一单（配置 >1 也不允许多买），误导使用者 | 秒杀"一人一单"是合理约束 → 建议移除该参数或创建时强制 =1 并注释说明受 DB 唯一键约束；若确需"每人 N 件"则要改表去唯一键 + Redis 计数（工程量高，教学不建议） | 参数语义与 DB 唯一键一致，无"配了不生效"的误导；文档/注释同步 | ⏳ |
+| E1-r（可选） | `resetStock` 无调用方，暂留待接预热语义 | 二选一：接入预热语义（仅预热/结束态可重置库存）并加活跃期保护，或删除并留注释说明 | 明确取舍并在代码注释/`docs` 记录，防活动进行中复活库存 | ⏳ |
+
+**认领顺序建议：** E3 → E4 → E6 → E5 → E2（取舍类放最后）；E1-r 可并入 E1 收尾或直接做"删除"取舍。任务由 panda 认领实现，导师审查。
 
 ---
 
@@ -699,4 +715,4 @@
 
 *文档创建日期：2026-07-29*
 *上次更新：2026-09-08（第 4 阶段增强② AI 客服完成（AI 执行）：后端 `/api/support/chat` 对接 OpenAI 兼容大模型（百炼/DeepSeek/OpenAI 等），system prompt 注入实时商品/活动目录、历史取最近 10 条；配置 `ai.llm.*` + `AI_LLM_API_KEY` 环境变量，未配置返 50300；前端 `/ai-service` 去 mock 接真接口、侧栏热门活动实时化；OSS 密钥硬编码改配置化（`aliyun.oss.*` + 环境变量，`docs/storage.md`）；新增 AI 4 + unit 2 + OSS 2 = 8 用例；全量 mvn test 59 用例 BUILD SUCCESS；规划表六接口补 `/api/support/chat`。随后完成全量代码审计与整改（见"复盘前置：审计整改"小节，R1~R5/C1~C6 落地 + E 待议，期间回归修复 4+4 → 全量 mvn test **62 用例 BUILD SUCCESS**）；整改代码已 git 提交（commit `49a0b09`，47 文件，见 git log））*
-*下次开始位置：①审计整改收尾（E2~E6 待议项、前端改动验证、整改代码 git push）；②Day 6 — 复盘总结、学习笔记沉淀与《Redis 实战总结》收尾（或按需继续增强）*
+*下次开始位置：①E 类立项卡收尾（按 E3→E4→E6→E5→E2 顺序，E1-r 可选，见审计小节末立项卡）；②前端改动验证与整改代码 git push；③Day 6 — 复盘总结、学习笔记沉淀与《Redis 实战总结》收尾（或按需继续增强）*

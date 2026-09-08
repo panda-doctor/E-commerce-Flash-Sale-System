@@ -272,12 +272,20 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
     }
 
     private void validateActivityRequest(ActivityRequest request) {
+        // E3：价格非负、库存>0 服务层兜底（DTO @Min 由 Controller @Valid 拦截，此处防内部调用/绕过直调）
+        if (request.getSeckillPrice() == null || request.getSeckillPrice() < 0) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "秒杀价不能为负数");
+        }
+        if (request.getSeckillStock() == null || request.getSeckillStock() <= 0) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "秒杀库存必须大于 0");
+        }
         if (request.getEndTime() != null && request.getStartTime() != null
                 && !request.getEndTime().isAfter(request.getStartTime())) {
             throw new BusinessException(ResultCode.PARAM_ERROR, "结束时间必须晚于开始时间");
         }
         if (request.getLimitPerUser() != null && request.getLimitPerUser() != 1) {
-            throw new BusinessException(ResultCode.PARAM_ERROR, "当前系统仅支持每人限购 1 件");
+            // E2：秒杀"一人一单"由订单唯一键（user+activity）硬约束，limitPerUser 不支持 >1，避免"配了不生效"的误导
+            throw new BusinessException(ResultCode.PARAM_ERROR, "每人限购固定为 1 件/人（一人一单，订单唯一键约束，暂不支持每人多件）");
         }
         if (request.getProductId() != null && productMapper.selectById(request.getProductId()) == null) {
             throw new BusinessException(ResultCode.NOT_FOUND, "关联商品不存在，productId=" + request.getProductId());

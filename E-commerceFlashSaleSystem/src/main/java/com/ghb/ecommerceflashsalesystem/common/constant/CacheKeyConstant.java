@@ -61,17 +61,19 @@ public class CacheKeyConstant {
     public static final long SECKILL_USER_TOKEN_TTL = 30 * 60L;
 
     /**
-     * 限流键前缀，完整键: rate:limit:{activityId}:{userId}
+     * 限流键前缀，完整键: rate:limit:{activityId}:{userId}（E4：粒度 userId → userId+activity，避免多活动互伤）
      */
     public static final String RATE_LIMIT_PREFIX = "rate:limit:";
 
     /**
-     * 限流时间窗口（秒），默认60秒
+     * 限流时间窗口（秒）默认值。运行期实际值以 application.yaml flash.rate-limit.window-seconds 为准，
+     * 本常量保留为默认参照，并被 RateLimitTest / SeckillUserDedupTest 等脚本级测试引用。
      */
     public static final long RATE_LIMIT_WINDOW_SECONDS = 60L;
 
     /**
-     * 限流窗口内允许的最大请求次数，默认5次
+     * 限流窗口内允许的最大请求次数默认值。运行期实际值以 application.yaml flash.rate-limit.max-count 为准，
+     * 本常量保留为默认参照（同上注释）。
      */
     public static final long RATE_LIMIT_MAX_COUNT = 5L;
 

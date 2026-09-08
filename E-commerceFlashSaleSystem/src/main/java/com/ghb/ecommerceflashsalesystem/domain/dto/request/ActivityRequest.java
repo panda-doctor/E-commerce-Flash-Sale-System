@@ -61,6 +61,8 @@ public class ActivityRequest {
 
     /**
      * 每用户限购数量（必填）
+     * E2：秒杀为"一人一单"——订单表 uk_activity_user（user+activity）唯一键硬约束，
+     * 本参数仅支持 1（传其他值会被服务层拒绝），避免出现"配置 >1 却不生效"的误导。
      */
     @NotNull(message = "限购数量不能为空")
     @Min(value = 1, message = "限购数量必须为 1")

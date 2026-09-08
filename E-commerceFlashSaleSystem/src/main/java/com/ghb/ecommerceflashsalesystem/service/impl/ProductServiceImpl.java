@@ -147,6 +147,13 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long saveProduct(ProductRequest request) {
+        // E3：价格非负、库存>0 服务层兜底（DTO @Min 由 Controller @Valid 拦截，此处防内部调用/绕过直调）
+        if (request.getOriginalPrice() == null || request.getOriginalPrice() < 0) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "原价不能为负数");
+        }
+        if (request.getTotalStock() == null || request.getTotalStock() <= 0) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "总库存必须大于 0");
+        }
         Product product = new Product();
         // 复制共同字段
         product.setName(request.getName());

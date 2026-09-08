@@ -1,6 +1,7 @@
 package com.ghb.ecommerceflashsalesystem.domain.dto.request;
 
 import com.ghb.ecommerceflashsalesystem.domain.enums.ProductStatusEnum;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -35,12 +36,14 @@ public class ProductRequest {
      * 原价，单位：分（必填）
      */
     @NotNull(message = "原价不能为空")
+    @Min(value = 0, message = "原价不能为负数")
     private Long originalPrice;
 
     /**
      * 商品总库存（必填）
      */
     @NotNull(message = "总库存不能为空")
+    @Min(value = 1, message = "总库存必须大于 0")
     private Integer totalStock;
 
     /**

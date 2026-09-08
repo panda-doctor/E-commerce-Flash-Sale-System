@@ -17,6 +17,7 @@ import com.ghb.ecommerceflashsalesystem.service.seckill.SeckillService;
 import com.ghb.ecommerceflashsalesystem.stream.producer.SeckillOrderStreamProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
@@ -77,6 +78,14 @@ public class SeckillServiceImpl implements SeckillService {
     private final RedisScript<Long> seckillExecuteScript;
     private final RedisScript<Long> rateLimitScript;
     private final SeckillOrderStreamProducer seckillOrderStreamProducer;
+
+    // E4：限流参数 yaml 可调（application.yaml flash.rate-limit.*），默认与 CacheKeyConstant 一致；
+    // 常量仍被 RateLimitTest 等脚本级测试引用，调整配置时请保持两处默认一致。
+    @Value("${flash.rate-limit.window-seconds:60}")
+    private long rateLimitWindowSeconds;
+
+    @Value("${flash.rate-limit.max-count:5}")
+    private long rateLimitMaxCount;
     // 【复盘】曾误在此重复注入 streamProducer（与上行同类型，纯冗余）与 rankService——
     // execute 抢单成功 ≠ 订单落库成功，榜单在订单成功落库的消费者侧记录（ZADD NX 幂等），execute 无需榜单依赖。
 
@@ -95,8 +104,8 @@ public class SeckillServiceImpl implements SeckillService {
                 rateLimitScript,
                 Arrays.asList(rateKey),
                 time,
-                CacheKeyConstant.RATE_LIMIT_WINDOW_SECONDS,
-                CacheKeyConstant.RATE_LIMIT_MAX_COUNT,
+                rateLimitWindowSeconds,
+                rateLimitMaxCount,
                 member
         );
 

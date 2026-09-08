@@ -141,12 +141,13 @@ public class SeckillCacheService {
             failWrapper.eq("id", activityId).set("preheat_status", PreheatStatusEnum.PREHEAT_FAILED.getCode());
             seckillActivityMapper.update(null, failWrapper);
             log.error("活动预热失败，activityId={}", activityId, e);
-            throw new BusinessException(ResultCode.SYSTEM_ERROR, "活动预热失败：" + e.getMessage());
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, "活动预热失败，请稍后重试");
         }
     }
 
     /**
-     * 重置库存：把数据库配置库存刷回 Redis（运维 / 压测前重置用），加锁防并发写错乱
+     * 重置库存：把数据库配置库存刷回 Redis（预热前 / 活动结束后的运维、压测复位用），加锁防并发写错乱。
+     * E1-r：活动进行中禁止重置（守卫见方法内），防止把 Redis 已扣减的库存用 DB 配置库存"复活"。
      */
     public void resetStock(Long activityId) {
         String lockKey = CacheKeyConstant.SECKILL_LOCK_PREFIX + "reset:" + activityId;
@@ -160,6 +161,12 @@ public class SeckillCacheService {
             SeckillActivity activity = seckillActivityMapper.selectById(activityId);
             if (activity == null) {
                 throw new BusinessException(ResultCode.NOT_FOUND, "活动不存在");
+            }
+            // E1-r：活动进行中禁止重置库存（防止把 Redis 已扣减库存用 DB 配置库存"复活"）
+            LocalDateTime now = LocalDateTime.now();
+            if (activity.getStartTime() != null && now.isAfter(activity.getStartTime())
+                    && (activity.getEndTime() == null || now.isBefore(activity.getEndTime()))) {
+                throw new BusinessException(ResultCode.PARAM_ERROR, "活动进行中，禁止重置库存");
             }
             String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
             redisTemplate.opsForValue().set(stockKey, activity.getSeckillStock());

@@ -383,7 +383,9 @@ function openExisting() {
               </label>
               <label class="f-item">
                 <span>每人限购</span>
-                <input v-model.number="form.limitPerUser" type="number" min="1" class="field" />
+                <input v-model.number="form.limitPerUser" type="number" min="1" max="1" class="field" disabled
+                  title="一人一单：订单表唯一键（user+activity）约束，后端固定限购 1 件" />
+                <small class="hint">一人一单（唯一键约束，固定 1 件）</small>
               </label>
             </div>
           </div>
