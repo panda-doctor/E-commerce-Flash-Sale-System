@@ -14,6 +14,7 @@ import com.ghb.ecommerceflashsalesystem.mapper.SeckillActivityMapper;
 import com.ghb.ecommerceflashsalesystem.mapper.SeckillMessageLogMapper;
 import com.ghb.ecommerceflashsalesystem.mapper.SeckillOrderMapper;
 import com.ghb.ecommerceflashsalesystem.service.cache.SeckillCacheService;
+import com.ghb.ecommerceflashsalesystem.service.seckill.DeadLetterReplayService;
 import com.ghb.ecommerceflashsalesystem.service.seckill.SeckillService;
 import com.ghb.ecommerceflashsalesystem.stream.consumer.SeckillOrderConsumer;
 import com.ghb.ecommerceflashsalesystem.stream.producer.SeckillOrderStreamProducer;
@@ -68,6 +69,9 @@ public class SeckillMessageReliabilityTest {
     private SeckillOrderStreamProducer producer;
 
     @Autowired
+    private DeadLetterReplayService deadLetterReplayService;
+
+    @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
     // 成功路径：真实活动 300（product 1 种子商品），库存充足
@@ -92,6 +96,8 @@ public class SeckillMessageReliabilityTest {
         seckillMessageLogMapper.delete(new LambdaQueryWrapper<SeckillMessageLog>()
                 .in(SeckillMessageLog::getActivityId, Arrays.asList(ACTIVITY_ID, BAD_ACTIVITY_ID)));
         seckillActivityMapper.deleteById(ACTIVITY_ID);
+        // 关键：清除死信回放用例可能残留的"修复活动"（id=999999），否则坏消息外键不再失败，用例相互污染
+        seckillActivityMapper.deleteById(BAD_ACTIVITY_ID);
 
         // 插入真实活动并预热（外键约束：seckill_order.product_id 需引用存在的商品 1）
         SeckillActivity activity = new SeckillActivity();
@@ -126,6 +132,7 @@ public class SeckillMessageReliabilityTest {
         seckillMessageLogMapper.delete(new LambdaQueryWrapper<SeckillMessageLog>()
                 .in(SeckillMessageLog::getActivityId, Arrays.asList(ACTIVITY_ID, BAD_ACTIVITY_ID)));
         seckillActivityMapper.deleteById(ACTIVITY_ID);
+        seckillActivityMapper.deleteById(BAD_ACTIVITY_ID);
     }
 
     private void cleanRedisKeys(String pattern) {
@@ -206,5 +213,83 @@ public class SeckillMessageReliabilityTest {
         assertThat(deadStreamLen()).isEqualTo(1L);
         // 死信里应带原始消息 ID（人工回放依据）
         assertThat(findLog(messageId).getErrorMessage()).isNotBlank();
+    }
+
+    // ---------- 用例3：死信补偿后人工回放 → 重新占位 → 环境修复后落单 ----------
+    @Test
+    void testReplayDeadLetterAfterCompensation() {
+        // 1. 制造一条"落库必失败"的消息（活动 999999 不存在 → 订单 FK 异常），消费至死信
+        String orderNo = "SKREPLAYTEST0001";
+        SeckillOrderMessage badMessage = SeckillOrderMessage.builder()
+                .activityId(BAD_ACTIVITY_ID)
+                .productId(1L)
+                .userId(USER_ID)
+                .orderNo(orderNo)
+                .seckillPrice(9900L)
+                .requestTime(System.currentTimeMillis())
+                .build();
+        RecordId origin = producer.sendMessage(badMessage);
+        String originalMessageId = origin.getValue();
+
+        consumer.consumePending(10);
+        for (int i = 2; i <= CacheKeyConstant.MESSAGE_MAX_RETRY; i++) {
+            consumer.consumerRetry(10);
+        }
+
+        // 2. 死信落地：日志 DEAD、死信流 1 条、订单未落库；
+        //    补偿已回补库存（0→1）并释放幂等令牌 —— 这正是回放前"资源已归还"的状态
+        SeckillMessageLog deadLog = findLog(originalMessageId);
+        assertThat(deadLog.getStatus()).isEqualTo(MessageLogStatusEnum.DEAD.getCode());
+        assertThat(deadLog.getRetryCount()).isEqualTo(CacheKeyConstant.MESSAGE_MAX_RETRY);
+        assertThat(deadStreamLen()).isEqualTo(1L);
+        assertThat(seckillOrderMapper.selectByOrderNo(orderNo)).isNull();
+        String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + BAD_ACTIVITY_ID;
+        String tokenKey = CacheKeyConstant.SECKILL_USER_PREFIX + BAD_ACTIVITY_ID + ":" + USER_ID;
+        assertThat(redisLong(stockKey)).isEqualTo(1L);
+        assertThat(redisTemplate.hasKey(tokenKey)).isFalse();
+
+        // 3. 模拟运维修复：补齐活动数据（此前缺失导致订单落库失败）
+        SeckillActivity repaired = new SeckillActivity();
+        repaired.setId(BAD_ACTIVITY_ID);
+        repaired.setProductId(1L);
+        repaired.setActivityName("死信回放修复活动");
+        repaired.setStartTime(LocalDateTime.now().minusHours(1));
+        repaired.setEndTime(LocalDateTime.now().plusHours(2));
+        repaired.setSeckillPrice(9900L);
+        repaired.setSeckillStock(INITIAL_STOCK);
+        repaired.setLimitPerUser(1);
+        repaired.setStatus(ActivityStatusEnum.RUNNING.getCode());
+        repaired.setPreheatStatus(0);
+        repaired.setVersion(0);
+        seckillActivityMapper.insert(repaired);
+
+        // 4. 人工回放：再次原子占位（库存 1→0、令牌重建）→ 重投主 Stream → 死信条目 XDEL
+        String replayMessageId = deadLetterReplayService.replay(originalMessageId);
+        assertThat(replayMessageId).isNotBlank();
+        assertThat(deadStreamLen()).isEqualTo(0L);
+        assertThat(redisLong(stockKey)).isEqualTo(0L);
+        assertThat(redisTemplate.hasKey(tokenKey)).isTrue();
+        assertThat(findLog(originalMessageId).getErrorMessage()).contains("已人工回放");
+
+        // 5. 消费回放消息：环境已修复 → 订单落库、新消息日志 SUCCESS
+        consumer.consumePending(10);
+        assertThat(seckillOrderMapper.selectByOrderNo(orderNo)).isNotNull();
+        SeckillMessageLog replayLog = seckillMessageLogMapper.selectOne(new LambdaQueryWrapper<SeckillMessageLog>()
+                .eq(SeckillMessageLog::getOrderNo, orderNo)
+                .eq(SeckillMessageLog::getStreamMessageId, replayMessageId));
+        assertThat(replayLog).isNotNull();
+        assertThat(replayLog.getStatus()).isEqualTo(MessageLogStatusEnum.SUCCESS.getCode());
+    }
+
+    /** 读取 String/Number 形态的 Redis 整数值（库存等），null 兜底 */
+    private Long redisLong(String key) {
+        Object value = redisTemplate.opsForValue().get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        return Long.valueOf(String.valueOf(value));
     }
 }

@@ -6,7 +6,7 @@ import { userStore } from '../utils/store'
 // 排行榜面板：按活动轮询 /api/rank/top10
 // score 语义 = 抢单成功时刻（毫秒），展示为时间戳更直观
 const props = defineProps({
-  activityId: { type: Number, required: true },
+  activityId: { type: [String, Number], required: true },
 })
 
 const items = ref([])
@@ -15,7 +15,7 @@ const updatedAt = ref('')
 let timer = null
 
 async function refresh() {
-  if (!props.activityId) return
+  if (!props.activityId || document.hidden) return
   loading.value = items.value.length === 0
   try {
     const data = await api.getRank(props.activityId, 10)
@@ -36,7 +36,7 @@ function timeText(score) {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
-const isMe = (uid) => uid === userStore.userId
+const isMe = (uid) => String(uid) === String(userStore.userId)
 
 watch(() => props.activityId, refresh)
 onMounted(() => {

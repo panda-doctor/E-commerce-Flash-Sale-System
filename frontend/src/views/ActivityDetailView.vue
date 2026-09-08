@@ -17,7 +17,7 @@ import { toastErr, toastOK, toastWarn } from '../utils/toast'
 
 const route = useRoute()
 const router = useRouter()
-const activityId = computed(() => Number(route.params.id))
+const activityId = computed(() => String(route.params.id || ''))
 
 const loading = ref(false)
 const loadErr = ref('')
@@ -37,6 +37,7 @@ let clockTimer = null
 let refreshTimer = null
 let pollTimer = null
 let pollTries = 0
+let pollErrorNotified = false
 
 /* ---------------- 派生 ---------------- */
 const startMs = computed(() => parseServerTime(activity.value?.startTime))
@@ -48,6 +49,7 @@ const stock = computed(() =>
 const phase = computed(() => {
   if (!activity.value) return 'loading'
   if (activity.value.status === 'CANCELLED') return 'cancelled'
+  if (check.value?.reason === 'ACTIVITY_NOT_PREHEATED') return 'unpreheated'
   const now = nowMs.value
   if (stock.value === 0) return 'soldout'
   if (now < startMs.value) return 'not_started'
@@ -57,7 +59,8 @@ const phase = computed(() => {
 })
 
 const canBuy = computed(
-  () => phase.value === 'running' && !busy.value && pollState.value !== 'polling',
+  () => phase.value === 'running' && !busy.value
+    && !['polling', 'won', 'duplicated', 'lost'].includes(pollState.value),
 )
 
 const PHASE_META = {
@@ -99,7 +102,8 @@ const buttonText = computed(() => {
   }
 })
 const btnDisabled = computed(
-  () => busy.value || pollState.value === 'polling' || phase.value !== 'running',
+  () => busy.value || ['polling', 'won', 'duplicated', 'lost'].includes(pollState.value)
+    || phase.value !== 'running',
 )
 const btnBusy = computed(() => busy.value || pollState.value === 'polling')
 
@@ -201,10 +205,12 @@ function startPoll(no) {
   orderNo.value = no
   pollState.value = 'polling'
   pollTries = 0
+  pollErrorNotified = false
   orderSince.value = new Date().toLocaleTimeString('zh-CN', { hour12: false })
   hint.value = '已进入排队队列，正在等待异步建单…'
   stopOrderPoll()
   pollTimer = setInterval(async () => {
+    if (document.hidden) return
     pollTries += 1
     try {
       const od = await api.getOrder(orderNo.value)
@@ -221,6 +227,11 @@ function startPoll(no) {
         toastErr('排队超时：订单迟迟未创建')
       }
     } catch (e) {
+      if (!pollErrorNotified) {
+        pollErrorNotified = true
+        hint.value = '订单状态查询失败，正在自动重试…'
+        toastWarn('订单状态查询失败，正在自动重试')
+      }
       if (pollTries >= 60) {
         stopOrderPoll()
         pollState.value = 'lost'
@@ -287,7 +298,7 @@ async function loadMore() {
     const data = await api.listActivities()
     const all = Array.isArray(data) ? data : []
     moreList.value = all
-      .filter((it) => Number(it.activityId) !== activityId.value)
+      .filter((it) => String(it.activityId) !== activityId.value)
       .slice(0, 10)
   } catch (e) {
     moreList.value = []

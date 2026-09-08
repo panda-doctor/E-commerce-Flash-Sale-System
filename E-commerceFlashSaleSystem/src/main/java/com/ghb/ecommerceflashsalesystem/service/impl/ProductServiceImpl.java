@@ -175,7 +175,13 @@ public class ProductServiceImpl implements ProductService {
                 log.warn("商品不存在，无法更新，productId={}", productId);
                 throw new BusinessException(ResultCode.NOT_FOUND, "商品不存在，无法更新，productId=" + productId);
             }
-            log.info("更新商品成功，productId={}", productId);
+            // R4：商品更新后清商品详情缓存（含穿透空值标记），避免详情页继续命中旧数据
+            try {
+                productCacheService.deleteProductFromCache(productId);
+            } catch (Exception e) {
+                log.error("更新商品后清缓存异常，productId={}", productId, e);
+            }
+            log.info("更新商品成功并清缓存，productId={}", productId);
             return productId;
         }
     }

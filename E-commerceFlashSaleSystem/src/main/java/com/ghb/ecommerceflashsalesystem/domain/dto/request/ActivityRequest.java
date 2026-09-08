@@ -2,6 +2,7 @@ package com.ghb.ecommerceflashsalesystem.domain.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
@@ -48,17 +49,20 @@ public class ActivityRequest {
      * 秒杀价（必填），单位：分
      */
     @NotNull(message = "秒杀价不能为空")
+    @Min(value = 0, message = "秒杀价不能为负数")
     private Long seckillPrice;
 
     /**
      * 秒杀库存（必填）
      */
     @NotNull(message = "秒杀库存不能为空")
+    @Min(value = 1, message = "秒杀库存必须大于 0")
     private Integer seckillStock;
 
     /**
      * 每用户限购数量（必填）
      */
     @NotNull(message = "限购数量不能为空")
+    @Min(value = 1, message = "限购数量必须为 1")
     private Integer limitPerUser;
 }

@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * OSS 存储策略激活与「未配置密钥」兜底集成测试
  *
- * <p>本类显式切 {@code storage.type=oss}（与默认 local 分属不同上下文）：
+ * <p>本类显式设置 {@code aliyun.oss.enabled=true}（与默认本地存储分属不同上下文）：
  * <ol>
  *   <li>验证仅 OSS 实现被 {@code @ConditionalOnProperty} 激活（唯一 bean，type=oss）；</li>
  *   <li>验证未配置真实 AccessKey 时 store 抛出带可读提示的业务错误且不发网络请求。</li>

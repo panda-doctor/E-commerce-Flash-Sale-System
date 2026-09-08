@@ -495,7 +495,7 @@ function openExisting() {
             <span class="row-ico">☁️</span>
             <div class="row-t">
               <b>存储切换</b>
-              <span>改后端 <code>storage.type=oss</code> 即可切到阿里云 OSS</span>
+              <span>将后端 <code>aliyun.oss.enabled</code> 设为 <code>true</code> 即可切到阿里云 OSS</span>
             </div>
           </div>
         </div>

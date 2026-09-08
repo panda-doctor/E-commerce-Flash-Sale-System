@@ -205,7 +205,7 @@ public class Phase1IntegrationTest {
         //执行第二次预热， 应抛出BusinessException
         assertThatThrownBy(() -> seckillCacheService.preheatActivity(testActivityId))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("活动预热成功！！！不要重复，傻鸟！！！");
+                .hasMessageContaining("活动已预热，请勿重复预热");
 
         //  验证update仅调用一次（第一次预热时更新，第二次不会更新）
         verify(seckillActivityMapper, times(1)).update(any(), any());
@@ -263,6 +263,10 @@ public class Phase1IntegrationTest {
         //活动状态为RUNNING(1)
         SeckillActivity activity = prepareActivityMock(true, LocalDateTime.now().plusHours(2));
         activity.setStatus(ActivityStatusEnum.RUNNING.getCode());
+
+        // 预热：execute 只放行已预热活动（缓存命中 + Redis 库存），check 与 execute 同口径，
+        // 未预热活动走 DB 回源不会 ALLOW，故此处先真实预热再校验
+        seckillCacheService.preheatActivity(testActivityId);
 
         //执行校验
         ActivityCheckResponse checkResponse = seckillActivityService.checkActivity(testActivityId, 1001L);

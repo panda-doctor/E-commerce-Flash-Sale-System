@@ -91,4 +91,11 @@ public class Result<T> {
         result.setMessage(message);
         return result;
     }
+
+    /** 失败响应也可携带业务上下文，保持接口 data 契约稳定。 */
+    public static <T> Result<T> fail(ResultCode resultCode, String message, T data) {
+        Result<T> result = fail(resultCode, message);
+        result.setData(data);
+        return result;
+    }
 }

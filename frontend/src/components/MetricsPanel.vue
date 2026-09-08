@@ -5,7 +5,7 @@ import { toastErr, toastOK } from '../utils/toast'
 
 // 运行指标面板：轮询 /api/admin/.../metrics，展示活动实时状态
 const props = defineProps({
-  activityId: { type: Number, required: true },
+  activityId: { type: [String, Number], required: true },
 })
 
 const m = ref(null) // ActivityMetricsVO
@@ -13,7 +13,7 @@ let timer = null
 const snapshotting = ref(false)
 
 async function refresh() {
-  if (!props.activityId) return
+  if (!props.activityId || document.hidden) return
   try {
     m.value = await api.getMetrics(props.activityId)
   } catch (e) {

@@ -10,12 +10,13 @@ let healthTimer = null
 const uidInput = ref(userStore.userId)
 
 function applyUserId() {
-  const v = Number(uidInput.value)
-  if (Number.isInteger(v) && v > 0) userStore.userId = v
+  const v = String(uidInput.value).trim()
+  if (/^[1-9]\d{0,18}$/.test(v)) userStore.userId = v
   else uidInput.value = userStore.userId
 }
 
 async function checkHealth() {
+  if (document.hidden) return
   try {
     await api.health()
     health.value = 'up'

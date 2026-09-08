@@ -61,7 +61,7 @@ public class CacheKeyConstant {
     public static final long SECKILL_USER_TOKEN_TTL = 30 * 60L;
 
     /**
-     * 限流键前缀，完整键: rate:limit:{userId}
+     * 限流键前缀，完整键: rate:limit:{activityId}:{userId}
      */
     public static final String RATE_LIMIT_PREFIX = "rate:limit:";
 

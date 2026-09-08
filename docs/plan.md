@@ -36,7 +36,8 @@
   ✅ Day 5 缓存防护  ✅ Day 6 活动管理  ✅ Day 7 集成验收
 ✅ 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ~ Day 5 全部完成，28 用例 BUILD SUCCESS）
 ✅ 第 3 阶段：高并发防护体系（Day 1 ~ Day 5 全部完成，40 用例 BUILD SUCCESS）
-🔄 第 4 阶段：排行榜、前端与全链路压测（Day 1 ~ Day 6 推进中）
+✅ 第 4 阶段：排行榜、前端与全链路压测（Day 1 ~ Day 5 完成，另含增强①图片存储、增强② AI 客服，59 用例）
+🔄 第 4 阶段收尾：全量代码审计整改（audit-report R1~R5 / C1~C6 / E1~E6，62 用例）+ Day 6 复盘总结（推进中）
 ```
 
 ---
@@ -488,7 +489,7 @@
 | Day 2 | 活动运行指标 | ✅ | execute 拒绝/成功埋点计数键 + 快照落库 + `GET /api/admin/seckill/activities/{id}/metrics` |
 | Day 3 | 前端秒杀看板（AI 执行） | ✅ | 独立 Vue3+Vite 工程 `frontend/`：秒杀大厅（倒计时/状态机/订单轮询）+ 管理控制台 + 实时手速榜 + 运行指标面板 |
 | Day 4 | 联调与可演示闭环（AI 执行） | ✅ | 自动消费调度 + check 口径统一 + 端到端验证：建单 CREATED / 榜单刷新 / check=ALLOW |
-| Day 5 | 全链路 JMeter 压测 | ⏳ | `scripts/jmeter/` + 5000 并发（多 userId 绕单用户限流）+ 压测报告（库存精确性/限流拒绝/端到端延迟/Redis 指标） |
+| Day 5 | 全链路 JMeter 压测 | ✅ | `scripts/jmeter/` + 5000 并发（多 userId 绕单用户限流）+ 压测报告（库存精确性/限流拒绝/端到端延迟/Redis 指标） |
 | Day 6 | 复盘与总结 | ⏳ | 异常与边界补充、学习笔记沉淀（notework/day）、《Redis 实战总结》、阶段验收与提交 |
 
 **阶段验收标准：**
@@ -568,10 +569,10 @@
 
 ### 第 4 阶段增强①：图片存储方案 — 本地磁盘 / 阿里云 OSS 双策略 ✅（2026-09-07）
 
-- **抽象**：`ImageStorageService`（策略接口）+ `AbstractImageStorage`（扩展名白名单 / 5MB 上限 / UUID 安全命名，防脚本文件与路径穿越）+ `LocalImageStorageService` / `OssImageStorageService` 双实现，`@ConditionalOnProperty(storage.type=local|oss)` 同一时刻仅一个 bean 生效。
+- **抽象**：`ImageStorageService`（策略接口）+ `AbstractImageStorage`（扩展名白名单、文件头校验 / 5MB 上限 / UUID 安全命名，防脚本文件与路径穿越）+ `LocalImageStorageService` / `OssImageStorageService` 双实现，`@ConditionalOnProperty(aliyun.oss.enabled=true|false)` 同一时刻仅一个 bean 生效。
 - **接入**：`POST /api/admin/files/image`（multipart）→ 返回 `{url, storageType}`；`FileStorageWebConfig` 把 `/uploads/**` 映射到本地目录（磁盘读取）；返回 URL 已按当前请求主机拼接（本地上传实测回显 200，非图片格式拒绝 `40001`）。
 - **商品回填闭环**：前端管理控制台新增「商品主图管理」（载入商品 → 上传图片 → 保存商品 image_url → 清缓存），活动广场卡片与详情页即时展示（`ActivityItemVO.productImage` / `ProductVO.imageUrl` 链路已通）。
-- **OSS 策略**：凭据全部**配置化**（`application.yaml` 的 `aliyun.oss.*`：`enabled` 开关 + `endpoint`/`bucket-name`/`domain` + 密钥），密钥支持 `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` 环境变量覆盖，不落 Git；`aliyun.oss.enabled=true` 即激活（默认走 OSS，bucket `panda-tea` / 北京地域），缺密钥时上传返回可读错误且不发网络请求；`false` 回落本地磁盘。SDK 依赖 `aliyun-sdk-oss` 已加入 pom。接入/切换指引见 `docs/storage.md`。
+- **OSS 策略**：凭据全部**配置化**（`application.yaml` 的 `aliyun.oss.*`：`enabled` 开关 + `endpoint`/`bucket-name`/`domain` + 密钥），密钥支持 `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` 环境变量覆盖，不落 Git；默认走本地磁盘，设置 `aliyun.oss.enabled=true` 后才激活 OSS（bucket `panda-tea` / 北京地域）；缺密钥时上传返回可读错误且不发网络请求。SDK 依赖 `aliyun-sdk-oss` 已加入 pom。接入/切换指引见 `docs/storage.md`。
 - 全量 `mvn test` 51 用例 BUILD SUCCESS。
 
 ### 第 4 阶段 Day 5 — JMeter 全链路压测 ✅（2026-09-08）
@@ -594,6 +595,32 @@
 - **测试**：`AiSupportChatIntegrationTest` 4 用例（消息序列与 system 目录断言 / 15 轮历史截最近 10 + 角色归一 + 未知角色过滤 / 空问题 40001 / 超长 40001）；`AiClientUnconfiguredTest` 2 用例（缺 key / 缺 base-url 在发网络前抛 50300，客户端为懒初始化便于纯单测）；`OssStoragePolicyIntegrationTest` 2 用例。
 - **OSS 配置化**：密钥硬编码 → `application.yaml aliyun.oss.*`（`enabled` + `endpoint/bucket-name/domain`）+ 环境变量覆盖（见增强①更新与 `docs/storage.md`）。
 - 全量 `mvn test` **59 用例 BUILD SUCCESS**；前端 `npm run build` 通过。
+
+### 第 4 阶段复盘前置：全量代码审计与整改 🔄（2026-09-08，整改代码已落地、待验收提交）
+
+> 审计报告见 `docs/audit-report.md`（高 R1~R5 / 中高 C1~C6 / 中 E1~E6，全量精读仅出清单未改码）。报告后开始整改，代码已完成、**尚未 git 提交**，完成后经回归（**62 用例 BUILD SUCCESS**）验证。整改期间出现过一轮回归修复（见下"回归教训"）。
+
+| 编号 | 问题摘要 | 整改状态 | 落地要点 |
+|---|---|---|---|
+| R1 | `IdGenerator` 超长 ID 破坏前端全链路（超 JS 安全整数） | ✅ 已改 | 后端 ID 相关字段处理 + 前端去掉 `Number()` 回环、全程字符串透传（`store.js`/`ActivityDetailView.vue` 等） |
+| R2 | execute 发消息失败不回滚库存与令牌 | ✅ 已改 | 失败反向补偿（回补库存 + 删令牌）后重抛，与消费者侧补偿口径一致 |
+| R3 | 无鉴权 + 密钥明文 | ✅ 已改 | 新增 `ApiAccessInterceptor`/`ApiAccessWebConfig`/`SecurityProperties`：`/api/admin/**` 走 admin 令牌、`execute`/`check`/`users/*/orders` 走用户令牌；密钥改环境变量（`AI_LLM_API_KEY`/`OSS_*`） |
+| R4 | 活动"更新"不清预热缓存 | ✅ 已改 | update 成功后失效活动/库存缓存并重置预热态（联动 C5） |
+| R5 | 毒消息永留 PEL + 死信无回放/无补偿 | ✅ 已改 | 解析异常也走统一失败计数（超阈值转死信）；进死信且订单未落库时补偿库存与令牌；新增 `DeadLetterReplayService` 人工回放（死信流快照 → 重新原子占位 → 重投主 Stream → XDEL），管理接口 `POST /api/admin/seckill/dead-letters/replay` |
+| C1/C2 | orders 查询状态折叠、字段名不符契约 | ✅ 已改 | 按 `OrderStatusEnum` 输出 `status`/`statusDesc`，键名对齐 `createdAt`（interface 4.9） |
+| C3 | interface 4.10 未实现 | ✅ 已改 | 新增 `GET /api/seckill/users/{userId}/orders?activityId=`（校验访问令牌匹配） |
+| C4 | 全局异常缺参数/类型/404 处理 | ✅ 已改 | `GlobalExceptionHandler` 补参数缺失/类型不匹配/404 等 handler |
+| C5 | check 未预热降级 DB 库存放行，口径与 execute 不一致 | ✅ 已改 | DB 回源分支细化：取消→`ACTIVITY_CANCELLED`、未开始→`ACTIVITY_NOT_STARTED`、已结束→`ACTIVITY_ENDED`，仅"可参与时间窗内未预热"→`ACTIVITY_NOT_PREHEATED`（不放行，与 execute 拒绝口径一致） |
+| C6 | execute 失败响应 `data=null` 与契约不符 | ✅ 已改 | 失败路径包装统一响应结构 |
+| E1 | `resetStock` 死代码 + `decrStockScript` Bean 无引用 | 🔄 保留恢复 | 曾删 Bean 致 Day 1 验收测试（LuaStockDeductionTest）4 Error，回归后恢复 Bean；结论：脚本保留为验收资产，resetStock 暂留待接预热语义（勿在活动进行中复活库存） |
+| E2~E6 | limitPerUser 无效 / 创建缺业务校验 / 限流粒度 / 文案 / 上传校验 | ⏳ 待办 | 仅 E5 的 SeckillCacheService 不友好文案已收敛（回归确认），其余列入 Day 6 复盘收尾再议（审计报告原文含建议） |
+
+**回归教训（本日 4 Failures + 4 Errors → 62 全绿）：**
+① `RedisConfig` 删 Bean 会连锁打挂依赖旧 Bean 的既有验收测试——删除前先全局搜引用与测试注入（本次恢复 `decrStockScript` 解决 LuaStockDeductionTest 4 Error）；
+② 集成测试 `setUp`/`tearDown` 必须清理**所有**用例会写入的 DB 行（含"坏消息"用的 id=999999），否则 replay 残留活动让外键不再失败 → 坏消息消费成功，用例互相污染（Reliability 测试补 `deleteById(BAD_ACTIVITY_ID)` 解决）；
+③ 语义演进必须同步测试前置条件：check 改为"未预热不放行"后，`testCheckActivityRunning` 需先真实预热再断言 ALLOW（execute 本就只放行已预热活动）。
+
+> 用例数说明：当前全量 **62** = 增强②的 59 + `SeckillMessageReliabilityTest` 死信回放用例 +1 + `ImageStorageValidationTest` 存储策略单测 +2（整改期补充）。
 
 ---
 
@@ -642,13 +669,17 @@
 | POST | `/api/admin/seckill/activities` | ✅ | Day 6 |
 | POST | `/api/admin/seckill/activities/{id}/preheat` | ✅ | Day 6 |
 | GET | `/api/seckill/activities/{id}` | ✅ | Day 6 |
-| GET | `/api/seckill/activities/{id}/check` | ✅ | Day 6 |
-| POST | `/api/seckill/execute` | ✅ | 第2阶段 Day 2/5（Lua 原子整合后完成） |
-| GET | `/api/seckill/orders/{orderNo}` | ✅ | 第3阶段 Day 3（未落库返回 QUEUING） |
+| GET | `/api/seckill/activities/{id}/check` | ✅ | Day 6（审计整改 R3 后需 `X-User-Token`） |
+| POST | `/api/seckill/execute` | ✅ | 第2阶段 Day 2/5（Lua 原子整合后完成；R3 后需 `X-User-Token`） |
+| GET | `/api/seckill/orders/{orderNo}` | ✅ | 第3阶段 Day 3（未落库返回 QUEUING；C1/C2 后按 `OrderStatusEnum` 输出 `status`/`statusDesc`，键名 `createdAt`） |
 | GET | `/api/rank/top10` | ✅ | 第4阶段 Day 1（榜单 Top N，`?activityId=` 必填） |
 | GET | `/api/admin/seckill/activities/{id}/metrics` | ✅ | 第4阶段 Day 2（活动实时运行指标） |
 | POST | `/api/admin/seckill/activities/{id}/snapshot` | ✅ | 第4阶段 Day 2（手动打点指标快照） |
 | POST | `/api/support/chat` | ✅ | 增强② AI 客服（外部 OpenAI 兼容大模型，未配置密钥返 50300） |
+| GET | `/api/seckill/users/{userId}/orders` | ✅ | 审计整改 C3（interface 4.10，`?activityId=` 可空；R3 后需 `X-User-Token` 且令牌绑定的 userId 须匹配路径） |
+| POST | `/api/admin/seckill/dead-letters/replay` | ✅ | 审计整改 R5（死信人工回放：按 activityId+orderNo 列表回放，需 `X-Admin-Token`） |
+
+> 鉴权说明（审计整改 R3 后生效）：`/api/admin/**` 需请求头 `X-Admin-Token`（= `security.admin-token`，建议环境变量注入）；`/api/seckill/execute`、`/api/seckill/activities/{id}/check`、`/api/seckill/users/{userId}/orders` 需请求头 `X-User-Token`（格式 `security.user-tokens`，`token:userId,` 逗号分隔，服务端据令牌解析出 userId，不再信任调用方传入的 userId）。
 
 ---
 
@@ -667,5 +698,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-08（第 4 阶段增强② AI 客服完成（AI 执行）：后端 `/api/support/chat` 对接 OpenAI 兼容大模型（百炼/DeepSeek/OpenAI 等），system prompt 注入实时商品/活动目录、历史取最近 10 条；配置 `ai.llm.*` + `AI_LLM_API_KEY` 环境变量，未配置返 50300；前端 `/ai-service` 去 mock 接真接口、侧栏热门活动实时化；OSS 密钥硬编码改配置化（`storage.oss.*` + 环境变量，`docs/storage.md`）；新增 AI 4 + unit 2 + OSS 2 = 8 用例；全量 mvn test 59 用例 BUILD SUCCESS；规划表六接口补 `/api/support/chat`）*
-*下次开始位置：Day 6 — 复盘总结、学习笔记沉淀与《Redis 实战总结》收尾（或按需继续增强）*
+*上次更新：2026-09-08（第 4 阶段增强② AI 客服完成（AI 执行）：后端 `/api/support/chat` 对接 OpenAI 兼容大模型（百炼/DeepSeek/OpenAI 等），system prompt 注入实时商品/活动目录、历史取最近 10 条；配置 `ai.llm.*` + `AI_LLM_API_KEY` 环境变量，未配置返 50300；前端 `/ai-service` 去 mock 接真接口、侧栏热门活动实时化；OSS 密钥硬编码改配置化（`aliyun.oss.*` + 环境变量，`docs/storage.md`）；新增 AI 4 + unit 2 + OSS 2 = 8 用例；全量 mvn test 59 用例 BUILD SUCCESS；规划表六接口补 `/api/support/chat`。随后完成全量代码审计与整改（见"复盘前置：审计整改"小节，R1~R5/C1~C6 落地 + E 待议，期间回归修复 4+4 → 全量 mvn test **62 用例 BUILD SUCCESS**）；整改代码**尚未 git 提交**）*
+*下次开始位置：①审计整改收尾（E2~E6 待议项、前端改动验证、全量整改代码 git 提交）；②Day 6 — 复盘总结、学习笔记沉淀与《Redis 实战总结》收尾（或按需继续增强）*

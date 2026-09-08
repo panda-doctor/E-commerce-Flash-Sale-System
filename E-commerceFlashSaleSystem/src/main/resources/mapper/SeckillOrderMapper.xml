@@ -33,4 +33,26 @@
         FROM seckill_order
         WHERE order_no = #{orderNo,jdbcType=VARCHAR}
     </select>
+
+    <!-- interface 4.10：按用户 + 可选活动查询订单，按创建时间倒序 -->
+    <select id="selectByUserIdAndActivityId" resultMap="BaseResultMap">
+        SELECT
+            id,
+            order_no,
+            activity_id,
+            product_id,
+            user_id,
+            seckill_price,
+            status,
+            stream_message_id,
+            failure_reason,
+            created_at,
+            updated_at
+        FROM seckill_order
+        WHERE user_id = #{userId,jdbcType=BIGINT}
+        <if test="activityId != null">
+            AND activity_id = #{activityId,jdbcType=BIGINT}
+        </if>
+        ORDER BY created_at DESC
+    </select>
 </mapper>

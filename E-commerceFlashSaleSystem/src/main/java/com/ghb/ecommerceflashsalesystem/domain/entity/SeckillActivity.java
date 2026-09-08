@@ -1,6 +1,7 @@
 package com.ghb.ecommerceflashsalesystem.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.Version;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -31,6 +32,7 @@ public class SeckillActivity {
 
     private Integer preheatStatus;
 
+    @Version
     private Integer version;
 
     private LocalDateTime createdAt;

@@ -49,7 +49,7 @@ public class RedisConfig {
         return template;
     }
     /**
-     * 库存扣减脚本
+     * 库存原子扣减脚本（Day 1 验收资产，decr_stock.lua 仍在 classpath）
      */
     @Bean
     public RedisScript<Long> decrStockScript() {
@@ -58,6 +58,7 @@ public class RedisConfig {
         script.setResultType(Long.class);
         return script;
     }
+
     /**
      * 整合秒杀执行脚本（幂等 + 扣库存 + 回滚）
      */

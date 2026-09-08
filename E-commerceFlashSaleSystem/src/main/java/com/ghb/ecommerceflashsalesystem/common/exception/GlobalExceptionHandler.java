@@ -8,12 +8,17 @@ import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MissingPathVariableException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
 
@@ -72,6 +77,27 @@ public class GlobalExceptionHandler {
     }
     log.warn("请求体解析失败: {}", e.getMessage());
     return Result.fail(ResultCode.PARAM_ERROR, errorMsg);
+  }
+
+  @ExceptionHandler({MissingServletRequestParameterException.class, MissingPathVariableException.class,
+          MethodArgumentTypeMismatchException.class})
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  public Result<Void> handleRequestParameterException(Exception e) {
+    log.warn("请求参数缺失或类型错误: {}", e.getMessage());
+    return Result.fail(ResultCode.PARAM_ERROR, "请求参数缺失或类型错误");
+  }
+
+  @ExceptionHandler(MaxUploadSizeExceededException.class)
+  @ResponseStatus(HttpStatus.PAYLOAD_TOO_LARGE)
+  public Result<Void> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException e) {
+    log.warn("上传文件超过限制", e);
+    return Result.fail(ResultCode.PARAM_ERROR, "上传文件不能超过 6MB");
+  }
+
+  @ExceptionHandler(NoResourceFoundException.class)
+  @ResponseStatus(HttpStatus.NOT_FOUND)
+  public Result<Void> handleNoResourceFound(NoResourceFoundException e) {
+    return Result.fail(ResultCode.NOT_FOUND, "请求资源不存在");
   }
   /**
    * 5. 兜底异常 —— 所有未捕获的异常，统一返回系统错误

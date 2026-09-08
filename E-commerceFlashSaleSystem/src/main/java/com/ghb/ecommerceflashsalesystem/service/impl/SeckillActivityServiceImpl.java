@@ -88,6 +88,7 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createActivity(ActivityRequest request) {
+        validateActivityRequest(request);
         Long activityId = request.getActivityId();
          //判断是创建还是更新
         if (activityId == null) {
@@ -126,8 +127,24 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
             activityIdExisting.setSeckillStock(request.getSeckillStock());
             activityIdExisting.setLimitPerUser(request.getLimitPerUser());
 
-            seckillActivityMapper.updateById(activityIdExisting);
-            log.info("更新活动成功，activityId={}", activityId);
+            int updatedRows = seckillActivityMapper.updateById(activityIdExisting);
+            // 乐观锁（@Version）并发保护：版本不一致时更新 0 行，需提示刷新重试
+            if (updatedRows == 0) {
+                throw new BusinessException(ResultCode.PARAM_ERROR,
+                        "活动已被他人修改，请刷新后重试，activityId=" + activityId);
+            }
+            // R4 修复：更新成功后必须失效预热缓存并回置预热状态为"未预热"，
+            // 否则详情与 execute 继续命中旧缓存（旧价旧库存落单）；
+            // 新版生效需管理员在管理台重新点击"预热"（预热方法校验通过后会重建缓存）。
+            try {
+                seckillCacheService.evictActivityCache(activityId);
+            } catch (Exception e) {
+                // 缓存失效失败不应回滚 DB 更新；记日志并交由后续预热幂等兜底
+                log.error("更新活动后失效缓存异常，activityId={}", activityId, e);
+            }
+            // 回置预热状态：已预热 → 未预热（DB 为唯一事实源，预热锁内双重检查据此生效）
+            seckillCacheService.resetPreheatStatusToUnpreheated(activityId);
+            log.info("更新活动成功，已失效预热缓存并回置预热状态，activityId={}", activityId);
             return activityId;
         }
     }
@@ -187,7 +204,27 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
             if(activity == null){
                 throw new BusinessException(ResultCode.NOT_FOUND,"活动不存在");
             }
-            activityVO = convertToVO(activity);
+            // C5：未预热时不能按数据库库存放行（execute 对未预热活动一律拒绝），否则会与
+            // execute 的 Redis 库存口径冲突；但"取消/未开始/已结束"属于活动自身终态，DB 即可精确判定，
+            // 应优先返回准确原因；仅"活动正处于可参与时间窗内却未预热"才提示 NOT_PREHEATED。
+            ActivityCheckResponse response = new ActivityCheckResponse();
+            response.setActivityId(activityId);
+            response.setUserId(userId);
+            Integer dbStatus = activity.getStatus();
+            response.setActivityStatus(dbStatus == null ? null : ActivityStatusEnum.fromValue(dbStatus));
+            response.setCanJoin(false);
+            boolean cancelled = Integer.valueOf(ActivityStatusEnum.CANCELLED.getCode()).equals(dbStatus);
+            LocalDateTime now = LocalDateTime.now();
+            if (cancelled) {
+                response.setReason("ACTIVITY_CANCELLED");
+            } else if (activity.getStartTime() != null && now.isBefore(activity.getStartTime())) {
+                response.setReason("ACTIVITY_NOT_STARTED");
+            } else if (activity.getEndTime() != null && !now.isBefore(activity.getEndTime())) {
+                response.setReason("ACTIVITY_ENDED");
+            } else {
+                response.setReason("ACTIVITY_NOT_PREHEATED");
+            }
+            return response;
         }
         // 构建响应对象
         ActivityCheckResponse checkResponse = new ActivityCheckResponse();
@@ -232,5 +269,18 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
         checkResponse.setCanJoin(canJoin);
         checkResponse.setReason(reason);
         return checkResponse;
+    }
+
+    private void validateActivityRequest(ActivityRequest request) {
+        if (request.getEndTime() != null && request.getStartTime() != null
+                && !request.getEndTime().isAfter(request.getStartTime())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "结束时间必须晚于开始时间");
+        }
+        if (request.getLimitPerUser() != null && request.getLimitPerUser() != 1) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "当前系统仅支持每人限购 1 件");
+        }
+        if (request.getProductId() != null && productMapper.selectById(request.getProductId()) == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "关联商品不存在，productId=" + request.getProductId());
+        }
     }
 }

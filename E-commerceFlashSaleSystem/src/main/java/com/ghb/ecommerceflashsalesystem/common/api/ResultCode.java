@@ -11,6 +11,7 @@ public enum ResultCode {
     SUCCESS(0, "成功"),
     PARAM_ERROR(40001, "参数错误"),
     NOT_FOUND(40004, "资源未找到"),
+    UNAUTHORIZED(40100, "未授权访问"),
     DUPLICATE_PURCHASE(40901, "重复秒杀"),
     OUT_OF_STOCK(40902, "库存不足"),
     RATE_LIMITED(42900, "请求过于频繁"),

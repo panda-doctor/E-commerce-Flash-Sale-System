@@ -60,7 +60,7 @@ public class OssImageStorageService extends AbstractImageStorage {
         try {
             oss = new OSSClientBuilder().build(endpoint, accessKeyId, accessKeySecret);
             ObjectMetadata meta = new ObjectMetadata();
-            meta.setContentType(file.getContentType());
+            meta.setContentType(mediaTypeOf(file.getOriginalFilename()));
             meta.setContentLength(file.getSize());
             try (InputStream in = file.getInputStream()) {
                 oss.putObject(new PutObjectRequest(bucketName, objectKey, in, meta));
@@ -68,7 +68,7 @@ public class OssImageStorageService extends AbstractImageStorage {
             log.info("图片已上传 OSS，bucket={}, objectKey={}", bucketName, objectKey);
         } catch (Exception e) {
             log.error("OSS 图片上传失败，bucket={}, objectKey={}", bucketName, objectKey, e);
-            throw new BusinessException(ResultCode.SYSTEM_ERROR, "OSS 上传失败：" + e.getMessage());
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, "OSS 图片上传失败，请稍后重试");
         } finally {
             if (oss != null) {
                 oss.shutdown();

@@ -38,6 +38,7 @@ export const STATUS_TEXT = {
 
 // check 返回的 reason -> 提示文案
 export const CHECK_REASON_TEXT = {
+  ACTIVITY_NOT_PREHEATED: '活动库存尚未预热',
   ALLOW: '可以参与',
   ACTIVITY_NOT_STARTED: '活动尚未开始',
   ACTIVITY_ENDED: '活动已结束',

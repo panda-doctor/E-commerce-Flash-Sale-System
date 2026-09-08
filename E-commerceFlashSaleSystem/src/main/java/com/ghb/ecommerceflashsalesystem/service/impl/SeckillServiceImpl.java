@@ -88,7 +88,7 @@ public class SeckillServiceImpl implements SeckillService {
 
         // 0. 滑动窗口限流（最前置防刷闸门）：超限直接 42900，
         //    保证无效/恶意请求到不了后面的活动查询与幂等扣减
-        String rateKey = CacheKeyConstant.RATE_LIMIT_PREFIX + userId;
+        String rateKey = CacheKeyConstant.RATE_LIMIT_PREFIX + activityId + ":" + userId;
         long time = System.currentTimeMillis() / 1000; //秒级时间戳
         String member = time + "-" + System.nanoTime(); //唯一成员标识
         Long resultLimit = redisTemplate.execute(
@@ -107,9 +107,12 @@ public class SeckillServiceImpl implements SeckillService {
         }
 
         // 1. 查询活动：缓存优先，未命中回源数据库（修正 v1 错误点 2）
-        SeckillActivityVO activityVO = getActivityVO(activityId);
+        SeckillActivityVO activityVO = seckillCacheService.getActivityFromCache(activityId);
         if (activityVO == null) {
-            throw new BusinessException(ResultCode.NOT_FOUND, "活动不存在，activityId=" + activityId);
+            if (seckillActivityMapper.selectById(activityId) == null) {
+                throw new BusinessException(ResultCode.NOT_FOUND, "活动不存在，activityId=" + activityId);
+            }
+            throw new BusinessException(ResultCode.PARAM_ERROR, "活动尚未预热，暂不可参与秒杀");
         }
 
         // 2. 时间窗口动态校验：秒杀是否开放以实时时间窗为准（修正 v1 错误点 3/5）
@@ -199,11 +202,13 @@ public class SeckillServiceImpl implements SeckillService {
                     .requestTime(System.currentTimeMillis())
                     .build();
 
-            // XADD 失败时库存已扣、令牌已建 → 本阶段先抛系统异常，消息补偿留待 Day 4
+            // XADD 失败时库存已扣、令牌已建 → 立即反向补偿（回补库存 + 删除令牌）后重抛，
+            // 否则该用户 30 分钟内重试会命中令牌被判"重复秒杀"，且库存永久悬空无订单
             try {
                 seckillOrderStreamProducer.sendMessage(message);
             } catch (Exception e) {
-                log.error("发送订单消息失败，orderNo={}, activityId={}, userId={}", orderNo, activityId, userId, e);
+                log.error("发送订单消息失败，开始反向补偿，orderNo={}, activityId={}, userId={}", orderNo, activityId, userId, e);
+                compensateAfterSendFailure(stockKey, tokenKey, activityId, userId);
                 throw new BusinessException(ResultCode.SYSTEM_ERROR, "消息队列异常，请稍后重试");
             }
 
@@ -229,6 +234,23 @@ public class SeckillServiceImpl implements SeckillService {
             // 未知返回值（防御）
             log.error("脚本返回未知值: {}, activityId={}, userId={}", result, activityId, userId);
             throw new BusinessException(ResultCode.SYSTEM_ERROR, "系统异常");
+        }
+    }
+
+    /**
+     * 消息发送失败后的反向补偿：回补库存 + 删除幂等令牌，保证"未产生订单凭证"时资源归还。
+     * 补偿按可重入语义实现（INCR 一步回补；DEL 对不存在键返回成功），失败仅记日志告警，
+     * 不覆盖原始异常——库存/令牌最终一致性由人工核对或后续补偿任务兜底。
+     */
+    private void compensateAfterSendFailure(String stockKey, String tokenKey,
+                                            Long activityId, Long userId) {
+        try {
+            redisTemplate.opsForValue().increment(stockKey, 1);
+            redisTemplate.delete(tokenKey);
+            log.warn("已反向补偿库存与令牌，activityId={}, userId={}", activityId, userId);
+        } catch (Exception ce) {
+            log.error("反向补偿失败，需人工核对，activityId={}, userId={}, stockKey={}, tokenKey={}",
+                    activityId, userId, stockKey, tokenKey, ce);
         }
     }
 

@@ -18,11 +18,15 @@ async function request(url, options = {}) {
   const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData
   let response
   try {
+    const accessHeaders = {
+      ...(import.meta.env.VITE_ADMIN_TOKEN ? { 'X-Admin-Token': import.meta.env.VITE_ADMIN_TOKEN } : {}),
+      ...(import.meta.env.VITE_USER_TOKEN ? { 'X-User-Token': import.meta.env.VITE_USER_TOKEN } : {}),
+    }
     response = await fetch(url, {
       method,
       headers: isForm
-        ? { ...(options.headers ?? {}) }
-        : { 'Content-Type': 'application/json', ...(options.headers ?? {}) },
+        ? { ...accessHeaders, ...(options.headers ?? {}) }
+        : { 'Content-Type': 'application/json', ...accessHeaders, ...(options.headers ?? {}) },
       body:
         options.body == null
           ? undefined

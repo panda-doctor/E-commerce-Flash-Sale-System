@@ -190,7 +190,7 @@ public class RateLimitTest {
     @Test
     void testServiceRateLimitedFirst() {
         // 1. 正常活动 + 满限流 → RATE_LIMITED
-        fillRateKey(CacheKeyConstant.RATE_LIMIT_PREFIX + USER_FULL,
+        fillRateKey(CacheKeyConstant.RATE_LIMIT_PREFIX + ACTIVITY_ID + ":" + USER_FULL,
                 (int) CacheKeyConstant.RATE_LIMIT_MAX_COUNT, System.currentTimeMillis() / 1000.0);
         assertThatThrownBy(() -> executeSeckill(USER_FULL, ACTIVITY_ID))
                 .isInstanceOf(BusinessException.class)
@@ -198,7 +198,7 @@ public class RateLimitTest {
                         .isEqualTo(ResultCode.RATE_LIMITED));
 
         // 2. 不存在的活动 + 满限流 → 仍是 RATE_LIMITED（而不是 NOT_FOUND），限流最先
-        fillRateKey(CacheKeyConstant.RATE_LIMIT_PREFIX + USER_NONEXIST,
+        fillRateKey(CacheKeyConstant.RATE_LIMIT_PREFIX + 999999L + ":" + USER_NONEXIST,
                 (int) CacheKeyConstant.RATE_LIMIT_MAX_COUNT, System.currentTimeMillis() / 1000.0);
         assertThatThrownBy(() -> executeSeckill(USER_NONEXIST, 999999L))
                 .isInstanceOf(BusinessException.class)
@@ -218,7 +218,7 @@ public class RateLimitTest {
         assertThat(response.getResult()).isEqualTo("QUEUED");
 
         // 另一用户预填满限流：同活动被 42900
-        fillRateKey(CacheKeyConstant.RATE_LIMIT_PREFIX + USER_FULL,
+        fillRateKey(CacheKeyConstant.RATE_LIMIT_PREFIX + ACTIVITY_ID + ":" + USER_FULL,
                 (int) CacheKeyConstant.RATE_LIMIT_MAX_COUNT, System.currentTimeMillis() / 1000.0);
         assertThatThrownBy(() -> executeSeckill(USER_FULL, ACTIVITY_ID))
                 .isInstanceOf(BusinessException.class)

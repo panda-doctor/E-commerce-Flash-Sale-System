@@ -194,9 +194,41 @@ public class SeckillOrderConsumer {
                 handleFailure(record, message, messageId, logEntity, e);
             }
         } catch (Exception e) {
-            // 解析/日志基础设施异常：无法可靠还原消息，打日志后不 ACK 留 PEL（避免丢消息）
-            log.error("处理消息异常，messageId={}", messageId, e);
+            // R5 修复：解析/日志异常（如脏字段导致的 NumberFormatException）也必须计数并最终转死信，
+            // 否则毒消息永远留在 PEL 每轮重试、PEL 无限增长。这里宽松解析消息体 → 走统一 handleFailure。
+            handleUnrecoverable(record, messageId, e);
         }
+    }
+
+    /**
+     * 处理外层异常（解析失败/字段脏数据等）：
+     * 宽松解析消息体（坏字段置 null，不抛），能建日志则进入 handleFailure 计数，
+     * 达到阈值转死信 + ACK，杜绝毒消息无限滞留 PEL。
+     */
+    private void handleUnrecoverable(MapRecord<String, Object, Object> record,
+                                     String messageId, Exception e) {
+        log.error("处理消息异常（解析/字段异常），messageId={}", messageId, e);
+        try {
+            SeckillOrderMessage fallback = parseMessageLenient(record);
+            SeckillMessageLog logEntity = getOrCreateMessageLog(messageId, fallback);
+            handleFailure(record, fallback, messageId, logEntity, e);
+        } catch (Exception inner) {
+            // 连日志表都不可用（基础设施故障）：保留 PEL，待恢复后由 consumerRetry 再拾起
+            log.error("处理消息异常且无法写入消息日志（基础设施不可用），messageId={}", messageId, inner);
+        }
+    }
+
+    /** 宽松解析：坏字段置 null 不抛（区别于严格 parseMessage） */
+    private SeckillOrderMessage parseMessageLenient(MapRecord<String, Object, Object> record) {
+        Map<Object, Object> body = record.getValue();
+        return SeckillOrderMessage.builder()
+                .activityId(lenientLong(body.get("activityId")))
+                .productId(lenientLong(body.get("productId")))
+                .userId(lenientLong(body.get("userId")))
+                .orderNo(toStr(body.get("orderNo")))
+                .seckillPrice(lenientLong(body.get("seckillPrice")))
+                .requestTime(lenientLong(body.get("requestTime")))
+                .build();
     }
 
     /** 解析消息字段（生产者按明文 Map 投递，字段为 String） */
@@ -265,6 +297,12 @@ public class SeckillOrderConsumer {
             seckillMessageLogMapper.updateById(logEntity);
             ack(record);
             log.warn("消息进入死信流: orderNo={}, messageId={}", message.getOrderNo(), messageId);
+            // R5：订单未落库即进死信（用户必然未抢到），补偿回收库存与幂等令牌，避免资源永久悬空；
+            // 订单已落库的极端情况（落库成功但后续入榜失败）不补偿，避免误收回已成交的资源。
+            if (message.getOrderNo() != null
+                    && seckillOrderMapper.selectByOrderNo(message.getOrderNo()) == null) {
+                compensateDeadMessage(message);
+            }
         } else {
             // 未达阈值：不 ACK，消息留在 PEL，由 consumerRetry(0) 再次拾起
             log.info("消息保留在 PEL 等待重试，当前重试次数={}", newRetry);
@@ -317,6 +355,45 @@ public class SeckillOrderConsumer {
             return ((Number) value).longValue();
         }
         return Long.valueOf(value.toString());
+    }
+
+    /** Map 值宽松转 Long：坏字段（如脏数据 "abc"）返回 null，不抛异常 */
+    private Long lenientLong(Object value) {
+        if (value == null || value.toString().trim().isEmpty()) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        try {
+            return Long.valueOf(value.toString().trim());
+        } catch (NumberFormatException ex) {
+            log.warn("字段非数字，置 null 处理: value={}", value);
+            return null;
+        }
+    }
+
+    /**
+     * 死信补偿：消息确认无法建单（订单未落库）时，回补 Redis 库存并把该用户从
+     * 幂等令牌中释放，保证"无单可查 + 令牌/库存不归还"的资源悬空问题得到收敛。
+     * 幂等语义与 SeckillServiceImpl.compensateAfterSendFailure 保持一致。
+     */
+    private void compensateDeadMessage(SeckillOrderMessage message) {
+        if (message.getActivityId() == null || message.getUserId() == null) {
+            log.warn("死信消息缺失 activityId/userId，跳过库存补偿: orderNo={}", message.getOrderNo());
+            return;
+        }
+        String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + message.getActivityId();
+        String tokenKey = CacheKeyConstant.SECKILL_USER_PREFIX + message.getActivityId() + ":" + message.getUserId();
+        try {
+            redisTemplate.opsForValue().increment(stockKey, 1);
+            redisTemplate.delete(tokenKey);
+            log.warn("死信补偿成功：回补库存并释放令牌, activityId={}, userId={}",
+                    message.getActivityId(), message.getUserId());
+        } catch (Exception ce) {
+            log.error("死信补偿失败，需人工核对, activityId={}, userId={}, stockKey={}, tokenKey={}",
+                    message.getActivityId(), message.getUserId(), stockKey, tokenKey, ce);
+        }
     }
 
     /** Map 值安全转 String */

@@ -4,6 +4,8 @@ package com.ghb.ecommerceflashsalesystem.controller.seckill;
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
+import com.ghb.ecommerceflashsalesystem.config.ApiAccessInterceptor;
+import jakarta.servlet.http.HttpServletRequest;
 import com.ghb.ecommerceflashsalesystem.domain.dto.response.ActivityCheckResponse;
 import com.ghb.ecommerceflashsalesystem.domain.vo.ActivityItemVO;
 import com.ghb.ecommerceflashsalesystem.domain.vo.SeckillActivityVO;
@@ -60,7 +62,12 @@ public class SeckillActivityController {
      */
     @GetMapping("/activities/{activityId}/check")
     public Result<ActivityCheckResponse> checkActivitiesUser(@PathVariable Long activityId,
-                                                             @RequestParam Long userId) {
+                                                             @RequestParam Long userId,
+                                                             HttpServletRequest httpRequest) {
+        Long authenticatedUserId = (Long) httpRequest.getAttribute(ApiAccessInterceptor.AUTHENTICATED_USER_ID);
+        if (authenticatedUserId == null || !authenticatedUserId.equals(userId)) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "请求用户与访问令牌不匹配");
+        }
         // service 层会处理活动不存在并抛出 BusinessException(NOT_FOUND)
 
         ActivityCheckResponse checkResponse = seckillActivityService.checkActivity( activityId, userId);

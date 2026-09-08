@@ -3,10 +3,12 @@ package com.ghb.ecommerceflashsalesystem.controller.admin;
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
 import com.ghb.ecommerceflashsalesystem.domain.dto.request.ActivityRequest;
+import com.ghb.ecommerceflashsalesystem.domain.dto.request.DeadLetterReplayRequest;
 import com.ghb.ecommerceflashsalesystem.domain.enums.ActivityStatusEnum;
 import com.ghb.ecommerceflashsalesystem.domain.vo.SeckillActivityVO;
 import com.ghb.ecommerceflashsalesystem.service.cache.SeckillCacheService;
 import com.ghb.ecommerceflashsalesystem.service.seckill.SeckillActivityService;
+import com.ghb.ecommerceflashsalesystem.service.seckill.DeadLetterReplayService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,7 @@ import java.util.Map;
 public class AdminSeckillController {
     private final SeckillActivityService seckillActivityService;
     private final SeckillCacheService seckillCacheService;
+    private final DeadLetterReplayService deadLetterReplayService;
 
     /**
      * 创建或更新秒杀活动（接口 4.4）
@@ -82,6 +85,15 @@ public class AdminSeckillController {
 
         log.info("活动预热成功，activityId={}", activityId);
         return Result.success(data);
+    }
+
+    /** POST /api/admin/seckill/dead-letters/replay：人工重新投递一条已补偿的死信。 */
+    @PostMapping("/dead-letters/replay")
+    public Result<Map<String, String>> replayDeadLetter(@Valid @RequestBody DeadLetterReplayRequest request) {
+        String replayMessageId = deadLetterReplayService.replay(request.getOriginalMessageId());
+        return Result.success(Map.of(
+                "originalMessageId", request.getOriginalMessageId(),
+                "replayMessageId", replayMessageId));
     }
 }
 

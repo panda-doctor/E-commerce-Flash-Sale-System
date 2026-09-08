@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * <p>
@@ -19,6 +20,15 @@ import java.io.Serializable;
 public interface SeckillOrderMapper extends BaseMapper<SeckillOrder> {
 
     SeckillOrder selectByOrderNo(@Param("orderNo") String orderNo);
+
+    /**
+     * 查询用户秒杀订单（interface 4.10）。
+     *
+     * @param userId     用户编号
+     * @param activityId 活动编号，可为空（为空则返回该用户全部订单）
+     */
+    List<SeckillOrder> selectByUserIdAndActivityId(@Param("userId") Long userId,
+                                                   @Param("activityId") Long activityId);
 }
 
 

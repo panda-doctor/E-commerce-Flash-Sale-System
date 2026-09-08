@@ -120,9 +120,9 @@ public class PreheatConcurrencyTest {
                     seckillCacheService.preheatActivity(ACTIVITY_ID);
                     successCount.incrementAndGet();
                 }catch (BusinessException e) {
-                    // preheatActivity 防重抛出的消息是 "活动预热成功！！！不要重复..."，据此识别"已被预热"拒绝
+                    // preheatActivity 防重抛出统一的“已预热”文案，据此识别正常并发拒绝。
                     if (e.getResultCode() == ResultCode.PARAM_ERROR
-                            && e.getMessage().contains("不要重复")) {
+                            && e.getMessage().contains("活动已预热")) {
                         alreadyPreheatedCount.incrementAndGet();
                     } else {
                         unexpected.set(e);

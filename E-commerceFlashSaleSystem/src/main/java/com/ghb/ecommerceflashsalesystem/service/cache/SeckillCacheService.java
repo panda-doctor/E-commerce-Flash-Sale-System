@@ -72,7 +72,7 @@ public class SeckillCacheService {
             // 2. 防重预热（锁内检查 DB 最新状态）
             if (activity.getPreheatStatus() != null
                     && PreheatStatusEnum.PREHEATED.getCode() == activity.getPreheatStatus()) {
-                throw new BusinessException(ResultCode.PARAM_ERROR, "活动预热成功！！！不要重复，傻鸟！！！");
+                throw new BusinessException(ResultCode.PARAM_ERROR, "活动已预热，请勿重复预热");
             }
 
             // 3. 时间窗口校验
@@ -180,6 +180,36 @@ public class SeckillCacheService {
                 log.debug("重置锁已释放，activityId={}", activityId);
             }
         }
+    }
+
+    /**
+     * 活动信息变更后的缓存失效入口（R4）：
+     * 活动"更新"（改价/改库存/改时间窗等）成功后必须调用，删除活动 Hash 与库存键，
+     * 否则详情与 execute 会继续命中旧缓存（旧价旧库存落单）。
+     *
+     * @param activityId 活动ID
+     * @return 是否删除了至少一个缓存键
+     */
+    public boolean evictActivityCache(Long activityId) {
+        String activityKey = CacheKeyConstant.SECKILL_ACTIVITY_PREFIX + activityId;
+        String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
+        boolean deleted = Boolean.TRUE.equals(redisTemplate.delete(activityKey))
+                | Boolean.TRUE.equals(redisTemplate.delete(stockKey));
+        if (deleted) {
+            log.warn("活动变更，已失效预热缓存，activityId={}", activityId);
+        }
+        return deleted;
+    }
+
+    /**
+     * 将活动的预热状态回置为"未预热"（R4：活动信息更新后需重新预热才能生效）
+     */
+    public void resetPreheatStatusToUnpreheated(Long activityId) {
+        UpdateWrapper<SeckillActivity> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", activityId)
+                .set("preheat_status", PreheatStatusEnum.NOT_PREHEATED.getCode());
+        seckillActivityMapper.update(null, wrapper);
+        log.info("活动预热状态已回置为未预热，activityId={}", activityId);
     }
 
     public SeckillActivityVO getActivityFromCache(Long activityId) {
