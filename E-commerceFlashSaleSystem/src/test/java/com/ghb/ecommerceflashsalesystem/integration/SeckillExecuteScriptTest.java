@@ -15,7 +15,7 @@ import java.util.Arrays;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Slf4j
-@SpringBootTest
+@SpringBootTest(properties = "flash.stream.auto-poll=false")
 public class SeckillExecuteScriptTest {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;

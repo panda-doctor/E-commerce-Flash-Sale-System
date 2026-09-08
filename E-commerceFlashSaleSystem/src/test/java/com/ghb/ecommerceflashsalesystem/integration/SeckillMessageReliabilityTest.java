@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 3. 死信流转：retry 达阈值后进入死信流、日志 status=DEAD、原消息 ACK。
  */
 @Slf4j
-@SpringBootTest
+@SpringBootTest(properties = "flash.stream.auto-poll=false")
 public class SeckillMessageReliabilityTest {
 
     @Autowired

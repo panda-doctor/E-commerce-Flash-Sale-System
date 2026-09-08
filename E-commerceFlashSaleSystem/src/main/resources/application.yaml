@@ -5,9 +5,29 @@
 server:
   port: 8081                      # 【新增】指定启动端口为 8081
 
+# Stream 自动消费开关：浏览器演示 / JMeter 压测需要消费者自动异步建单时开启
+# 集成测试侧已在 @SpringBootTest(properties = "flash.stream.auto-poll=false") 中显式关闭，
+# 避免后台轮询与用例手动驱动消费 / 失败重试断言产生竞态。
+flash:
+  stream:
+    auto-poll: true
+
+# =====================================================
+# 图片存储双策略：local（默认，本地磁盘 + /uploads 静态映射）| oss（阿里云 OSS）
+# OSS 的 AccessKey 按需求硬编码在 OssImageStorageService 类内（占位，部署前替换）
+# =====================================================
+storage:
+  type: local
+  local:
+    dir: uploads
+
 spring:
   application:
     name: E-commerceFlashSaleSystem
+  servlet:
+    multipart:
+      max-file-size: 6MB          # 上传图片大小上限（服务内校验 5MB，预留 multipart 余量）
+      max-request-size: 8MB
 
   # =====================================================
   # MySQL 数据源

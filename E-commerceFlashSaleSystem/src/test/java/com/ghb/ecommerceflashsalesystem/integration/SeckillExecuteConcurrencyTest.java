@@ -34,7 +34,7 @@ import static org.mockito.Mockito.when;
 
 
 @Slf4j
-@SpringBootTest
+@SpringBootTest(properties = "flash.stream.auto-poll=false")
 
 public class SeckillExecuteConcurrencyTest {
 

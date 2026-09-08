@@ -18,7 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
-@SpringBootTest
+@SpringBootTest(properties = "flash.stream.auto-poll=false")
 @Transactional  // 事务回滚，防止测试数据污染数据库
 public class MapperTest {
 

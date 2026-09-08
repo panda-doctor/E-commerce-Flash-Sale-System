@@ -1,14 +1,18 @@
 package com.ghb.ecommerceflashsalesystem.service.impl;
 
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.common.util.IdGenerator;
 import com.ghb.ecommerceflashsalesystem.domain.dto.request.ActivityRequest;
 import com.ghb.ecommerceflashsalesystem.domain.dto.response.ActivityCheckResponse;
+import com.ghb.ecommerceflashsalesystem.domain.entity.Product;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;
 import com.ghb.ecommerceflashsalesystem.domain.enums.ActivityStatusEnum;
+import com.ghb.ecommerceflashsalesystem.domain.vo.ActivityItemVO;
 import com.ghb.ecommerceflashsalesystem.domain.vo.SeckillActivityVO;
+import com.ghb.ecommerceflashsalesystem.mapper.ProductMapper;
 import com.ghb.ecommerceflashsalesystem.mapper.SeckillActivityMapper;
 import com.ghb.ecommerceflashsalesystem.service.cache.SeckillCacheService;
 import com.ghb.ecommerceflashsalesystem.service.seckill.SeckillActivityService;
@@ -16,6 +20,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 秒杀活动服务实现
@@ -26,6 +36,52 @@ import org.springframework.transaction.annotation.Transactional;
 public class SeckillActivityServiceImpl implements SeckillActivityService {
     private final SeckillActivityMapper seckillActivityMapper;
     private final SeckillCacheService seckillCacheService;
+    private final ProductMapper productMapper;
+
+    // ========== 方法⓪：活动广场列表（附带商品信息与实时库存） ==========
+
+    @Override
+    public List<ActivityItemVO> listActivities() {
+        List<SeckillActivity> activities = seckillActivityMapper.selectList(
+                new LambdaQueryWrapper<SeckillActivity>()
+                        .orderByDesc(SeckillActivity::getStartTime)
+                        .last("LIMIT 50"));
+        if (activities == null || activities.isEmpty()) {
+            return Collections.emptyList();
+        }
+        // 批量取商品信息（productIds 去重一次 IN 查询，避免列表 N+1）
+        List<Long> productIds = activities.stream()
+                .map(SeckillActivity::getProductId)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<Long, Product> productMap = productIds.isEmpty()
+                ? Collections.emptyMap()
+                : productMapper.selectBatchIds(productIds).stream()
+                        .collect(Collectors.toMap(Product::getId, p -> p));
+
+        return activities.stream().map(activity -> {
+            ActivityItemVO vo = new ActivityItemVO();
+            vo.setActivityId(activity.getId());
+            vo.setProductId(activity.getProductId());
+            vo.setActivityName(activity.getActivityName());
+            vo.setStartTime(activity.getStartTime());
+            vo.setEndTime(activity.getEndTime());
+            vo.setSeckillPrice(activity.getSeckillPrice());
+            vo.setStatus(ActivityStatusEnum.fromValue(activity.getStatus()));
+
+            Product product = productMap.get(activity.getProductId());
+            if (product != null) {
+                vo.setProductName(product.getName());
+                vo.setProductImage(product.getImageUrl());
+                vo.setOriginalPrice(product.getOriginalPrice());
+            }
+            // 实时库存：预热后取 Redis；未预热回退 DB 配置库存
+            Integer cacheStock = seckillCacheService.getStockFromCache(activity.getId());
+            vo.setStock(cacheStock != null ? cacheStock : activity.getSeckillStock());
+            vo.setTotalStock(activity.getSeckillStock());
+            return vo;
+        }).collect(Collectors.toList());
+    }
 
     // ========== 方法①：创建/更新活动 ==========
 
@@ -137,47 +193,39 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
         checkResponse.setUserId(userId);
         checkResponse.setActivityStatus(activityVO.getStatus());
 
-        // 根据状态判断是否可以参与
-        ActivityStatusEnum status = activityVO.getStatus();
+        // 【复盘】check 与 execute 的开放判定口径曾不一致：execute 以「缓存时间窗动态推导」为准，
+        // 而这里却直接按缓存的 status 快照判断（预热写入的是创建时 NOT_STARTED 快照），
+        // 导致前端表现为"check 提示未开始 / execute 却能抢成功"的自相矛盾。
+        // 修正：与 execute 统一口径——CANCELLED 显式提前拦截；其余以实时时间窗 + 实时库存判定，
+        // status 仅作辅助快照，售罄以库存兜底。
         boolean canJoin;
         String reason;
-
-        switch (status) {
-            case RUNNING:
-                // 进行中：还需要检查库存是否充足（实时库存）
+        if (activityVO.getStatus() == ActivityStatusEnum.CANCELLED) {
+            canJoin = false;
+            reason = "ACTIVITY_CANCELLED";
+        } else {
+            LocalDateTime now = LocalDateTime.now();
+            if (now.isBefore(activityVO.getStartTime())) {
+                canJoin = false;
+                reason = "ACTIVITY_NOT_STARTED";
+            } else if (!now.isBefore(activityVO.getEndTime())) {
+                canJoin = false;
+                reason = "ACTIVITY_ENDED";
+            } else {
+                // 时间窗内：检查实时库存（缓存优先，未预热降级 DB 库存）
                 Integer stock = seckillCacheService.getStockFromCache(activityId);
-                if(stock == null){
-                    // 缓存中没有库存，可能未预热或已过期，降级查数据库库存
+                if (stock == null) {
                     SeckillActivity activity = seckillActivityMapper.selectById(activityId);
                     stock = activity != null ? activity.getSeckillStock() : 0;
                 }
                 if (stock != null && stock > 0) {
                     canJoin = true;
                     reason = "ALLOW";
-                }else{
+                } else {
                     canJoin = false;
                     reason = "ACTIVITY_SOLD_OUT";
                 }
-                break;
-            case NOT_STARTED:
-                canJoin = false;
-                reason = "ACTIVITY_NOT_STARTED";
-                break;
-            case ENDED:
-                canJoin = false;
-                reason = "ACTIVITY_ENDED";
-                break;
-            case SOLD_OUT:
-                canJoin = false;
-                reason = "ACTIVITY_SOLD_OUT";
-                break;
-            case CANCELLED:
-                canJoin = false;
-                reason = "ACTIVITY_CANCELLED";
-                break;
-            default:
-                canJoin = false;
-                reason = "ACTIVITY_NOT_STARTED"; // 默认安全处理
+            }
         }
         checkResponse.setCanJoin(canJoin);
         checkResponse.setReason(reason);

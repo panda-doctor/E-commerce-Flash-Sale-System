@@ -5,12 +5,14 @@ import com.ghb.ecommerceflashsalesystem.common.api.Result;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.domain.dto.response.ActivityCheckResponse;
+import com.ghb.ecommerceflashsalesystem.domain.vo.ActivityItemVO;
 import com.ghb.ecommerceflashsalesystem.domain.vo.SeckillActivityVO;
 import com.ghb.ecommerceflashsalesystem.service.seckill.SeckillActivityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -22,6 +24,15 @@ import java.util.Map;
 @RequestMapping("/api/seckill")
 public class SeckillActivityController {
     private final SeckillActivityService seckillActivityService;
+    /**
+     * 活动广场列表（前端首页"商品/活动"网格数据源）
+     * GET /api/seckill/activities
+     */
+    @GetMapping("/activities")
+    public Result<List<ActivityItemVO>> listActivities() {
+        return Result.success(seckillActivityService.listActivities());
+    }
+
     /**
      * 查询活动详情（接口 4.6）
      * GET /api/seckill/activities/{activityId}

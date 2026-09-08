@@ -119,6 +119,27 @@ public class CacheKeyConstant {
      * 榜单允许的最大 TOP N
      */
     public static final int RANK_MAX_TOP = 100;
+
+    /**
+     * 活动指标Hash键前缀，完整键：seckill:metric:{activityId}
+     */
+    public static final String SECKILL_METRIC_PREFIX = "seckill:metric:";
+
+    /**
+     * 指标字段：限流拒绝次数
+     */
+    public static final String METRIC_FIELD_RATE_LIMIT = "rateLimitReject";
+
+    /**
+     * 指标字段：重复秒杀拒绝次数
+     */
+    public static final String METRIC_FIELD_DUPLICATE = "duplicateReject";
+
+    /**
+     * 指标字段：库存不足拒绝次数
+     */
+    public static final String METRIC_FIELD_SOLD_OUT = "soldOutReject";
+
 }
 /*
  * 3. 实际用途与意义

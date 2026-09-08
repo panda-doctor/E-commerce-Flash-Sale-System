@@ -36,7 +36,7 @@ import static org.mockito.Mockito.when;
  * 3. 失败路径（重复秒杀 / 售罄）不会向 Stream 追加消息——消息只由"真正扣到库存"的请求触发。
  */
 @Slf4j
-@SpringBootTest
+@SpringBootTest(properties = "flash.stream.auto-poll=false")
 public class SeckillPublishStreamTest {
 
     @Autowired

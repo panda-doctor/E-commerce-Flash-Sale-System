@@ -42,7 +42,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @Slf4j
-@SpringBootTest
+@SpringBootTest(properties = "flash.stream.auto-poll=false")
 public class Phase1IntegrationTest {
     @Autowired
     /**
@@ -280,7 +280,10 @@ public class Phase1IntegrationTest {
     @Test
     void testCheckActivityEnded() {
         prepareProductMock();
-        SeckillActivity activity = prepareActivityMock(true, LocalDateTime.now().plusHours(2));
+        // 【语义对齐】活动"已结束"按实时时间窗判定：endTime 必须已过去。
+        // 旧写法 endTime=+2h 仅改 status=ENDED 快照，会与 execute 的时间窗口径矛盾
+        // （预热缓存的 status 是创建时的快照，管理端不会自动翻转为 ENDED）。
+        SeckillActivity activity = prepareActivityMock(true, LocalDateTime.now().minusMinutes(5));
         activity.setStatus(ActivityStatusEnum.ENDED.getCode());
 
         ActivityCheckResponse checkResponse = seckillActivityService.checkActivity(testActivityId, 1000L);

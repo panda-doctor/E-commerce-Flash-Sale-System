@@ -77,6 +77,8 @@ public class SeckillServiceImpl implements SeckillService {
     private final RedisScript<Long> seckillExecuteScript;
     private final RedisScript<Long> rateLimitScript;
     private final SeckillOrderStreamProducer seckillOrderStreamProducer;
+    // 【复盘】曾误在此重复注入 streamProducer（与上行同类型，纯冗余）与 rankService——
+    // execute 抢单成功 ≠ 订单落库成功，榜单在订单成功落库的消费者侧记录（ZADD NX 幂等），execute 无需榜单依赖。
 
     @Override
     public SeckillResponse execute(SeckillRequest request) {
@@ -99,6 +101,8 @@ public class SeckillServiceImpl implements SeckillService {
         );
 
         if (resultLimit == null || resultLimit == 0) {
+            // 限流拒绝 → 埋点（曾误用 METRIC_FIELD_DUPLICATE，限流应记 RATE_LIMIT 字段）
+            incrementMetric(activityId, CacheKeyConstant.METRIC_FIELD_RATE_LIMIT);
             throw new BusinessException(ResultCode.RATE_LIMITED, "请求过于频繁");
         }
 
@@ -211,15 +215,29 @@ public class SeckillServiceImpl implements SeckillService {
             log.info("秒杀成功，orderNo={}, 剩余库存={}", orderNo, result);
             return response;
         } else if (result == -1) {
+            // 库存不足 → 埋点
+            incrementMetric(activityId, CacheKeyConstant.METRIC_FIELD_SOLD_OUT);
             // 库存不足（令牌已在脚本内回滚）
             throw new BusinessException(ResultCode.OUT_OF_STOCK, "库存不足");
         } else if (result == -2) {
+            // 重复秒杀 → 埋点
+            incrementMetric(activityId, CacheKeyConstant.METRIC_FIELD_DUPLICATE);
+
             // 重复秒杀（令牌已存在）
             throw new BusinessException(ResultCode.DUPLICATE_PURCHASE, "请勿重复秒杀");
         } else {
             // 未知返回值（防御）
             log.error("脚本返回未知值: {}, activityId={}, userId={}", result, activityId, userId);
             throw new BusinessException(ResultCode.SYSTEM_ERROR, "系统异常");
+        }
+    }
+
+    private void incrementMetric(Long activityId, String field) {
+        try {
+            String key = CacheKeyConstant.SECKILL_METRIC_PREFIX + activityId;
+            redisTemplate.opsForHash().increment(key, field, 1);
+        }catch (Exception e) {
+            log.warn("指标埋点失败，activityId={}, field={}", activityId, field, e);
         }
     }
 

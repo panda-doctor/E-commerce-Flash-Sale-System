@@ -39,7 +39,7 @@ import static org.mockito.Mockito.when;
  *  - service 级：预填充限流键到阈值，验证 42900 已接入且最先于活动校验/幂等。
  */
 @Slf4j
-@SpringBootTest
+@SpringBootTest(properties = "flash.stream.auto-poll=false")
 public class RateLimitTest {
 
 

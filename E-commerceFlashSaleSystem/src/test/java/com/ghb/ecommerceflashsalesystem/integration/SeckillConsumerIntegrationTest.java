@@ -26,7 +26,7 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Slf4j
-@SpringBootTest
+@SpringBootTest(properties = "flash.stream.auto-poll=false")
 public class SeckillConsumerIntegrationTest {
     @Autowired
     private SeckillService seckillService;
