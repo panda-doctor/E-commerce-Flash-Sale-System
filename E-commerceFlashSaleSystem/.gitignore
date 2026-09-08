@@ -1,2 +1,5 @@
 # 本地启动日志（mvn spring-boot:run 重定向产物，不入库）
 boot*.log
+
+# Maven 构建产物
+target/
