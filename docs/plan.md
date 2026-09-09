@@ -10,7 +10,7 @@
 |------|------|
 | 项目名称 | 轻量级电商秒杀系统（E-commerce Flash Sale System） |
 | 技术栈 | Spring Boot 3.3.4 / JDK 17 / MySQL 8.0 + MyBatis-Plus 3.5.7 / Redis 7.0 + Redisson 3.34.0 |
-| 项目文档 | `docs/project.md`、`docs/developlan.md`、`docs/interface.md`、`docs/database.md`、`docs/day.md`、`docs/plan.md` |
+| 项目文档 | `docs/project.md`、`docs/developlan.md`、`docs/interface.md`、`docs/database.md`、`docs/plan.md`（进度追踪，含分日计划）、`docs/audit-report.md`、`docs/load-test-report.md`、`docs/storage.md`、`docs/notework.md` |
 | 开发人员 | panda |
 | 导师 | Claude Code |
 
@@ -37,7 +37,7 @@
 ✅ 第 2 阶段：秒杀核心与原子库存扣减（Day 1 ~ Day 5 全部完成，28 用例 BUILD SUCCESS）
 ✅ 第 3 阶段：高并发防护体系（Day 1 ~ Day 5 全部完成，40 用例 BUILD SUCCESS）
 ✅ 第 4 阶段：排行榜、前端与全链路压测（Day 1 ~ Day 5 完成，另含增强①图片存储、增强② AI 客服，59 用例）
-🔄 第 4 阶段收尾：全量代码审计整改（audit-report R1~R5 / C1~C6 / E1~E6，62 用例）+ Day 6 复盘总结（推进中）
+✅ 第 4 阶段收尾：全量代码审计整改（R1~R5 / C1~C6 / E1~E6）+ E 卡收尾 + F/G 多账号 + S2/M 交付前收尾（HEAD `c1f689e`，92 用例 BUILD SUCCESS）；⏳ 剩余 Day 6 复盘总结与《Redis 实战总结》
 ```
 
 ---
@@ -234,7 +234,7 @@
 
 ### 第 2 阶段开发计划（秒杀核心与原子库存扣减）
 
-> 阶段目标：实现真正的高并发秒杀核心 `/api/seckill/execute`，用 Redis Lua 脚本保证库存原子扣减、杜绝超卖，并用并发测试/JMeter 验证「库存精确到 0、永不超卖」。产出物对应 `docs/day.md` 第 2 阶段。
+> 阶段目标：实现真正的高并发秒杀核心 `/api/seckill/execute`，用 Redis Lua 脚本保证库存原子扣减、杜绝超卖，并用并发测试/JMeter 验证「库存精确到 0、永不超卖」。产出物对应本文档「第 2 阶段」小节（`docs/day.md` 系早期分日文档旧称，从未入库，其内容已并入本文档演进为路线图）。
 
 - **现有基础（第 1 阶段遗产）**：`seckill:stock:{activityId}` 库存键 + `preheatActivity` 预热 ✅、`SeckillActivityService.checkActivity` 时间/状态校验雏形 ✅、`SeckillOrder` 实体与 Mapper ✅、`seckill:lock:` 锁前缀常量 ✅、`/api/seckill/check` 校验接口 ✅。
 - **本轮缺口**：`resources/lua/` 目录为空（Day 1 起补）、`/seckill/execute` 接口不存在、`seckill:user:{activityId}:{userId}` 幂等键只定义了常量未真正使用。
@@ -481,7 +481,7 @@
 > 阶段目标：把"能扛高并发"升级为"看得见、可演示、可量化"——订单成功上实时榜（ZSet），活动运行指标可查（计数键 + `seckill_activity_snapshot` 快照），浏览器一键完成秒杀演示闭环（前端页 + 订单轮询 + 榜单轮询），最后用 JMeter 全链路压测出具报告（补第 3 阶段 3.2 延后项）。
 
 - **现有基础（第 3 阶段遗产）**：`execute` 全链路（限流 → Lua 原子 → Stream 发布）✅、消费者异步落单 + 幂等 + XACK（`seckill_order` 唯一键兜底）✅、`seckill_activity_snapshot` 表已建（schema.sql 5 表之一，尚未使用）✅、契约已定（database.md：`seckill:rank:{activityId}`；interface.md 4.11 `/api/rank/top10`、4.12 `/api/admin/.../metrics`）✅、`static/` 与 `templates/` 空目录待用 ✅。
-- **本轮缺口**：榜单 ZSet 写入与 topN 接口不存在；指标**计数键**不存在（execute 三处拒绝分支未埋点 INCR）、快照采集与 metrics 接口不存在；前端零页面；`scripts/jmeter/` 未建；早期遗留文档（day.md 等）仍未对账。
+- **本轮缺口**：榜单 ZSet 写入与 topN 接口不存在；指标**计数键**不存在（execute 三处拒绝分支未埋点 INCR）、快照采集与 metrics 接口不存在；前端零页面；`scripts/jmeter/` 未建；早期遗留文档引用（`docs/day.md` 系旧称、从未入库，分日计划已并入本 plan.md）尚待统一。
 
 | 天 | 主题 | 状态 | 核心产出 |
 |---|---|---|---|
@@ -767,6 +767,30 @@
 
 ---
 
+### 交付前收尾（2026-09-09 · ✅ 已 git 提交 `c1f689e`）：S2 Redis 加固 + 审查整改 M1~M10
+
+> 承接 F/G 多账号卡后的交付前收尾批量。S2 加固与 M 系列审查整改已实现，并连同 F1~F5/G1~G5 一并提交（HEAD `c1f689e`），工作区 clean、与 origin/main 同步；提交后全量 `mvn test` **92 用例 BUILD SUCCESS**（含新增 `AdminSeckillResetStockTest` +4，E1-r 管理端 reset-stock）。
+
+**S2 · Redis 加固（安全）：**
+
+| 项 | 落地要点 | 验证口径 |
+|---|---|---|
+| 反序列化白名单 | `RedisConfig`：DefaultTyping 的 `LaissezFaireSubTypeValidator`（放任一切类型）改为 `BasicPolymorphicTypeValidator`，仅放行 `com.ghb.ecommerceflashsalesystem.` 实体包 + `java.time./util./lang./math./net.`——Redis 数据被污染也无法引导实例化任意 gadget 类 | 机制保留、教学注释写明动机；全量回归 92 绿 |
+| 连接密码可配 | `application.yaml` `spring.data.redis.password: ${REDIS_PASSWORD:}`，`.env` / `.env.example` 增 `REDIS_PASSWORD` 项（本地留空 = 本机无密码） | 不写死、不落明文 |
+
+**M 系列 · 交付前审查整改（契约 / 口径 / 体验收敛）：**
+
+- execute 失败响应 `data.result` 契约细分、`requestId` 对齐 interface；
+- 缓存未命中改按实时时间窗细分拒绝（与 check/execute 开放口径同源）；
+- AI 客服目录过滤过期活动、活动状态文案实时推导（对齐前端本地时间窗判定）；
+- 列表 `preheated` 预热标记；预热入口收敛到管理台；
+- 订单查询支持可选归属校验（`OrderController`）；详情页「我的抢购记录」面板；
+- 新增 `AdminSeckillResetStockTest`（+4，覆盖 E1-r 管理端 reset-stock 守卫语义：活动进行中 `PARAM_ERROR` 拦截且不触碰 Redis、非进行中可正常重置，全量 92 内含）。
+
+> **记录口径**：M1~M10 的逐项编号映射未另行成档，仅存在于收尾审查会话与提交信息中；上表为从提交信息还原的落地要点。S2/M 代码位置：`config/RedisConfig.java`、`application.yaml`、`.env.example`、`controller/`、`service/impl/SeckillServiceImpl.java`、`service/impl/AiChatServiceImpl.java`、`domain/vo/ActivityItemVO.java`、`integration/AdminSeckillResetStockTest.java`。
+
+---
+
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-09（今日卡片「动态发令牌注册接口 G1~G5」完成（AI 执行）：`/api/auth/register` + `UserTokenRegistry` 静态∪动态鉴权 + 前端领取令牌交互；interface 补 4.15；顺带修复中断遗留编译错误；全量 mvn test **92 用例 BUILD SUCCESS**）*
-*下次开始位置：①本轮全部改动 git 提交（今日卡片 G1~G5 + S2 Redis 加固 + 交付前审查 M1~M10 整改）；②Day 6 — 复盘总结、学习笔记沉淀与《Redis 实战总结》收尾（或按需继续增强）；③图片上传「文件内容与图片格式不匹配」排查仍挂起（待提供失败图片路径后继续）*
+*上次更新：2026-09-09（交付前收尾提交 `c1f689e`：F1~F5/G1~G5 多账号 + S2 Redis 加固 + M1~M10 审查整改已全部入库，工作区 clean、与 origin/main 同步；提交后全量 mvn test **92 用例 BUILD SUCCESS**，见上「交付前收尾」小节）*
+*下次开始位置：①Day 6 — 复盘总结、学习笔记沉淀与《Redis 实战总结》收尾（或按需继续增强）；②图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；③如需新增演示功能，按 2026-09-09 分工（AI 实现 → panda 终审）推进*
