@@ -632,7 +632,7 @@
 |---|---|---|---|---|
 | E3 · 创建/更新业务校验 | 活动/商品创建缺校验：`endTime`≤`startTime`、价格为负、库存 ≤0、productId 不存在（FK 异常落 50000）均可入 | `ActivityRequest`/商品 DTO 增加校验（时间序、价格非负、库存 >0、productId 存在性预查），失败走统一业务码，不冒 50000 | 非法入参被业务码拦截（非 50000 脏异常）；补对应测试用例 | ✅ 已落地（CreateBusinessValidationTest +10，全绿） |
 | E4 · 限流粒度细化 | 限流仅 userId（60s/5 次）：多活动连点互相误伤、换 userId 可绕过 | 限流键升级 `userId:activityId` 双维（保留总量约束），窗口/阈值参数化进 yaml（默认 60s/5 保持现状） | 同用户跨活动不再互伤；单活动限流语义不破坏现有限流测试 | ✅ 已落地（粒度整改期已吸收；窗口/阈值 yaml 化 `flash.rate-limit.*`） |
-| E6 · 上传校验加固 | 上传仅验扩展名/大小，Content-Type 全信客户端（伪造 MIME 可藏脚本文件） | 在现有文件头白名单基础上以魔数探测为准；响应 Content-Type 由服务端按扩展名固定，不反射客户端值 | 伪造 Content-Type 文件被拒；上传响应类型服务端可控；补测试 | ✅ 核心已落地（文件头魔数校验 + 服务端固定 Content-Type）；「文件内容与图片格式不匹配」合法图片误拒复现仍挂起待排查 |
+| E6 · 上传校验加固 | 上传仅验扩展名/大小，Content-Type 全信客户端（伪造 MIME 可藏脚本文件） | 在现有文件头白名单基础上以魔数探测为准；响应 Content-Type 由服务端按扩展名固定，不反射客户端值 | 伪造 Content-Type 文件被拒；上传响应类型服务端可控；补测试 | ✅ 已闭环（2026-09-09 魔数优先收尾：内容为白名单图片即收、按真实格式改名存储，见下「今日任务」卡；~~误拒复现挂起~~ 已根治——不再要求扩展名与内容一致） |
 | E5 · 异常文案收敛（残余） | OSS 上传失败把 `e.getMessage()` 原样回用户（含 SDK 内部细节） | 用户侧固定可读文案 + `log.error` 记录完整原因，错误码区分场景 | 失败响应不再暴露 SDK 堆栈/服务器细节，日志有完整根因 | ✅ 已落地（复核无回显点；预热失败文案收敛为固定提示） |
 | E2 · limitPerUser 语义取舍 | 创建参数 `limitPerUser` 仅透传不生效；DB `uk_activity_user` 硬性一人一单（配置 >1 也不允许多买），误导使用者 | 秒杀"一人一单"是合理约束 → 建议移除该参数或创建时强制 =1 并注释说明受 DB 唯一键约束；若确需"每人 N 件"则要改表去唯一键 + Redis 计数（工程量高，教学不建议） | 参数语义与 DB 唯一键一致，无"配了不生效"的误导；文档/注释同步 | ✅ 已落地（DTO 加 @Min/@Max 夹逼=1 作 Controller 第一道闸，Service 创建/更新同入口兜底拒绝；前端 disabled+max=1+提示；测试补更新分支用例，全量 73 用例 BUILD SUCCESS） |
 | E1-r | `resetStock` 已接入管理端接口与活跃期守卫 | 落地：`POST /api/admin/seckill/activities/{id}/reset-stock`（Redisson 锁 + 活动进行中拒绝重置），语义见 `SeckillCacheService#resetStock` | 仅未开始/已结束可重置；进行中重置返回业务错误 | ✅ 已落地（2026-09-09 复核） |
@@ -819,11 +819,23 @@
 | F5 | 管理台上传无前端 MIME/size 预检 | `AdminView.vue`：`onFileChange` 入口预检 MIME（jpeg/png/webp/gif/bmp）∪ 扩展名白名单 + ≤5MB，与后端 `AbstractImageStorage` 白名单/上限对齐，无效文件不再发起上传 | ✅ 已实现（vite build 通过） |
 | F6 | AI 对话 sendText 无 typing 防重入 | `AiServiceView.vue`：sendText 入口 `if (typing.value) return`（拦回车连发/连点/快捷问题）；发送按钮追加 `:disabled="typing || …"` | ✅ 已实现（vite build 通过） |
 
-> **验证口径**：`node node_modules/vite/bin/vite.js build` ✅（前端依赖在 Linux 侧重装后构建 1.41s，产物 dist 正常）；纯前端改动，`mvn test` 92 用例基线不受影响。剩余低优项 F7 半 / F9 低（死按钮与未用导出）与 E6 误拒复现仍按开放项挂起（见 final-review §五/O 系列）。
+> **验证口径**：`node node_modules/vite/bin/vite.js build` ✅（前端依赖在 Linux 侧重装后构建 1.41s，产物 dist 正常）；纯前端改动，`mvn test` 92 用例基线不受影响。低优遗留 F7/F9 与 E6 误拒已另卡收尾（见下「今日任务」卡）。
+
+### 今日任务（2026-09-09 · F7/F9 前端收尾 + E6 魔数优先根治 ✅ 已实现，待 panda 终审与全量回归）
+
+> 承接上卡：审计前端遗留 F7（半）/F9（低）与 E6 误拒复现排查。E6 无失败样本，经排查确认为**校验策略问题**——旧逻辑要求「扩展名与文件头一致」，而微信/网页另存等真实图片常「扩展名与实际格式不符」（如 .png 实为 JPEG）→ 必然误拒。经 panda 确认采用**魔数优先**策略根治。
+
+| # | 问题 | 落地要点 | 状态 |
+|---|---|---|---|
+| E6 | 「文件内容与图片格式不匹配」合法图片误拒 | `AbstractImageStorage` 重构为魔数优先：文件头探测真实格式（png/jpg/gif/bmp/webp）为唯一权威，扩展名/客户端 Content-Type 不再拦截与采信；存储文件名与 Content-Type **按真实格式**生成（uuid.真实ext）；`Local/OssImageStorageService` 同步改用探测结果命名；单测 2→9 用例（各格式放行 / 扩展名不符放行 / 无扩展名可收 / 伪装脚本与 PDF 被拒 / 空文件 / 超 5MB） | ✅ 已实现（待 mvn test 回归：预期全量 **99** = 92−2+9） |
+| F7 | 商品面板改编号未重载直接保存 → 脏写 | `AdminView.vue`：新增 `loadedFromId` 归属记录（载入/新建/创建成功时维护）；保存前比对「当前编号 == 表单数据归属编号」，不一致直接提示先「载入商品」，杜绝 A 数据覆盖 B | ✅ 已实现（vite build 通过） |
+| F9 | 低：汉堡按钮无 handler / AI 页死按钮 / 未用导出 | `App.vue`：≤760px 显示汉堡按钮并**实现移动端下拉导航**（路由切换自动收起，桌面强制隐藏）；`AiServiceView.vue`：删除 🎤/⋯/📎/🖼 死按钮、不可达的「商品推荐卡片」模板与全部 pc-*/product-cards/msg-products/ib-btn 死 CSS；`format.js`：删除未使用导出 `STATUS_TEXT` | ✅ 已实现（vite build 通过） |
+
+> **验证口径**：前端 `vite build` ✅ 1.37s；后端改动含单测扩展但**本环境无 JDK，未执行 mvn test** —— 请 panda 在开发机跑全量回归（预期 99 用例 BUILD SUCCESS，先停 dev 后端）。推送由 panda 在开发机执行（当前本地领先 5 个提交）。
 
 
 ---
 
 *文档创建日期：2026-07-29*
 *上次更新：2026-09-09（**Day 6 复盘总结与学习收口完成**：新增 `docs/redis-summary.md`《Redis 实战总结》+ 扩充 `docs/notework.md` 学习笔记 + plan.md 收尾，路线图 4 阶段全部 ✅，见上「第 4 阶段 Day 6」小节；此前交付前收尾 `c1f689e` 与文档同步 `c035ca8` 均已提交，全量 mvn test **92 用例 BUILD SUCCESS**）*
-*下次开始位置：①图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；②如需继续增强或复盘迭代，按 2026-09-09 分工（AI 实现 → panda 终审）推进；③计划内主体开发已完成，可按需把项目提交推送到 origin（当前本地领先待 push）*
+*下次开始位置：①F7/F9/E6 收尾卡已提交待 panda 终审；后端需在开发机全量回归（预期 99 用例：E6 单测 2→9）并推送 origin（本地领先 5 个提交）；②如需继续增强或复盘迭代，按 2026-09-09 分工（AI 实现 → panda 终审）推进；③计划内主体开发已完成*

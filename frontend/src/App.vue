@@ -1,11 +1,20 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { api } from './api'
 import { accountOf, DEMO_ACCOUNTS, localTokenOf, rememberToken, userStore } from './utils/store'
 import { toasts, toastErr, toastOK, toastWarn } from './utils/toast'
 
 const health = ref('checking') // checking | up | down
 let healthTimer = null
+
+// ---------- 移动端导航（F9：≤760px 顶栏汉堡菜单可用化） ----------
+const route = useRoute()
+const menuOpen = ref(false)
+// 路由跳转后自动收起移动菜单
+watch(() => route.fullPath, () => {
+  menuOpen.value = false
+})
 
 // ---------- 演示用户账号切换 ----------
 // 下拉 = 静态演示账号（切换即生效）；「自定义用户 ID」= 动态注册用户：
@@ -166,10 +175,24 @@ onBeforeUnmount(() => clearInterval(healthTimer))
           </label>
         </div>
 
-        <button class="menu-toggle" aria-label="菜单">
+        <button
+          class="menu-toggle"
+          :class="{ open: menuOpen }"
+          :aria-expanded="menuOpen"
+          aria-label="菜单"
+          @click="menuOpen = !menuOpen"
+        >
           <span></span><span></span><span></span>
         </button>
       </div>
+
+      <Transition name="mnav-drop">
+        <nav v-if="menuOpen" class="mnav">
+          <RouterLink to="/" active-class="active" @click="menuOpen = false">活动广场</RouterLink>
+          <RouterLink to="/ai-service" active-class="active" @click="menuOpen = false">AI 客服</RouterLink>
+          <RouterLink to="/admin" active-class="active" @click="menuOpen = false">管理控制台</RouterLink>
+        </nav>
+      </Transition>
     </header>
 
     <main class="content">
@@ -429,6 +452,47 @@ onBeforeUnmount(() => clearInterval(healthTimer))
   border-radius: 2px;
 }
 
+/* ---------- 移动端下拉导航（F9） ---------- */
+.mnav {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-3);
+  z-index: 30;
+}
+.mnav a {
+  padding: 13px 16px;
+  border-radius: 12px;
+  color: var(--text-2);
+  font-size: 15px;
+  font-weight: 600;
+  transition: background 0.15s, color 0.15s;
+}
+.mnav a.active {
+  background: var(--surface-2);
+  color: var(--accent);
+}
+.mnav a:active {
+  background: var(--surface-3);
+}
+.mnav-drop-enter-active,
+.mnav-drop-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s var(--ease-out);
+}
+.mnav-drop-enter-from,
+.mnav-drop-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
 .content {
   flex: 1;
   width: 100%;
@@ -533,6 +597,9 @@ onBeforeUnmount(() => clearInterval(healthTimer))
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 760px) {
+  .menu-toggle {
+    display: flex;
+  }
   .topbar-inner {
     padding: 10px 16px;
     gap: 10px;
@@ -566,6 +633,13 @@ onBeforeUnmount(() => clearInterval(healthTimer))
     flex-direction: column;
     align-items: flex-start;
     padding: 16px;
+  }
+}
+
+/* 桌面端（>760px）即使状态残留也隐藏移动菜单 */
+@media (min-width: 761px) {
+  .mnav {
+    display: none;
   }
 }
 </style>

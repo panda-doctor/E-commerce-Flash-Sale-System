@@ -29,10 +29,10 @@
 - Redis 序列化 DefaultTyping 用 **BasicPolymorphicTypeValidator 白名单**（S2，勿回退 LaissezFaire）。
 - 审计/交付文档分工：`audit-report.md` = 2026-09-08 R/C/E 全量审计版（前端 F1~F9 含于第四节）；`final-review.md` = S1/S2/M1~M10 交付审查底稿；进度权威源始终是 `docs/plan.md`。
 
-## 进度快照（2026-09-09 复核更新）
+## 进度快照（2026-09-09 深夜复核更新）
 
-- **4 阶段全部完成**：第 1 阶段 Day1~7 ✅ → 第 2 阶段（Lua 扣减/execute/防重，28 用例）✅ → 第 3 阶段（限流/Stream/可靠性/锁，40 用例）✅ → 第 4 阶段（榜单/指标/前端看板/图片存储/AI 客服/JMeter 5000 压测，59 用例）✅；审计整改 R1~R5/C1~C6（`49a0b09`，62 用例）+ E1~E6 卡（`64311d4`/`11fd6a2`，73 用例）+ 多用户令牌账号 F/G 卡 + S2/M1~M10 交付收尾（`c1f689e`）+ Day 6 学习收口（`7e3d92c`，redis-summary/notework/plan 收尾）+ 审查底稿留档（`97e5bd4`）。
-- **HEAD=`97e5bd4`**（main，领先 origin 3 个文档提交未推送）；工作区 135 文件「修改」实为 **CRLF 换行噪音**（`git diff --ignore-cr-at-eol` 为空），无内容差异，提交前须处理 renormalize/autocrlf。
-- 回归实证：`target/surefire-reports`（09-09 17:20）全量 **92 用例 / 0 Failures / 0 Errors**，与 plan.md/CLAUDE.md 的 92 用例 BUILD SUCCESS 一致；本 Linux 环境无 JDK，重跑全量需回开发机（先停 dev 后端，防 auto-poll 抢消费）。
-- **已核验遗留（audit F 系列前端项，plan/final-review 未逐条登记）**：F1/F4/F8 ✅；**F2/F3/F5/F6 ✅（2026-09-09 已实现并提交，vite build 通过，panda 终审仍可随时提出修订；见 plan.md 当日卡与本日日志）**；F7 半（顶栏账号化已解"演示用户 #1001"，改 productId 后保存仍依赖手动重载）、F9 低（汉堡按钮/🎤📎 死按钮/STATUS_TEXT 未用导出仍在）；E6「合法图片误拒」复现仍挂起（需失败样本）；O1~O10 为 final-review 开放建议。
-- 过时引用小项：plan.md 路线图 L40 仍写「HEAD c035ca8」（应 97e5bd4）；CLAUDE.md 描述与现状一致（4 阶段完成 + 92 用例）。
+- **4 阶段全部完成**：第 1 阶段 Day1~7 ✅ → 第 2 阶段（Lua 扣减/execute/防重，28 用例）✅ → 第 3 阶段（限流/Stream/可靠性/锁，40 用例）✅ → 第 4 阶段（榜单/指标/前端看板/图片存储/AI 客服/JMeter 5000 压测，59 用例）✅；审计整改 R1~R5/C1~C6（`49a0b09`，62 用例）+ E1~E6 卡（`64311d4`/`11fd6a2`，73 用例）+ 多用户令牌账号 F/G 卡 + S2/M1~M10 交付收尾（`c1f689e`）+ Day 6 学习收口（`7e3d92c`）+ 审查底稿留档（`97e5bd4`）+ 前端红线 F2/F3/F5/F6（`04e9418`）+ **行尾策略 .gitattributes（`2db99fe`）**。
+- **本地 HEAD 领先 origin 5 个提交**（`2db99fe`/`04e9418` 为本地新提交；本环境无 SSH 密钥推不了 GitHub，**由 panda 在开发机 push**）；仓库已统一 LF（.gitattributes：`* text=auto eol=lf`，`*.cmd/bat/ps1` 保留 CRLF），工作树 clean。
+- 回归实证：surefire 09-09 17:20 全量 **92 用例 / 0 失败**；**F7/F9/E6 批次后预期 99**（E6 单测 2→9）——**未在无 JDK 环境执行，需 panda 在开发机全量回归**（先停 dev 后端）。
+- **审计遗留收尾状态（2026-09-09）**：R1~R5/C1~C6/E1~E6 ✅；前端 F1~F6/F8 ✅（F2/F3/F5/F6 在 `04e9418`，已提交）；**F7 ✅（loadedFromId 保存前归属比对）、F9 ✅（App.vue 移动端汉堡导航实现 + AI 页死按钮/死 CSS/STATUS_TEXT 清理）、E6 ✅（魔数优先策略根治误拒，AbstractImageStorage 重构 + 存储实现按真实格式命名，单测 9 用例）——本批已实现待 panda 终审（见 plan.md 当日卡与本日日志）**；F 系列全部清零；final-review O1~O10 仍为开放建议。
+- 过时引用小项：plan.md 路线图 L40 仍写「HEAD c035ca8」（应 97e5bd4）；CLAUDE.md 描述与现状一致（4 阶段完成 + 92 用例，后续可补 99/推送状态）。
