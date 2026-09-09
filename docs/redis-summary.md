@@ -210,6 +210,7 @@
 ## 附：本文与其它文档的关系
 - 规划与逐日进度、全部经验教训：`docs/plan.md`（唯一进度源）
 - 审计整改清单：`docs/audit-report.md`（R1~R5 / C1~C6 / E1~E6）
+- 交付前审查底稿（S1/S2/M1~M10，含逐条复核状态）：`docs/final-review.md`
 - 压测报告：`docs/load-test-report.md`；前端存储双策略：`docs/storage.md`
 - 接口契约（含 4.15 注册、鉴权头）：`docs/interface.md`；数据表与唯一键：`docs/database.md`
 - 学习笔记（概念向、自己的话）：`docs/notework.md`

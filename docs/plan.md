@@ -787,7 +787,7 @@
 - 订单查询支持可选归属校验（`OrderController`）；详情页「我的抢购记录」面板；
 - 新增 `AdminSeckillResetStockTest`（+4，覆盖 E1-r 管理端 reset-stock 守卫语义：活动进行中 `PARAM_ERROR` 拦截且不触碰 Redis、非进行中可正常重置，全量 92 内含）。
 
-> **记录口径**：M1~M10 的逐项编号映射未另行成档，仅存在于收尾审查会话与提交信息中；上表为从提交信息还原的落地要点。S2/M 代码位置：`config/RedisConfig.java`、`application.yaml`、`.env.example`、`controller/`、`service/impl/SeckillServiceImpl.java`、`service/impl/AiChatServiceImpl.java`、`domain/vo/ActivityItemVO.java`、`integration/AdminSeckillResetStockTest.java`。
+> **记录口径**：M1~M10/S1/S2 逐项编号映射的审查底稿已留档于 `docs/final-review.md`（含截至 2026-09-09 的逐条复核状态标注；`docs/audit-report.md` 保留 2026-09-08 的 R/C/E 全量审计版）。S2/M 落地代码位置：`config/RedisConfig.java`、`application.yaml`、`.env.example`、`controller/`、`service/impl/SeckillServiceImpl.java`、`service/impl/AiChatServiceImpl.java`、`domain/vo/ActivityItemVO.java`、`integration/AdminSeckillResetStockTest.java`。
 
 ---
 

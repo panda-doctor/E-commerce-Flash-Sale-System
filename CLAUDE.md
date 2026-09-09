@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 E-commerceFlashSaleSystem/
-├── docs/                           # project.md, developlan.md, interface.md, database.md, plan.md, redis-summary.md, audit-report.md, load-test-report.md, storage.md, notework.md
+├── docs/                           # project.md, developlan.md, interface.md, database.md, plan.md, redis-summary.md, final-review.md, audit-report.md, load-test-report.md, storage.md, notework.md
 ├── postman/                        # API test collection
 ├── scripts/jmeter/                 # Load testing scripts
 ├── src/main/java/.../
