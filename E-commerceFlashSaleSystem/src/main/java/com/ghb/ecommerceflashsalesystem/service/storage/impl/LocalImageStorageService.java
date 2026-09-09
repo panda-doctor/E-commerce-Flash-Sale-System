@@ -36,9 +36,11 @@ public class LocalImageStorageService extends AbstractImageStorage {
 
     @Override
     public String store(MultipartFile file) {
-        validate(file);
+        // E6（魔数优先）：先按文件头探测真实格式（内容校验），落盘扩展名一律用真实格式，
+        // 静态资源按扩展名返回的 Content-Type 也随之正确，不再受客户端命名/Content-Type 影响
+        String ext = validateAndDetectExt(file);
         String month = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
-        String fileName = safeName(file.getOriginalFilename());
+        String fileName = safeName(ext);
 
         Path dir = Paths.get(baseDir, month);
         try {

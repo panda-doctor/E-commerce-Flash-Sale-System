@@ -20,12 +20,15 @@ POST /api/admin/files/image (multipart: file)
               落盘 {storage.local.dir}/{yyyyMM}/uuid.ext，/uploads/** 由 FileStorageWebConfig 映射为静态资源
 ```
 
-- 校验与命名在抽象基类 `AbstractImageStorage`：扩展名白名单（png/jpg/jpeg/gif/webp/bmp）、
-  与扩展名匹配的文件头校验、5MB 上限、
-  UUID 安全命名（防脚本文件与路径穿越）。
+- 校验与命名在抽象基类 `AbstractImageStorage`：**文件头魔数探测真实格式**（jpg/png/gif/bmp/webp——
+  内容必须是白名单图片才放行；扩展名与客户端 Content-Type 不拦截、不采信）、5MB 上限、
+  按探测出的真实格式生成 `uuid.真实扩展名`（防脚本伪装与路径穿越）。
+  > 2026-09-09 起为**魔数优先**策略：旧版要求「扩展名与文件头一致」，会把微信/网页另存等
+  > 「扩展名与实际格式不符」的合法图片误拒（如 .png 实为 JPEG）；现内容校验通过即收，
+  > 存储名与 Content-Type 均按真实格式生成，安全性不降。
 - 同一时刻只有一个实现生效（`@ConditionalOnProperty`），切换只改配置、不动代码。
 
-上传接口会校验常见图片的文件头，不能仅靠改后缀绕过；仍应只向可信的管理端开放。
+上传接口按文件头魔数校验，不能仅靠改后缀绕过；仍应只向可信的管理端开放。
 如需对外开放上传，还应在网关或对象存储侧增加鉴权、限流、病毒扫描等防护。
 
 ## 二、配置
