@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { api } from '../api'
 import ActivityCard from '../components/ActivityCard.vue'
 import { formatDuration, parseServerTime } from '../utils/format'
-import { toastOK } from '../utils/toast'
+import { toastOK, toastErr } from '../utils/toast'
 
 /* ================================================================
    秒杀主会场（首页）
@@ -112,8 +112,14 @@ async function load() {
   try {
     const data = await api.listActivities()
     activities.value = Array.isArray(data) ? data : []
+    listErrNotified = false // 恢复成功，允许下次失败再次提醒
   } catch (e) {
     activities.value = []
+    // F3：失败不再静默清空（会误示"暂无场次"）；连续失败只提醒一次，避免 8s 轮询刷屏
+    if (!listErrNotified) {
+      listErrNotified = true
+      toastErr(e.message || '活动列表加载失败，请稍后重试')
+    }
   } finally {
     loading.value = false
   }
@@ -121,6 +127,7 @@ async function load() {
 
 let clockTimer = null
 let refreshTimer = null
+let listErrNotified = false // F3：连续加载失败仅提醒一次
 onMounted(() => {
   load()
   clockTimer = setInterval(() => {

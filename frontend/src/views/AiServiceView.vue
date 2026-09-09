@@ -1,8 +1,8 @@
 <script setup>
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
-import { fenToYuan } from '../utils/format'
+import { fenToYuan, parseServerTime } from '../utils/format'
 
 /* ============================================================
    AI 客服 · 对接真实后端大模型
@@ -25,6 +25,7 @@ const historyMsgs = ref([])
 
 // 实时秒杀活动列表（侧栏"热门活动"，来源 GET /api/seckill/activities）
 const hotActivities = ref([])
+let hotRefreshTimer = null // 侧栏热门活动静默刷新句柄（F2/F8：切后台暂停）
 
 // 正在输入指示
 const typing = ref(false)
@@ -48,16 +49,39 @@ const ACTIVITY_TAG = {
   CANCELLED: { text: '已取消', cls: 'gray' },
 }
 
-// 侧栏实时热门活动：取后端活动列表中"进行中 + 即将开抢"的最近几场
+/**
+ * F2：侧栏状态按本地实时时间窗 + 实时库存推导，不再信任后端列表的 status 快照。
+ * DB status 是创建/预热时的快照、不会自动翻转 RUNNING——预热后到点/已过期的活动若按
+ * 快照判"即将开抢"会一直误标。口径与首页 ActivityListView.phaseOf 一致：
+ * CANCELLED 显式排除 → now<startTime 预告 → now≥endTime 已结束 → stock=0 已售罄 → 秒杀中。
+ */
+function livePhaseOf(a, now) {
+  if (a.status === 'CANCELLED') return 'CANCELLED'
+  const start = parseServerTime(a.startTime)
+  const end = parseServerTime(a.endTime)
+  if (start > 0 && now < start) return 'NOT_STARTED'
+  if (now >= end) return 'ENDED'
+  const stock = a.stock != null ? Number(a.stock) : null
+  if (stock === 0) return 'SOLD_OUT'
+  return 'RUNNING'
+}
+
+// 侧栏实时热门活动：取"秒杀中 / 即将开抢"的最近几场（已结束/已售罄/已取消不推荐）
 async function loadActivities() {
   try {
+    const now = Date.now()
     const list = (await api.listActivities()) || []
     const hot = list
-      .filter((a) => a.status === 'RUNNING' || a.status === 'NOT_STARTED')
-      .sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)))
+      .map((a) => ({ a, phase: livePhaseOf(a, now) }))
+      .filter(({ phase }) => phase === 'RUNNING' || phase === 'NOT_STARTED')
+      .sort((x, y) => {
+        // 进行中优先；同为进行中/预告时按开始时间近者优先
+        if (x.phase !== y.phase) return x.phase === 'RUNNING' ? -1 : 1
+        return parseServerTime(x.a.startTime) - parseServerTime(y.a.startTime)
+      })
       .slice(0, 5)
-    hotActivities.value = hot.map((a) => {
-      const tag = ACTIVITY_TAG[a.status] || { text: a.status, cls: 'blue' }
+    hotActivities.value = hot.map(({ a, phase }) => {
+      const tag = ACTIVITY_TAG[phase] || { text: phase, cls: 'blue' }
       return {
         activityId: a.activityId,
         name: a.productName || a.activityName || `活动 #${a.activityId}`,
@@ -102,6 +126,8 @@ function pushMessage(msg) {
 }
 
 async function sendText(text) {
+  // F6：请求在途时忽略重复触发（回车连发 / 连点 / 快捷问题），防并发叠加空耗外部配额
+  if (typing.value) return
   const q = (text ?? inputText.value).trim()
   if (!q) return
   inputText.value = ''
@@ -132,10 +158,18 @@ function askQuick(q) {
   sendText(q)
 }
 
-// 初始化：载入实时活动 + 定位到底部
+// 初始化：载入实时活动 + 定位到底部；热门活动 30s 静默刷新（后台标签页暂停）
 onMounted(() => {
   scrollToBottom()
   loadActivities()
+  hotRefreshTimer = setInterval(() => {
+    if (!document.hidden) loadActivities()
+  }, 30_000)
+})
+
+onBeforeUnmount(() => {
+  clearInterval(hotRefreshTimer)
+  hotRefreshTimer = null
 })
 </script>
 
@@ -327,7 +361,7 @@ onMounted(() => {
               placeholder="输入你的问题，如「今天有什么秒杀？」"
               @keydown.enter="sendText()"
             />
-            <button class="ib-send" :class="{ 'send-active': inputText.trim() }" :disabled="!inputText.trim()" @click="sendText()">
+            <button class="ib-send" :class="{ 'send-active': inputText.trim() }" :disabled="typing || !inputText.trim()" @click="sendText()">
               <span class="send-ico">➤</span>
               <span>发送</span>
             </button>

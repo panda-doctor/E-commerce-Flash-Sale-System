@@ -142,10 +142,20 @@ function pickImage() {
   if (fileInput.value) fileInput.value.click()
 }
 
+// F5：上传前端预检白名单（与后端 AbstractImageStorage 的扩展名/5MB 上限一致），无效文件不发起上传
+const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp']
+const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp']
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024
+
 async function onFileChange(e) {
   const file = e.target.files?.[0]
   e.target.value = '' // 允许重复选择同一文件
   if (!file) return
+  const ext = (file.name.split('.').pop() || '').toLowerCase()
+  const mimeOk = IMAGE_MIMES.includes(file.type)
+  const extOk = !!ext && IMAGE_EXTS.includes(ext)
+  if (!mimeOk && !extOk) return toastErr('仅支持 jpg/jpeg/png/webp/gif/bmp 图片')
+  if (file.size > MAX_IMAGE_SIZE) return toastErr('图片大小不能超过 5MB')
   uploading.value = true
   try {
     const r = await api.uploadImage(file)

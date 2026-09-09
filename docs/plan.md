@@ -808,6 +808,20 @@
 - **「落库才算抢到」是全局一致的主线**：令牌是排队资格、订单落库才入榜、失败须补偿令牌/库存——一切以 DB 终态为准（审计 R2/R5 同源）。
 - **本工程反直觉教训 Top3**：Redis 反序列化 `@class` 需白名单（S2）；压测/集成回归前必须停 dev（auto-poll 抢消费）；Stream 消息用明文 Map 防 Base64 二次编码。
 
+### 今日任务（2026-09-09 · 审计前端 F 系列红线项 F2/F3/F5/F6 ✅ 已实现，待 panda 终审）
+
+> audit-report（2026-09-08 版）第四节「前端完整闭环」的**必改红线项**（F1/F3/F4/F6）此前仅 F1/F4 随审计整改闭环，F2/F3/F5/F6 遗留（plan/final-review 未逐条登记，本次核验发现）；本卡收尾——只动前端 3 个文件，无后端/契约改动，92 用例基线不受影响。
+
+| # | 问题 | 落地要点 | 状态 |
+|---|---|---|---|
+| F2 | AI 页侧栏按 status 快照恒判"即将开抢"（DB status 不会自动翻转 RUNNING） | `AiServiceView.vue`：新增 `livePhaseOf` 按本地时间窗 + 实时库存推导（CANCELLED 排除 → now&lt;start 预告 → now≥end 已结束 → stock=0 已售罄 → 秒杀中），口径同首页 `phaseOf`；热门列表仅推荐「秒杀中/即将开抢」且进行中优先；顺带 30s 静默刷新（`document.hidden` 暂停，F8 口径） | ✅ 已实现（vite build 通过） |
+| F3 | 首页列表 catch 静默置空，误示"暂无场次" | `ActivityListView.vue`：catch 内 `toastErr`；连续失败仅提醒一次（页面 8s 轮询防刷屏），成功后重置提醒标记 | ✅ 已实现（vite build 通过） |
+| F5 | 管理台上传无前端 MIME/size 预检 | `AdminView.vue`：`onFileChange` 入口预检 MIME（jpeg/png/webp/gif/bmp）∪ 扩展名白名单 + ≤5MB，与后端 `AbstractImageStorage` 白名单/上限对齐，无效文件不再发起上传 | ✅ 已实现（vite build 通过） |
+| F6 | AI 对话 sendText 无 typing 防重入 | `AiServiceView.vue`：sendText 入口 `if (typing.value) return`（拦回车连发/连点/快捷问题）；发送按钮追加 `:disabled="typing || …"` | ✅ 已实现（vite build 通过） |
+
+> **验证口径**：`node node_modules/vite/bin/vite.js build` ✅（前端依赖在 Linux 侧重装后构建 1.41s，产物 dist 正常）；纯前端改动，`mvn test` 92 用例基线不受影响。剩余低优项 F7 半 / F9 低（死按钮与未用导出）与 E6 误拒复现仍按开放项挂起（见 final-review §五/O 系列）。
+
+
 ---
 
 *文档创建日期：2026-07-29*
