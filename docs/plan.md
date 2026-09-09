@@ -827,15 +827,15 @@
 
 | # | 问题 | 落地要点 | 状态 |
 |---|---|---|---|
-| E6 | 「文件内容与图片格式不匹配」合法图片误拒 | `AbstractImageStorage` 重构为魔数优先：文件头探测真实格式（png/jpg/gif/bmp/webp）为唯一权威，扩展名/客户端 Content-Type 不再拦截与采信；存储文件名与 Content-Type **按真实格式**生成（uuid.真实ext）；`Local/OssImageStorageService` 同步改用探测结果命名；单测 2→9 用例（各格式放行 / 扩展名不符放行 / 无扩展名可收 / 伪装脚本与 PDF 被拒 / 空文件 / 超 5MB） | ✅ 已实现（待 mvn test 回归：预期全量 **99** = 92−2+9） |
+| E6 | 「文件内容与图片格式不匹配」合法图片误拒 | `AbstractImageStorage` 重构为魔数优先：文件头探测真实格式（png/jpg/gif/bmp/webp）为唯一权威，扩展名/客户端 Content-Type 不再拦截与采信；存储文件名与 Content-Type **按真实格式**生成（uuid.真实ext）；`Local/OssImageStorageService` 同步改用探测结果命名；单测 2→8 用例（各格式放行 / 扩展名不符放行 / 无扩展名可收 / 伪装脚本与 PDF 被拒 / 空文件 / 超 5MB） | ✅ 已实现（待 mvn test 回归：预期全量 **98** = 92−2+8） |
 | F7 | 商品面板改编号未重载直接保存 → 脏写 | `AdminView.vue`：新增 `loadedFromId` 归属记录（载入/新建/创建成功时维护）；保存前比对「当前编号 == 表单数据归属编号」，不一致直接提示先「载入商品」，杜绝 A 数据覆盖 B | ✅ 已实现（vite build 通过） |
 | F9 | 低：汉堡按钮无 handler / AI 页死按钮 / 未用导出 | `App.vue`：≤760px 显示汉堡按钮并**实现移动端下拉导航**（路由切换自动收起，桌面强制隐藏）；`AiServiceView.vue`：删除 🎤/⋯/📎/🖼 死按钮、不可达的「商品推荐卡片」模板与全部 pc-*/product-cards/msg-products/ib-btn 死 CSS；`format.js`：删除未使用导出 `STATUS_TEXT` | ✅ 已实现（vite build 通过） |
 
-> **验证口径**：前端 `vite build` ✅ 1.37s；后端改动含单测扩展但**本环境无 JDK，未执行 mvn test** —— 请 panda 在开发机跑全量回归（预期 99 用例 BUILD SUCCESS，先停 dev 后端）。推送由 panda 在开发机执行（当前本地领先 5 个提交）。
+> **验证口径**：前端 `vite build` ✅ 1.37s；后端改动含单测扩展但**本环境无 JDK，未执行 mvn test** —— 请 panda 在开发机跑全量回归（预期 98 用例 BUILD SUCCESS，先停 dev 后端）。推送由 panda 在开发机执行（当前本地领先 5 个提交）。
 
 
 ---
 
 *文档创建日期：2026-07-29*
 *上次更新：2026-09-09（**Day 6 复盘总结与学习收口完成**：新增 `docs/redis-summary.md`《Redis 实战总结》+ 扩充 `docs/notework.md` 学习笔记 + plan.md 收尾，路线图 4 阶段全部 ✅，见上「第 4 阶段 Day 6」小节；此前交付前收尾 `c1f689e` 与文档同步 `c035ca8` 均已提交，全量 mvn test **92 用例 BUILD SUCCESS**）*
-*下次开始位置：①F7/F9/E6 收尾卡已提交待 panda 终审；后端需在开发机全量回归（预期 99 用例：E6 单测 2→9）并推送 origin（本地领先 5 个提交）；②如需继续增强或复盘迭代，按 2026-09-09 分工（AI 实现 → panda 终审）推进；③计划内主体开发已完成*
+*下次开始位置：①F7/F9/E6 收尾卡已提交待 panda 终审；后端需在开发机全量回归（预期 98 用例：E6 单测 2→8）并推送 origin（本地领先 5 个提交）；②如需继续增强或复盘迭代，按 2026-09-09 分工（AI 实现 → panda 终审）推进；③计划内主体开发已完成*
