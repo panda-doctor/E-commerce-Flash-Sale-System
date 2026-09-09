@@ -2,7 +2,7 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
-import { uiState } from '../utils/store'
+import { uiState, userStore } from '../utils/store'
 import { fenToYuan } from '../utils/format'
 import { toastErr, toastOK, toastWarn } from '../utils/toast'
 
@@ -17,7 +17,7 @@ function fmtLocal(offsetMs) {
 
 /* ---------- ① 创建活动 ---------- */
 const form = reactive({
-  productId: 1,
+  productId: '1',
   activityName: '机械键盘闪电秒杀',
   startAfterSec: 15,
   durationMin: 30,
@@ -32,14 +32,19 @@ const created = ref(null)
 async function createAndPreheat() {
   const startTime = fmtLocal(form.startAfterSec * 1000)
   const endTime = fmtLocal(form.startAfterSec * 1000 + form.durationMin * 60 * 1000)
+  const pidText = String(form.productId ?? '').trim()
   const body = {
-    productId: Number(form.productId),
+    productId: pidText,
     activityName: form.activityName.trim(),
     startTime,
     endTime,
     seckillPrice: Math.round(form.priceYuan * 100),
     seckillStock: Number(form.stock),
     limitPerUser: Number(form.limitPerUser),
+  }
+  if (!/^[1-9]\d*$/.test(pidText)) {
+    toastWarn('请输入有效的商品编号（正整数）')
+    return
   }
   if (!body.activityName || !(body.seckillStock > 0)) {
     toastWarn('请填写活动名称与有效库存')
@@ -51,9 +56,9 @@ async function createAndPreheat() {
     const id = r.activityId
     try {
       await api.preheat(id)
-      toastOK(`活动 #${id} 已创建并预热，库存 ${form.stock} 就绪`)
+      toastOK(`活动 ${id} 已创建并预热，库存 ${form.stock} 就绪`)
     } catch (e) {
-      toastWarn(`活动已创建 #${id}，但预热失败：${e.message}（可稍后在下方重试预热）`)
+      toastWarn(`活动已创建 ${id}，但预热失败：${e.message}（可稍后在下方重试预热）`)
     }
     created.value = id
     uiState.setActivity(id)
@@ -67,7 +72,7 @@ async function createAndPreheat() {
 
 /* ---------- ② 商品主图管理 ---------- */
 const prodPanel = reactive({
-  productId: 1,
+  productId: '1',
   loaded: false,
   name: '',
   description: '',
@@ -92,16 +97,31 @@ const demoProducts = [
 ]
 
 async function quickLoad(id) {
-  prodPanel.productId = id
+  prodPanel.productId = String(id)
   await loadProduct()
 }
 
+// 新建空白商品：productId 置空 → 保存时不传 productId，后端用雪花 ID 生成新编号
+function newProduct() {
+  prodPanel.productId = ''
+  prodPanel.loaded = true
+  prodPanel.name = ''
+  prodPanel.description = ''
+  prodPanel.priceYuan = 0
+  prodPanel.totalStock = 0
+  prodPanel.imageUrl = ''
+  prodPanel.status = 'ON_SHELF'
+  toastOK('已进入新建模式：填写信息并保存，系统将生成新的商品编号')
+}
+
 async function loadProduct() {
-  const pid = Number(prodPanel.productId)
-  if (!Number.isInteger(pid) || pid <= 0) return toastWarn('请输入有效的商品编号')
+  const pid = String(prodPanel.productId ?? '').trim()
+  if (!/^\d+$/.test(pid) || pid === '0') return toastWarn('请输入有效的商品编号')
   loadingProd.value = true
   try {
     const p = await api.getProduct(pid)
+    // 雪花 ID 超 JS 安全整数，以字符串回填（不丢精度）
+    prodPanel.productId = p && p.productId != null ? String(p.productId) : pid
     prodPanel.loaded = true
     prodPanel.name = p.name
     prodPanel.description = p.description || ''
@@ -109,7 +129,7 @@ async function loadProduct() {
     prodPanel.totalStock = p.totalStock ?? 0
     prodPanel.imageUrl = p.imageUrl || ''
     prodPanel.status = p.status || 'ON_SHELF'
-    toastOK(`已载入商品 #${pid}`)
+    toastOK(`已载入商品 ${prodPanel.productId}`)
   } catch (e) {
     prodPanel.loaded = false
     toastErr(e.message || '商品不存在')
@@ -139,21 +159,33 @@ async function onFileChange(e) {
 }
 
 async function saveProduct() {
-  if (!prodPanel.loaded) return toastWarn('请先载入商品')
+  if (!prodPanel.loaded) return toastWarn('请先载入商品或新建商品')
   if (!prodPanel.name.trim()) return toastWarn('商品名称不能为空')
+  const stock = Number(prodPanel.totalStock)
+  if (!Number.isInteger(stock) || stock <= 0) return toastWarn('总库存必须为大于 0 的整数')
+  const pidText = String(prodPanel.productId ?? '').trim()
+  // 无有效编号 = 新建：不传 productId，后端生成新雪花 ID
+  const isNew = !/^[1-9]\d*$/.test(pidText)
   saving.value = true
   try {
     const body = {
-      productId: Number(prodPanel.productId),
       name: prodPanel.name.trim(),
       description: prodPanel.description,
       originalPrice: Math.round(prodPanel.priceYuan * 100),
-      totalStock: Number(prodPanel.totalStock),
+      totalStock: stock,
       status: prodPanel.status,
       imageUrl: prodPanel.imageUrl,
     }
-    await api.saveProduct(body)
-    toastOK(`商品 #${prodPanel.productId} 已保存，图片将在列表/详情页生效`)
+    // 更新时带 productId（字符串直传，避免雪花 ID 精度丢失）
+    if (!isNew) body.productId = pidText
+    const resp = await api.saveProduct(body)
+    if (isNew) {
+      const newId = resp && resp.productId != null ? String(resp.productId) : pidText
+      prodPanel.productId = newId
+      toastOK(`已创建新商品 ${newId}，信息已生效`)
+    } else {
+      toastOK(`商品 ${pidText} 已保存，图片将在列表/详情页生效`)
+    }
   } catch (e) {
     toastErr(e.message || '保存失败')
   } finally {
@@ -171,7 +203,7 @@ async function preheatExisting() {
   preheating.value = true
   try {
     await api.preheat(id)
-    toastOK(`活动 #${id} 预热成功`)
+    toastOK(`活动 ${id} 预热成功`)
   } catch (e) {
     toastErr(e.message || '预热失败')
   } finally {
@@ -235,19 +267,20 @@ function openExisting() {
           <div class="empty-h">
             <span class="empty-h-ico">📦</span>
             <div>
-              <h4>请先载入或选择商品</h4>
-              <p>输入商品编号并点击「载入商品」，或下方点击演示商品快捷载入。</p>
+              <h4>请先载入或新建商品</h4>
+              <p>输入已有编号载入改图，或直接新建空白商品（系统自动生成新编号）。</p>
             </div>
           </div>
           <div class="load-row">
             <label class="f-item">
-              <span>商品编号</span>
+              <span>载入已有商品</span>
               <div class="inline">
                 <input
-                  v-model.number="prodPanel.productId"
-                  type="number"
-                  min="1"
+                  v-model="prodPanel.productId"
+                  type="text"
+                  inputmode="numeric"
                   class="field"
+                  placeholder="如 1"
                   @keydown.enter="loadProduct"
                 />
                 <button class="btn btn-outline btn-sm" :disabled="loadingProd" @click="loadProduct">
@@ -256,6 +289,12 @@ function openExisting() {
                 </button>
               </div>
             </label>
+          </div>
+          <div class="load-or">
+            <button class="btn btn-cta btn-sm" :disabled="loadingProd" @click="newProduct">
+              ＋ 新建空白商品
+            </button>
+            <span class="load-or-tip">不填编号直接保存，系统生成新的商品编号</span>
           </div>
           <div class="demo-lib">
             <div class="demo-lib-h">
@@ -272,7 +311,7 @@ function openExisting() {
                 <span class="demo-emoji">{{ d.emoji }}</span>
                 <div class="demo-meta">
                   <span class="demo-name">{{ d.name }}</span>
-                  <span class="demo-id">#{{ d.id }}</span>
+                  <span class="demo-id">{{ d.id }}</span>
                 </div>
                 <span class="demo-tag">{{ d.tag }}</span>
               </button>
@@ -308,7 +347,9 @@ function openExisting() {
 
           <div class="prod-fields">
             <div class="prod-h">
-              <span class="prod-h-id">商品 #{{ prodPanel.productId }}</span>
+              <span class="prod-h-id" :title="prodPanel.productId ? '' : '保存后由系统自动生成新编号'">
+                {{ prodPanel.productId ? '商品 ' + prodPanel.productId : '新建商品（未保存）' }}
+              </span>
               <button class="linklike-sm" @click="prodPanel.loaded = false">← 切换商品</button>
             </div>
             <label class="f-item">
@@ -379,7 +420,7 @@ function openExisting() {
             <div class="group-body">
               <label class="f-item">
                 <span>商品编号</span>
-                <input v-model.number="form.productId" type="number" min="1" class="field" />
+                <input v-model="form.productId" type="text" inputmode="numeric" class="field" placeholder="如 1" />
               </label>
               <label class="f-item">
                 <span>每人限购</span>
@@ -433,7 +474,7 @@ function openExisting() {
 
         <div v-if="created" class="recent">
           <span class="recent-ico">✓</span>
-          <span>最近创建：活动 <b class="hnum">#{{ created }}</b></span>
+          <span>最近创建：活动 <b class="hnum">{{ created }}</b></span>
           <button class="linklike" @click="router.push('/')">前往广场开抢 →</button>
         </div>
       </section>
@@ -532,7 +573,7 @@ function openExisting() {
           </div>
           <div class="stat-row">
             <span class="stat-k">演示用户 ID</span>
-            <span class="stat-v hnum">#1001</span>
+            <span class="stat-v hnum">{{ userStore.userId }}</span>
           </div>
         </div>
       </div>
@@ -595,9 +636,9 @@ function openExisting() {
   gap: 24px;
   padding: 14px 22px;
   margin-bottom: 16px;
-  background: linear-gradient(135deg, #0d0e14 0%, #1a0f1e 100%);
+  background: linear-gradient(135deg, 0d0e14 0%, 1a0f1e 100%);
   border-radius: var(--radius-l);
-  color: #fff;
+  color: fff;
   box-shadow: 0 4px 8px -2px rgba(0, 0, 0, 0.05), 0 12px 28px -8px rgba(0, 0, 0, 0.12);
   position: relative;
   overflow: hidden;
@@ -634,7 +675,7 @@ function openExisting() {
   margin: 0;
   font-size: 22px;
   font-weight: 900;
-  background: linear-gradient(120deg, #fff 0%, #ffd0d8 100%);
+  background: linear-gradient(120deg, fff 0%, ffd0d8 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -695,11 +736,11 @@ function openExisting() {
   border-color: rgba(255, 45, 85, 0.35);
 }
 .bar-step.is-active .bar-num {
-  background: linear-gradient(120deg, #ff2d55 0%, #ff5e3a 100%);
-  color: #fff;
+  background: linear-gradient(120deg, ff2d55 0%, ff5e3a 100%);
+  color: fff;
 }
 .bar-step.is-active .bar-name {
-  color: #fff;
+  color: fff;
 }
 .bar-sep {
   width: 22px;
@@ -795,11 +836,11 @@ function openExisting() {
   font-family: var(--font-num);
   flex-shrink: 0;
 }
-.pnum.pnum-hot { color: #fff; background: linear-gradient(135deg, #ff2d55 0%, #ff5e3a 100%); }
-.pnum.pnum-blue { color: #fff; background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%); }
-.pnum.pnum-orange { color: #fff; background: linear-gradient(135deg, #ff9500 0%, #fb923c 100%); }
-.pnum.pnum-green { color: #fff; background: linear-gradient(135deg, #10b981 0%, #34d399 100%); }
-.pnum.pnum-purple { color: #fff; background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); }
+.pnum.pnum-hot { color: fff; background: linear-gradient(135deg, ff2d55 0%, ff5e3a 100%); }
+.pnum.pnum-blue { color: fff; background: linear-gradient(135deg, 2563eb 0%, 06b6d4 100%); }
+.pnum.pnum-orange { color: fff; background: linear-gradient(135deg, ff9500 0%, fb923c 100%); }
+.pnum.pnum-green { color: fff; background: linear-gradient(135deg, 10b981 0%, 34d399 100%); }
+.pnum.pnum-purple { color: fff; background: linear-gradient(135deg, 7c3aed 0%, a855f7 100%); }
 
 /* 表单基础 */
 .f-item > span {
@@ -872,6 +913,22 @@ function openExisting() {
 }
 .load-row .f-item {
   width: 100%;
+}
+
+/* 新建空白商品入口 */
+.load-or {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+.load-or .btn {
+  flex-shrink: 0;
+}
+.load-or-tip {
+  font-size: 11px;
+  color: var(--text-2);
 }
 
 /* 演示商品库网格 */
@@ -1073,7 +1130,7 @@ function openExisting() {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #fff;
+  color: fff;
   font-size: 12px;
   font-weight: 600;
 }
@@ -1082,7 +1139,7 @@ function openExisting() {
   bottom: 8px;
   right: 8px;
   background: rgba(0, 0, 0, 0.75);
-  color: #fff;
+  color: fff;
   font-size: 10.5px;
   font-weight: 600;
   padding: 3px 9px;
@@ -1144,7 +1201,7 @@ function openExisting() {
   content: '';
   width: 3px;
   height: 12px;
-  background: linear-gradient(120deg, #ff2d55 0%, #ff5e3a 100%);
+  background: linear-gradient(120deg, ff2d55 0%, ff5e3a 100%);
   border-radius: 999px;
 }
 .group-body {
@@ -1207,7 +1264,7 @@ function openExisting() {
   height: 14px;
   border-radius: 50%;
   border: 2.5px solid rgba(255, 255, 255, 0.4);
-  border-top-color: #fff;
+  border-top-color: fff;
   animation: rot 0.7s linear infinite;
 }
 .spin-md {
@@ -1216,7 +1273,7 @@ function openExisting() {
   height: 26px;
   border-radius: 50%;
   border: 3px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
+  border-top-color: fff;
   animation: rot 0.7s linear infinite;
 }
 @keyframes rot {
@@ -1244,7 +1301,7 @@ function openExisting() {
   height: 20px;
   border-radius: 50%;
   background: var(--success);
-  color: #fff;
+  color: fff;
   font-size: 12px;
   font-weight: 800;
 }

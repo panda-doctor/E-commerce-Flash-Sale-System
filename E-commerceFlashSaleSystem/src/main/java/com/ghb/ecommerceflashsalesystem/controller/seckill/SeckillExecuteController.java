@@ -33,11 +33,27 @@ public class SeckillExecuteController {
             log.info("秒杀执行成功，activityId={}, userId={}", request.getActivityId(), request.getUserId());
             return Result.success(execute);
         } catch (BusinessException e) {
+            // M1：失败响应的 data.result 与 interface.md 4.8 契约保持一致——
+            // 售罄 SOLD_OUT / 重复 DUPLICATED / 限流 RATE_LIMITED，其余拒绝折叠为 REJECTED
             SeckillResponse response = new SeckillResponse();
             response.setActivityId(request.getActivityId());
             response.setUserId(request.getUserId());
-            response.setResult("REJECTED");
+            response.setResult(resultOf(e.getResultCode()));
             return Result.fail(e.getResultCode(), e.getMessage(), response);
         }
+    }
+
+    /** 业务拒绝码 -> 契约 result 取值（interface.md 4.8） */
+    private String resultOf(ResultCode resultCode) {
+        if (resultCode == ResultCode.OUT_OF_STOCK) {
+            return "SOLD_OUT";
+        }
+        if (resultCode == ResultCode.DUPLICATE_PURCHASE) {
+            return "DUPLICATED";
+        }
+        if (resultCode == ResultCode.RATE_LIMITED) {
+            return "RATE_LIMITED";
+        }
+        return "REJECTED";
     }
 }

@@ -10,6 +10,7 @@ import {
   formatDuration,
   parseServerTime,
   CHECK_REASON_TEXT,
+  ORDER_STATUS_TEXT,
 } from '../utils/format'
 import { toastErr, toastOK, toastWarn } from '../utils/toast'
 
@@ -281,13 +282,18 @@ async function onBuy() {
   }
 }
 
-async function preheatNow() {
+/* ---- M10：我的抢购记录（interface 4.10，当前活动维度） ---- */
+const myOrders = ref([])
+const myOrdersErr = ref('')
+async function loadMyOrders() {
+  if (!activityId.value) return
   try {
-    await api.preheat(activityId.value)
-    toastOK('预热成功，库存已就绪')
-    refreshMeta()
+    myOrders.value = await api.listMyOrders(userStore.userId, activityId.value)
+    myOrdersErr.value = ''
   } catch (e) {
-    toastErr(e.message || '预热失败')
+    // 无有效令牌（40100）等场景静默置空，用一行提示说明原因
+    myOrders.value = []
+    myOrdersErr.value = e.code === 40100 ? '当前用户无有效访问令牌，可到顶栏领取' : '（加载失败，可点击刷新）'
   }
 }
 
@@ -333,6 +339,7 @@ watch(
       uiState.setActivity(v)
       loadActivity()
       loadMore()
+      loadMyOrders()
     }
   },
 )
@@ -344,6 +351,7 @@ onMounted(() => {
   }, 2600)
   if (activityId.value) loadActivity()
   loadMore()
+  loadMyOrders()
 })
 onBeforeUnmount(() => {
   clearInterval(clockTimer)
@@ -465,7 +473,8 @@ onBeforeUnmount(() => {
           </p>
 
           <div v-if="phase === 'unpreheated'" class="preheat">
-            库存键未预热，无法扣减 → <button class="link" @click="preheatNow">立即预热</button>
+            库存键未预热，本场暂不可抢购。预热请到
+            <RouterLink class="link" to="/admin">管理控制台</RouterLink>
           </div>
 
           <!-- 订单轮询结果 -->
@@ -480,6 +489,28 @@ onBeforeUnmount(() => {
             </div>
           </Transition>
         </aside>
+      </section>
+
+      <!-- 我的抢购记录（interface 4.10） -->
+      <section class="panel my-order">
+        <header class="my-order-head">
+          <div class="my-order-title">
+            <span class="my-order-bar"></span>
+            <h3>我的抢购记录</h3>
+            <span class="my-order-sub">当前用户 #{{ userStore.userId }}</span>
+          </div>
+          <button class="my-order-refresh" @click="loadMyOrders">刷新</button>
+        </header>
+        <ul v-if="myOrders.length" class="my-order-list">
+          <li v-for="od in myOrders" :key="od.orderNo" class="my-order-row">
+            <span class="mo-no hnum">{{ od.orderNo }}</span>
+            <span class="mo-status">{{ ORDER_STATUS_TEXT[od.status] || od.status }}</span>
+            <time class="mo-time hnum">{{ od.createdAt }}</time>
+          </li>
+        </ul>
+        <p v-else class="my-order-empty">
+          {{ myOrdersErr || '本场你还没有秒杀成功记录，先去抢一单吧' }}
+        </p>
       </section>
 
       <!-- 榜单与指标 -->
@@ -980,6 +1011,96 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------- 我的抢购记录（M10） ---------- */
+.my-order {
+  margin-top: 26px;
+  padding: 18px 22px 12px;
+}
+.my-order-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.my-order-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.my-order-bar {
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--grad-cta);
+}
+.my-order-title h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+.my-order-sub {
+  font-size: 12px;
+  color: var(--text-3);
+  font-weight: 600;
+}
+.my-order-refresh {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.my-order-refresh:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.my-order-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.my-order-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  border-bottom: 1px dashed var(--border);
+  font-size: 13px;
+}
+.my-order-row:last-child {
+  border-bottom: none;
+}
+.mo-no {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 600;
+}
+.mo-status {
+  color: var(--success);
+  font-weight: 700;
+  flex: none;
+}
+.mo-time {
+  color: var(--text-3);
+  font-size: 12px;
+  flex: none;
+}
+.my-order-empty {
+  color: var(--text-3);
+  font-size: 13px;
+  text-align: center;
+  padding: 18px 0 8px;
 }
 
 .below {

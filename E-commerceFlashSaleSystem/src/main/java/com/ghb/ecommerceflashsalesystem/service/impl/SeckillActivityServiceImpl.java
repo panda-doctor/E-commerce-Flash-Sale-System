@@ -78,6 +78,8 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
             // 实时库存：预热后取 Redis；未预热回退 DB 配置库存
             Integer cacheStock = seckillCacheService.getStockFromCache(activity.getId());
             vo.setStock(cacheStock != null ? cacheStock : activity.getSeckillStock());
+            // M8：preheated = Redis 库存键是否存在（未预热时列表卡片不得显示"立即抢购"）
+            vo.setPreheated(cacheStock != null);
             vo.setTotalStock(activity.getSeckillStock());
             return vo;
         }).collect(Collectors.toList());

@@ -60,8 +60,10 @@ http://localhost:8081
 | `0` | 成功 |
 | `40001` | 参数错误 |
 | `40004` | 资源不存在 |
+| `40100` | 未授权访问（管理/用户访问令牌缺失、无效或与请求用户不匹配） |
 | `40901` | 重复秒杀 |
 | `40902` | 库存不足 |
+| `40903` | 用户标识已被占用（动态发令牌注册：静态演示账号或他人已注册） |
 | `42900` | 请求过于频繁 |
 | `50000` | 系统异常 |
 | `50300` | AI 服务未配置（缺 `ai.llm.api-key` / `ai.llm.base-url`） |
@@ -105,6 +107,8 @@ http://localhost:8081
 | 管理端商品 | `POST` | `/api/admin/products` | 创建或更新商品 |
 | 管理端活动 | `POST` | `/api/admin/seckill/activities` | 创建秒杀活动 |
 | 管理端预热 | `POST` | `/api/admin/seckill/activities/{activityId}/preheat` | 预热活动和库存到缓存 |
+| 管理端库存重置 | `POST` | `/api/admin/seckill/activities/{activityId}/reset-stock` | 重置活动库存（仅未开始/已结束，运维/压测复位） |
+| 活动广场 | `GET` | `/api/seckill/activities` | 活动广场列表（含商品快照、实时库存、预热标记） |
 | 秒杀活动 | `GET` | `/api/seckill/activities/{activityId}` | 查询活动详情 |
 | 秒杀校验 | `GET` | `/api/seckill/activities/{activityId}/check` | 查询用户是否可参与 |
 | 秒杀执行 | `POST` | `/api/seckill/execute` | 执行秒杀请求 |
@@ -112,7 +116,11 @@ http://localhost:8081
 | 用户订单 | `GET` | `/api/seckill/users/{userId}/orders` | 查询用户秒杀订单 |
 | 排行榜 | `GET` | `/api/rank/top10` | 查询秒杀成功排行榜 |
 | 管理端指标 | `GET` | `/api/admin/seckill/activities/{activityId}/metrics` | 查询活动运行指标 |
+| 管理端快照 | `POST` | `/api/admin/seckill/activities/{activityId}/snapshot` | 手动打点活动指标快照（压测/复盘用） |
+| 死信回放 | `POST` | `/api/admin/seckill/dead-letters/replay` | 人工回放死信消息（需管理令牌） |
+| 图片上传 | `POST` | `/api/admin/files/image` | 上传商品图片（multipart，本地磁盘 / OSS 双策略） |
 | AI 客服 | `POST` | `/api/support/chat` | AI 客服对话（接入外部 OpenAI 兼容大模型） |
+| 用户令牌 | `POST` | `/api/auth/register` | 动态发令牌：为自定义 userId 领取服务端随机访问令牌（占用返 40903） |
 
 ## 四、接口详情
 
@@ -314,7 +322,11 @@ GET /api/seckill/activities/{activityId}
 GET /api/seckill/activities/{activityId}/check?userId=1001
 ```
 
-用途：检查活动是否开放、用户是否重复秒杀、是否触发限流。
+用途：检查活动当前是否可参与（活动不存在返回 `40004`）。判定口径与 `execute` 一致：
+显式取消 → 未开始 / 已结束 → 实时库存售罄 → 未预热；结果通过 `canJoin` + `reason` 表达
+（`ALLOW` / `ACTIVITY_CANCELLED` / `ACTIVITY_NOT_STARTED` / `ACTIVITY_ENDED` /
+`ACTIVITY_SOLD_OUT` / `ACTIVITY_NOT_PREHEATED`）。用户是否重复秒杀、是否触发限流由
+`execute` 落地（返回 `40901` / `42900`），本接口不预判。
 
 查询参数：
 
@@ -585,6 +597,81 @@ POST /api/support/chat
 - 需在后端配置 `ai.llm.base-url` 与 `ai.llm.api-key`（支持 `AI_LLM_API_KEY` 环境变量），否则返回 `50300`。
 - 大模型调用失败（网络/超时/非 2xx/响应异常）返回 `50301`，回复仅供参考。
 
+### 4.14 重置秒杀活动库存
+
+```text
+POST /api/admin/seckill/activities/{activityId}/reset-stock
+```
+
+用途：运维 / 压测复位——将活动库存恢复为数据库配置值，刷新库存缓存键的 TTL。
+
+路径参数：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `activityId` | 数字 | 是 | 活动编号 |
+
+语义约束（E1-r）：
+
+- 仅允许「未开始」或「已结束」的活动重置库存（压测前复位、修复缓存库存异常）。
+- 活动**进行中**禁止重置，由服务端守卫拦截并返回业务错误，防止把 Redis 已扣减的库存用数据库配置库存"复活"。
+- 活动不存在返回 `40004`。
+
+响应示例：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "activityId": 1,
+    "stockKey": "seckill:stock:1",
+    "stock": 100
+  },
+  "requestId": "202609081200001017",
+  "timestamp": 1785124800000
+}
+```
+
+### 4.15 动态注册用户令牌（领取令牌）
+
+```text
+POST /api/auth/register
+```
+
+用途：演示环境无账号体系，本接口是「自定义用户 ID → 领取动态访问令牌」的能力出口。领取成功后，令牌随受保护用户接口（`execute` / `check` / `users/{userId}/orders`）的请求头 `X-User-Token` 携带，服务端据此解析绑定 userId。
+
+请求体：
+
+| 字段 | 类型 | 必填 | 校验 | 说明 |
+| --- | --- | --- | --- | --- |
+| `userId` | 数字 | 是 | 正整数 | 拟注册的用户标识，须未被占用（静态演示账号 `1001~1006` 及已注册者除外） |
+
+响应示例：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "userId": 9001,
+    "token": "6f1c0a2b3d4e5f6a7b8c9d0e1f2a3b4c"
+  },
+  "requestId": "202609091000000017",
+  "timestamp": 1786147200000
+}
+```
+
+错误码：
+
+- `40001`：`userId` 缺失 / 非法（非正整数、超 `Long` 范围等）
+- `40903`：用户标识已被占用（静态演示账号或已动态注册者），请更换其他用户 ID
+
+说明：
+
+- 本接口**匿名可调**（位于令牌拦截路径之外）；令牌一律**服务端随机生成**（32 位十六进制），不接收客户端传入的令牌，防止他人任意伪装。
+- 令牌注册表由服务端内存维护（`UserTokenRegistry`），**后端重启即清空**——已领取令牌随之失效，重新注册即可；前端本地缓存 + 「已注册」按钮重领见 `plan.md` 今日任务卡片。
+
 ## 五、核心链路约定
 
 秒杀接口 `/api/seckill/execute` 的后续实现应遵循以下顺序：
@@ -609,7 +696,7 @@ POST /api/support/chat
 | `seckill:activity:{activityId}` | 哈希 | 秒杀活动信息 |
 | `seckill:stock:{activityId}` | 字符串 | 秒杀库存 |
 | `seckill:user:{activityId}:{userId}` | 字符串 | 用户秒杀幂等标记 |
-| `rate:limit:{userId}` | 有序集合 | 用户限流窗口 |
+| `rate:limit:{activityId}:{userId}` | 有序集合 | 用户对指定活动的滑动窗口限流（E4：活动×用户双维，避免多活动互相误伤） |
 | `seckill:order:stream` | 流 | 秒杀订单消息 |
 | `seckill:order:dead:stream` | 流 | 消费失败死信消息 |
 | `seckill:rank:{activityId}` | 有序集合 | 秒杀成功排行榜 |
@@ -642,3 +729,4 @@ POST /api/support/chat
 - `/api/seckill/users/{userId}/orders`
 - `/api/rank/top10`
 - `/api/admin/seckill/activities/{activityId}/metrics`
+- `/api/admin/seckill/activities/{activityId}/reset-stock`

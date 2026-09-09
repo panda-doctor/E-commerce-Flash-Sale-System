@@ -4,6 +4,7 @@ import com.ghb.ecommerceflashsalesystem.common.api.Result;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.config.ApiAccessInterceptor;
+import com.ghb.ecommerceflashsalesystem.config.UserTokenRegistry;
 import jakarta.servlet.http.HttpServletRequest;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillOrder;
 import com.ghb.ecommerceflashsalesystem.domain.enums.OrderStatusEnum;
@@ -24,13 +25,25 @@ import java.util.Map;
  */
 public class OrderController {
     private final SeckillOrderMapper seckillOrderMapper;
+    private final UserTokenRegistry userTokenRegistry;
     /**
      * 查询订单状态（interface 4.9）
      * GET /api/seckill/orders/{orderNo}
+     *
+     * <p>M9：匿名轮询与压测仍可用；但当请求携带 X-User-Token 时，服务端会校验其绑定
+     * 的 userId 是否就是订单归属人，防止令牌被用于窥探他人订单。不携带令牌则不做归属校验。</p>
      */
     @GetMapping("/orders/{orderNo}")
-    public Result<Map<String, Object>> getOrderStatus(@PathVariable String orderNo) {
+    public Result<Map<String, Object>> getOrderStatus(@PathVariable String orderNo,
+                                                      @RequestHeader(name = "X-User-Token", required = false) String userToken) {
         SeckillOrder order = seckillOrderMapper.selectByOrderNo(orderNo);
+        // M9：携带令牌 → 校验归属；令牌无效或与订单用户不符 → 40100
+        if (order != null && userToken != null && !userToken.isBlank()) {
+            Long boundUserId = userTokenRegistry.resolveUserId(userToken).orElse(null);
+            if (boundUserId == null || !boundUserId.equals(order.getUserId())) {
+                throw new BusinessException(ResultCode.UNAUTHORIZED, "无权查看该订单");
+            }
+        }
         Map<String, Object> data = new HashMap<>();
         // 【复盘】曾误写 data.put("orderNo", order)——把整个订单实体塞进了 orderNo 键，应放请求参数本身
         data.put("orderNo", orderNo);

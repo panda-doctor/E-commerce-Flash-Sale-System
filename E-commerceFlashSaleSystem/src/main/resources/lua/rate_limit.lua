@@ -2,7 +2,7 @@
 -- 使用 ZSet 存储请求时间戳，通过 ZREMRANGEBYSCORE 清理窗口外旧数据，ZCARD 统计窗口内请求数。
 --
 -- 键与参数：
--- KEYS[1] : 限流键 (rate:limit:{userId})
+-- KEYS[1] : 限流键 (rate:limit:{activityId}:{userId})，活动×用户双维（E4），避免多活动互伤
 -- ARGV[1] : 当前时间戳（秒，使用 System.currentTimeMillis() / 1000）
 -- ARGV[2] : 窗口大小（秒，如 60）
 -- ARGV[3] : 阈值（最大请求次数，如 5）

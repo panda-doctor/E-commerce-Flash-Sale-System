@@ -1,9 +1,8 @@
 package com.ghb.ecommerceflashsalesystem.common.api;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.ghb.ecommerceflashsalesystem.common.util.RequestIdUtil;
 import lombok.Data;
-
-import java.util.UUID;
 
 /**
  * 统一响应体
@@ -46,7 +45,9 @@ public class Result<T> {
 
     // ---------- 私有构造，禁止外部直接 new ----------
     private Result() {
-        this.requestId = UUID.randomUUID().toString();
+        // M3：统一走 RequestIdUtil（yyyyMMddHHmmss + 4 位序号），与 interface.md 2.3 的
+        // requestId 示例格式一致，避免 UUID 与文档契约/日志格式不一致。
+        this.requestId = RequestIdUtil.generate();
         this.timestamp = System.currentTimeMillis();
     }
 

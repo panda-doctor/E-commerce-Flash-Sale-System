@@ -50,6 +50,13 @@ public class ActivityItemVO {
     private Integer stock;
 
     /**
+     * 是否已预热（seckill:stock 键是否存在）。
+     * M8：未预热时前端不得把活动当"可抢购"引导，应提示"库存未预热"；
+     * 兼容旧数据（null 视为已预热）由前端处理。
+     */
+    private Boolean preheated;
+
+    /**
      * 活动配置总库存（DB seckill_stock，用于计算"已抢百分比/已抢件数"）
      */
     private Integer totalStock;

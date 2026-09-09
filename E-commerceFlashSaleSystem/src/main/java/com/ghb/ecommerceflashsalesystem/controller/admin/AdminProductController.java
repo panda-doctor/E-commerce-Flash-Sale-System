@@ -26,16 +26,16 @@ public class AdminProductController {
      * 创建或更新商品
      */
     @PostMapping("/api/admin/products")
-    public Result<Map<String, Long>> saveProducts(@Valid  @RequestBody ProductRequest request) {
+    public Result<Map<String, Object>> saveProducts(@Valid  @RequestBody ProductRequest request) {
         // 保存商品
         Long productId = productService.saveProduct(request);
 
         //删除缓存(不管创建还是更新，都要清缓存)
         productCacheService.deleteProductFromCache(productId);
 
-        //返回productId
-        Map<String ,Long> data = new HashMap<>();
-        data.put("productId", productId);
+        // 返回 productId：雪花 ID 可能超过 JS 安全整数（2^53），统一按字符串返回，前端字符串透传不丢精度
+        Map<String, Object> data = new HashMap<>();
+        data.put("productId", String.valueOf(productId));
         return Result.success(data);
     }
 }

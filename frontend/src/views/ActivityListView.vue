@@ -35,7 +35,8 @@ function phaseOf(it) {
   if (now < start) return 'soon'
   if (now >= end) return 'over'
   if (stock === 0) return 'over'
-  if (stock == null) return 'soon' // 未预热
+  // M8：时间窗内但未预热的活动仍归「抢购中」分栏展示，
+  // 卡片内部以"库存未预热"角标/按钮提示，不再引导用户直接点抢（execute 会拒）
   return 'live'
 }
 

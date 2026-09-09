@@ -118,9 +118,13 @@ public class SeckillServiceImpl implements SeckillService {
         // 1. 查询活动：缓存优先，未命中回源数据库（修正 v1 错误点 2）
         SeckillActivityVO activityVO = seckillCacheService.getActivityFromCache(activityId);
         if (activityVO == null) {
-            if (seckillActivityMapper.selectById(activityId) == null) {
+            // M4：缓存未命中（未预热 / 已过期）时按 DB 时间窗给出精确拒绝原因，
+            // 避免「已结束 / 未开始」的活动一律误报"活动尚未预热"（误导管理员去预热）。
+            SeckillActivity activity = seckillActivityMapper.selectById(activityId);
+            if (activity == null) {
                 throw new BusinessException(ResultCode.NOT_FOUND, "活动不存在，activityId=" + activityId);
             }
+            assertOpenWindow(activity, LocalDateTime.now());
             throw new BusinessException(ResultCode.PARAM_ERROR, "活动尚未预热，暂不可参与秒杀");
         }
 
@@ -243,6 +247,24 @@ public class SeckillServiceImpl implements SeckillService {
             // 未知返回值（防御）
             log.error("脚本返回未知值: {}, activityId={}, userId={}", result, activityId, userId);
             throw new BusinessException(ResultCode.SYSTEM_ERROR, "系统异常");
+        }
+    }
+
+    /**
+     * M4：按 DB 活动记录校验秒杀是否处于开放时间窗（缓存未命中回源时的精确拒绝）。
+     * 判定顺序与缓存命中路径一致：CANCELLED 显式拦截 → 未开始 → 已结束；
+     * 仅当落在开放时间窗内才通过（上层随后抛"尚未预热"），保证拒绝文案语义不误导。
+     */
+    private void assertOpenWindow(SeckillActivity activity, LocalDateTime now) {
+        Integer dbStatus = activity.getStatus();
+        if (dbStatus != null && dbStatus == ActivityStatusEnum.CANCELLED.getCode()) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "活动已取消");
+        }
+        if (activity.getStartTime() != null && now.isBefore(activity.getStartTime())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "活动未开始");
+        }
+        if (activity.getEndTime() == null || !now.isBefore(activity.getEndTime())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "活动已结束");
         }
     }
 

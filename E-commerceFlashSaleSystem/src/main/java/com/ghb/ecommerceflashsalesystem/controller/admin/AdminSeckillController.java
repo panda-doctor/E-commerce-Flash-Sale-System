@@ -87,6 +87,34 @@ public class AdminSeckillController {
         return Result.success(data);
     }
 
+    /**
+     * 重置活动库存（运维/压测复位）
+     * POST /api/admin/seckill/activities/{activityId}/reset-stock
+     *
+     * 语义：仅允许「未开始」或「已结束」的活动重置库存，活动进行中由
+     * SeckillCacheService#resetStock 内部守卫拒绝（抛 PARAM_ERROR，防止把
+     * Redis 已扣减的库存用 DB 配置库存"复活"）。用于压测前复位或修复缓存库存异常。
+     *
+     * @param activityId 活动ID
+     * @return activityId + stockKey + 重置后库存
+     */
+    @PostMapping("/activities/{activityId}/reset-stock")
+    public Result<Map<String, Object>> resetSeckillStock(@PathVariable Long activityId) {
+        // 复用内部含分布式锁 + 活跃期守卫的重置方法（E1-r）
+        seckillCacheService.resetStock(activityId);
+
+        String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
+        Integer stock = seckillCacheService.getStockFromCache(activityId);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("activityId", activityId);
+        data.put("stockKey", stockKey);
+        data.put("stock", stock != null ? stock : 0);
+
+        log.info("库存重置成功，activityId={}, stock={}", activityId, stock);
+        return Result.success(data);
+    }
+
     /** POST /api/admin/seckill/dead-letters/replay：人工重新投递一条已补偿的死信。 */
     @PostMapping("/dead-letters/replay")
     public Result<Map<String, String>> replayDeadLetter(@Valid @RequestBody DeadLetterReplayRequest request) {

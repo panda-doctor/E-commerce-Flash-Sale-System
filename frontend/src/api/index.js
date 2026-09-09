@@ -5,6 +5,10 @@ export const api = {
   // 健康检查
   health: () => http.get('/api/health'),
 
+  // 用户鉴权：动态发令牌（演示环境无账号系统，为自定义 userId 领取服务端随机令牌；
+  // userId 字符串透传，后端 Long 接收；已占用 id 返回业务码 40903）
+  registerUser: (userId) => http.post('/api/auth/register', { userId }),
+
   // 商品
   getProduct: (productId) => http.get(`/api/products/${productId}`),
 
@@ -20,6 +24,9 @@ export const api = {
 
   // 订单状态（QUEUING / CREATED）
   getOrder: (orderNo) => http.get(`/api/seckill/orders/${orderNo}`),
+  // 我的秒杀订单（interface 4.10；activityId 可选）
+  listMyOrders: (userId, activityId) =>
+    http.get(`/api/seckill/users/${userId}/orders`, { activityId }),
 
   // 排行榜
   getRank: (activityId, top = 10) => http.get('/api/rank/top10', { activityId, top }),

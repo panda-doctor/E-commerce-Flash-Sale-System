@@ -30,7 +30,8 @@ public class ActivityCheckResponse {
     private ActivityStatusEnum activityStatus;
 
     /**
-     * 原因说明，取值：ALLOW / ACTIVITY_NOT_STARTED / ACTIVITY_ENDED / ACTIVITY_SOLD_OUT / ACTIVITY_CANCELLED
+     * 原因说明，取值：ALLOW / ACTIVITY_NOT_PREHEATED / ACTIVITY_NOT_STARTED /
+     * ACTIVITY_ENDED / ACTIVITY_SOLD_OUT / ACTIVITY_CANCELLED
      */
     private String reason;
 }

@@ -2,7 +2,7 @@ package com.ghb.ecommerceflashsalesystem.config;
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
+import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
@@ -33,8 +33,20 @@ public class RedisConfig {
 
 // ② 复制 ObjectMapper 并开启默认类型支持
         ObjectMapper mapper = objectMapper.copy();
+        // S2 加固：DefaultTyping 开启后，反序列化会按 JSON 里的 @class 字段实例化类。
+        // 若继续用 LaissezFaireSubTypeValidator（放任一切类型），一旦 Redis 数据被污染，
+        // 可能被引导实例化任意 gadget 类。改用 BasicPolymorphicTypeValidator 白名单：
+        // 仅放行本工程实体包 + 缓存可能写入的常用 JDK 类型（时间/容器/数值/网络），其余一律拒绝。
+        BasicPolymorphicTypeValidator ptv = BasicPolymorphicTypeValidator.builder()
+                .allowIfSubType("com.ghb.ecommerceflashsalesystem.")
+                .allowIfSubType("java.time.")
+                .allowIfSubType("java.util.")
+                .allowIfSubType("java.lang.")
+                .allowIfSubType("java.math.")
+                .allowIfSubType("java.net.")
+                .build();
         mapper.activateDefaultTyping(
-                LaissezFaireSubTypeValidator.instance,
+                ptv,
                 ObjectMapper.DefaultTyping.NON_FINAL,
                 JsonTypeInfo.As.PROPERTY
         );

@@ -632,10 +632,10 @@
 |---|---|---|---|---|
 | E3 · 创建/更新业务校验 | 活动/商品创建缺校验：`endTime`≤`startTime`、价格为负、库存 ≤0、productId 不存在（FK 异常落 50000）均可入 | `ActivityRequest`/商品 DTO 增加校验（时间序、价格非负、库存 >0、productId 存在性预查），失败走统一业务码，不冒 50000 | 非法入参被业务码拦截（非 50000 脏异常）；补对应测试用例 | ✅ 已落地（CreateBusinessValidationTest +10，全绿） |
 | E4 · 限流粒度细化 | 限流仅 userId（60s/5 次）：多活动连点互相误伤、换 userId 可绕过 | 限流键升级 `userId:activityId` 双维（保留总量约束），窗口/阈值参数化进 yaml（默认 60s/5 保持现状） | 同用户跨活动不再互伤；单活动限流语义不破坏现有限流测试 | ✅ 已落地（粒度整改期已吸收；窗口/阈值 yaml 化 `flash.rate-limit.*`） |
-| E6 · 上传校验加固 | 上传仅验扩展名/大小，Content-Type 全信客户端（伪造 MIME 可藏脚本文件） | 在现有文件头白名单基础上以魔数探测为准；响应 Content-Type 由服务端按扩展名固定，不反射客户端值 | 伪造 Content-Type 文件被拒；上传响应类型服务端可控；补测试 | ⏳ |
+| E6 · 上传校验加固 | 上传仅验扩展名/大小，Content-Type 全信客户端（伪造 MIME 可藏脚本文件） | 在现有文件头白名单基础上以魔数探测为准；响应 Content-Type 由服务端按扩展名固定，不反射客户端值 | 伪造 Content-Type 文件被拒；上传响应类型服务端可控；补测试 | ✅ 核心已落地（文件头魔数校验 + 服务端固定 Content-Type）；「文件内容与图片格式不匹配」合法图片误拒复现仍挂起待排查 |
 | E5 · 异常文案收敛（残余） | OSS 上传失败把 `e.getMessage()` 原样回用户（含 SDK 内部细节） | 用户侧固定可读文案 + `log.error` 记录完整原因，错误码区分场景 | 失败响应不再暴露 SDK 堆栈/服务器细节，日志有完整根因 | ✅ 已落地（复核无回显点；预热失败文案收敛为固定提示） |
 | E2 · limitPerUser 语义取舍 | 创建参数 `limitPerUser` 仅透传不生效；DB `uk_activity_user` 硬性一人一单（配置 >1 也不允许多买），误导使用者 | 秒杀"一人一单"是合理约束 → 建议移除该参数或创建时强制 =1 并注释说明受 DB 唯一键约束；若确需"每人 N 件"则要改表去唯一键 + Redis 计数（工程量高，教学不建议） | 参数语义与 DB 唯一键一致，无"配了不生效"的误导；文档/注释同步 | ✅ 已落地（DTO 加 @Min/@Max 夹逼=1 作 Controller 第一道闸，Service 创建/更新同入口兜底拒绝；前端 disabled+max=1+提示；测试补更新分支用例，全量 73 用例 BUILD SUCCESS） |
-| E1-r（可选） | `resetStock` 无调用方，暂留待接预热语义 | 二选一：接入预热语义（仅预热/结束态可重置库存）并加活跃期保护，或删除并留注释说明 | 明确取舍并在代码注释/`docs` 记录，防活动进行中复活库存 | ⏳ |
+| E1-r | `resetStock` 已接入管理端接口与活跃期守卫 | 落地：`POST /api/admin/seckill/activities/{id}/reset-stock`（Redisson 锁 + 活动进行中拒绝重置），语义见 `SeckillCacheService#resetStock` | 仅未开始/已结束可重置；进行中重置返回业务错误 | ✅ 已落地（2026-09-09 复核） |
 
 **认领顺序建议：** E3 → E4 → E6 → E5 → E2（取舍类放最后）；E1-r 可并入 E1 收尾或直接做"删除"取舍。任务由 panda 认领实现，导师审查。
 
@@ -667,7 +667,7 @@
 | `seckill:activity:{activityId}` | Hash | 活动信息+时间窗口 | Day 6 |
 | `seckill:stock:{activityId}` | String | 秒杀实时库存 | Day 6 |
 | `seckill:user:{activityId}:{userId}` | String | 用户秒杀幂等令牌 | 第2阶段 Day 4 ✅ |
-| `rate:limit:{userId}` | ZSet | 用户滑动窗口限流 | 第3阶段 Day 1 ✅ |
+| `rate:limit:{activityId}:{userId}` | ZSet | 滑动窗口限流（活动×用户双维，E4 双维化） | 第3阶段 Day 1 ✅ |
 | `seckill:order:stream` | Stream | 秒杀下单消息（削峰） | 第3阶段 Day 2 ✅ |
 | `seckill:order:dead:stream` | Stream | 消费失败死信 | 第3阶段 Day 4 ✅ |
 | `seckill:lock:preheat:{activityId}` / `seckill:lock:reset:{activityId}` | String(锁) | 预热/库存重置分布式锁 | 第3阶段 Day 5 ✅ |
@@ -695,8 +695,17 @@
 | POST | `/api/support/chat` | ✅ | 增强② AI 客服（外部 OpenAI 兼容大模型，未配置密钥返 50300） |
 | GET | `/api/seckill/users/{userId}/orders` | ✅ | 审计整改 C3（interface 4.10，`?activityId=` 可空；R3 后需 `X-User-Token` 且令牌绑定的 userId 须匹配路径） |
 | POST | `/api/admin/seckill/dead-letters/replay` | ✅ | 审计整改 R5（死信人工回放：按 activityId+orderNo 列表回放，需 `X-Admin-Token`） |
+| POST | `/api/auth/register` | ✅ | 今日卡片 G1/G2（动态发令牌：自定义 userId 领取服务端随机令牌，内存注册表占用返 40903；见 interface 4.15） |
 
 > 鉴权说明（审计整改 R3 后生效）：`/api/admin/**` 需请求头 `X-Admin-Token`（= `security.admin-token`，建议环境变量注入）；`/api/seckill/execute`、`/api/seckill/activities/{id}/check`、`/api/seckill/users/{userId}/orders` 需请求头 `X-User-Token`（格式 `security.user-tokens`，`token:userId,` 逗号分隔，服务端据令牌解析出 userId，不再信任调用方传入的 userId）。
+
+**配置收敛（2026-09-08）：环境变量统一由 `.env` 管理**
+- 后端 `pom.xml` 引入 `me.paulschwarz:spring-dotenv:4.0.0`，应用启动与 `@SpringBootTest`（含命令行 `mvn test`）均自动读取进程工作目录（IDEA/命令行都以 `E-commerceFlashSaleSystem` 模块目录运行）下的 `.env`；优先级：真实系统环境变量 > `.env` > `application.yaml` 默认值。
+- `E-commerceFlashSaleSystem/.env`（模板 `.env.example`）收敛：`MYSQL_PASSWORD`、`ADMIN_TOKEN`、`USER_TOKENS`、`OSS_ENABLED/ENDPOINT/ACCESS_KEY_ID/ACCESS_KEY_SECRET/BUCKET_NAME/DOMAIN`、`AI_LLM_BASE_URL/API_KEY/MODEL`。
+- `frontend/.env`（模板 `.env.example`）收敛：`VITE_ADMIN_TOKEN`、`VITE_USER_TOKEN`（Vite 只注入 `VITE_` 前缀，值须与后端对应令牌一致）。
+- 根 `.gitignore` 忽略 `.env` / `.env.*`，仅放行 `.env.example`，密钥不入库。
+- 生效细节：后端 `.env` 每次启动/测试重读，无需重启；前端 `.env` 为构建期替换，改动后须**重启** `npm run dev`。
+- 收益：此前"命令行 `mvn test` 缺 `MYSQL_PASSWORD`/`AI_LLM_API_KEY` 环境变量"导致的 19 个 `Access denied (using password: NO)` Error 与 AI 客服用例 50300 失败彻底消除——现命令行全量回归 **77 用例 BUILD SUCCESS**。
 
 ---
 
@@ -714,6 +723,50 @@
 
 ---
 
+### 今日任务（2026-09-08 · ✅ 已完成并回归）：多用户演示账号体系 — 修复「仅 1001 能参与秒杀」
+
+> **问题背景**：R3 鉴权（commit `49a0b09`）后，后端 `execute` / `check` / `users/{id}/orders` 三处强制「`X-User-Token` 解析出的绑定 userId == 请求中的 userId」。而前端 `http.js` 对所有用户请求**固定携带单令牌** `VITE_USER_TOKEN`（=`user-a`，绑定 1001），顶栏「演示用户」却可自由切换任意 userId → 一旦切成非 1001，令牌仍解出 1001，即 401「请求用户与访问令牌不匹配」。表现：**1001 正常参与，其余用户全部无法参与秒杀**。
+>
+> **需求确认（panda）**：演示用户账号**可随意配置** —— 演示账号（userId + 令牌 + 显示名）由配置驱动，增减用户不改业务代码。
+>
+> **改动清单（认领：panda 实现，导师审查）：**
+
+| # | 任务 | 落地要点 | 验收口径 |
+|---|---|---|---|
+| F1 | 后端令牌账号可配置扩展 | `E-commerceFlashSaleSystem/.env` 与 `.env.example` 的 `USER_TOKENS` 扩至演示所需（默认 `user-a:1001` ~ `user-f:1006` 六账号，逗号分隔追加）；改动后需重启后端生效 | 1002~1006 均能通过用户接口令牌校验，不再 401 |
+| F2 | 前端演示账号表（配置驱动） | 集中定义演示账号表（如 `store.js` 常量）：`[{ userId:'1001', token:'user-a', name:'演示用户A' }, …]`，与后端 `USER_TOKENS` 一一对应；**增删演示账号 = 改 .env 一行 + 表一行**，不改业务代码 | 表项与后端账号对齐；新增/删除一行即可扩展演示用户 |
+| F3 | 请求令牌随当前账号携带 | `frontend/src/api/http.js` 的 `X-User-Token` 由当前 `userStore.userId` 查账号表得出；表中无此用户时回落到 `VITE_USER_TOKEN`（仍不匹配时由后端 401 文案兜底） | 切换任意演示账号，check/execute/查订单均不再报「令牌不匹配」 |
+| F4 | 顶栏「演示用户」账号化 | `App.vue` 改为从账号表渲染「演示用户」下拉（显示名 + userId），保留手动输入但**无绑定令牌时明确提示**「该用户未配置访问令牌，仅可浏览不可抢购」 | 界面清晰不误导；不会再出现无令牌 userId 的一连串 401 |
+| F5 | JMeter 多用户压测配套提醒 | 多用户压测脚本每线程的 `X-User-Token` 须与其 body/参数 userId 匹配（CSV 放 `token,userId` 双列），并在压测脚本/说明处注明，避免单令牌误用 | 压测脚本与说明不再有「单令牌跑多用户」的误导 |
+
+> **回归口径**：✅ 已达成 —— 全量 `mvn test` **77 用例 BUILD SUCCESS**；`npm run build` 通过、前端 0 lint；真实 HTTP 冒烟：`user-b@1002` / `user-f@1006` 查单 `code=0` 通过鉴权，`user-a`（绑定 1001）访问 1002、以及未注册令牌均 40100 拒绝；顶栏下拉切换 1001~1006 即时生效，自定义无令牌 userId 有明确提示（仅可浏览）。
+>
+> **备注**：本项不改后端鉴权语义（R3「令牌强绑定 uid、不信任裸传 userId」保持），属前端「单令牌 → 多账号令牌按用户携带」的回归修复；若将来确需任意 userId 直通，须先回退 R3 校验与相关测试，不建议。
+
+---
+
+### 今日任务（2026-09-09 · ✅ 已完成并回归）：动态发令牌注册接口 — 免去「加账号改两处 + 重启」的手动注册
+
+> **分工变更（panda）**：自本卡起后续功能由 AI 完成实现，panda 只做最终审查（本卡按 AI 执行记录）。
+>
+> **问题背景**：多用户账号体系（F1~F5）后，新增一个演示用户仍需「后端 `.env` `USER_TOKENS` 追加一行 + 前端 `DEMO_ACCOUNTS` 追加一行」两处同步并重启后端，演示/审查成本高；R3 鉴权链没有「运行时注册」入口，前端「自定义用户 ID」只能浏览、无法抢购。
+>
+> **需求确认（panda）**：新增「动态发令牌」注册接口——自定义 userId 直接向服务端领取随机令牌，免去静态配置步骤。
+
+| # | 任务 | 落地要点 | 验收口径 |
+|---|---|---|---|
+| G1 | 后端：动态令牌注册表组件 + 拦截器「静态 ∪ 动态」 | `UserTokenRegistry`（静态白名单 ∪ 动态双向索引 `ConcurrentHashMap`；占用即拒；服务端 32 位随机令牌）；`ApiAccessInterceptor.requireUser` 委托注册表解析（不再自行 split）；顺带修复上次中断遗留的编译错误（`SecurityProperties` 重复字段、拼写错误的半成品 `UserTokenRegisty`） | `mvn compile` 通过；注册表/拦截器单测全绿 |
+| G2 | 后端：`POST /api/auth/register` 注册接口 | `RegisterRequest`/`RegisterResponse` + `UserAuthController`（新增 `controller/auth` 包）；`ResultCode` 增 `USER_ID_TAKEN(40903)`；匿名可调（位于拦截路径之外），成功返回 `{userId, token}` | 注册成功 / 静态与重复占用 40903 / 缺参 40001 语义正确 |
+| G3 | 后端：注册/防冒领/回归测试 | `UserTokenRegistryTest`（+6，含并发抢注唯一成功）/ `ApiAccessInterceptorTokenTest`（+4，静态+动态放行、无效 40100）/ `AuthRegisterIntegrationTest`（+5，MockMvc 真实 HTTP：动态令牌解锁受保护 `execute`） | 全量 `mvn test` 92 用例 BUILD SUCCESS |
+| G4 | 前端：顶栏「领取令牌 / ✓ 已注册」交互 | `store.js` 本地缓存 `localTokenOf`/`rememberToken` + `tokenOf` 两级查找；`api.registerUser`（userId 字符串透传避免 JS 大数精度丢失）；`App.vue`「领取令牌」主按钮 → 已注册态「✓ 已注册」（可点重领，应对后端重启内存清空） | `npm run build` 通过、前端 0 lint；自定义 userId 领令牌后抢购不再 401 |
+| G5 | 文档与验证 | `interface.md` 补 4.15 注册接口 + 40903 错误码 + 接口清单行；本卡记录 | 全量回归 + 前端构建通过 |
+
+> **回归口径**：✅ 已达成 —— 全量 `mvn test` **92 用例 BUILD SUCCESS**（77 + 新增 15，0 Failures / 0 Errors）；`npm run build` 通过；集成测试日志实证动态令牌穿过 R3 拦截器进入业务层。
+>
+> **备注**：动态注册令牌存后端内存、重启即失效（前端「✓ 已注册」可点击重领刷新本地缓存）；静态演示账号（1001~1006）仍由 `.env` 白名单提供且不可被动态抢占（40903），静态与动态共享同一 `UserTokenRegistry` 鉴权身份源。
+
+---
+
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-08（第 4 阶段增强② AI 客服完成（AI 执行）：后端 `/api/support/chat` 对接 OpenAI 兼容大模型（百炼/DeepSeek/OpenAI 等），system prompt 注入实时商品/活动目录、历史取最近 10 条；配置 `ai.llm.*` + `AI_LLM_API_KEY` 环境变量，未配置返 50300；前端 `/ai-service` 去 mock 接真接口、侧栏热门活动实时化；OSS 密钥硬编码改配置化（`aliyun.oss.*` + 环境变量，`docs/storage.md`）；新增 AI 4 + unit 2 + OSS 2 = 8 用例；全量 mvn test 59 用例 BUILD SUCCESS；规划表六接口补 `/api/support/chat`。随后完成全量代码审计与整改（见"复盘前置：审计整改"小节，R1~R5/C1~C6 落地 + E 待议，期间回归修复 4+4 → 全量 mvn test **62 用例 BUILD SUCCESS**）；整改代码已 git 提交（commit `49a0b09`，47 文件，见 git log））*
-*下次开始位置：①E 类立项卡收尾（按 E3→E4→E6→E5→E2 顺序，E1-r 可选，见审计小节末立项卡）；②前端改动验证与整改代码 git push；③Day 6 — 复盘总结、学习笔记沉淀与《Redis 实战总结》收尾（或按需继续增强）*
+*上次更新：2026-09-09（今日卡片「动态发令牌注册接口 G1~G5」完成（AI 执行）：`/api/auth/register` + `UserTokenRegistry` 静态∪动态鉴权 + 前端领取令牌交互；interface 补 4.15；顺带修复中断遗留编译错误；全量 mvn test **92 用例 BUILD SUCCESS**）*
+*下次开始位置：①本轮全部改动 git 提交（今日卡片 G1~G5 + S2 Redis 加固 + 交付前审查 M1~M10 整改）；②Day 6 — 复盘总结、学习笔记沉淀与《Redis 实战总结》收尾（或按需继续增强）；③图片上传「文件内容与图片格式不匹配」排查仍挂起（待提供失败图片路径后继续）*

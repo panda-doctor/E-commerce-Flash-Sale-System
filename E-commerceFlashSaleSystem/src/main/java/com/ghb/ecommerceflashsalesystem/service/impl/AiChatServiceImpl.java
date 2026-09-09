@@ -17,6 +17,7 @@ import com.ghb.ecommerceflashsalesystem.service.ai.OpenAiChatMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -168,20 +169,26 @@ public class AiChatServiceImpl implements AiChatService {
         }
 
         try {
+            // M7：DB 的 status 是创建时快照、不会自动翻转（ENDED/SOLD_OUT 需另行维护），
+            // 目录查询除排除 CANCELLED 外，还必须按 endTime 过滤掉已过期场次，
+            // 否则历史活动会一直混进目录，误导模型以为"现在还有场次"。
+            LocalDateTime now = LocalDateTime.now();
             List<SeckillActivity> activities = activityMapper.selectList(
                     new LambdaQueryWrapper<SeckillActivity>()
                             .in(SeckillActivity::getStatus,
                                     ActivityStatusEnum.NOT_STARTED.getCode(),
                                     ActivityStatusEnum.RUNNING.getCode())
+                            .ge(SeckillActivity::getEndTime, now)
                             .orderByAsc(SeckillActivity::getStartTime)
                             .last("LIMIT " + CATALOG_LIMIT));
-            sb.append("\n【秒杀活动】状态：进行中 / 未开始\n");
+            sb.append("\n【秒杀活动】\n");
             for (SeckillActivity a : activities) {
+                // 状态文案按实时时间窗推导（DB status 快照不可信），与 execute/check 口径一致
                 sb.append("- #").append(a.getId()).append(' ')
                         .append(a.getActivityName())
                         .append("，秒杀价 ").append(yuan(a.getSeckillPrice()))
                         .append("，场次 ").append(fmt(a.getStartTime())).append(" ~ ").append(fmt(a.getEndTime()))
-                        .append("，状态 ").append(statusText(a.getStatus()))
+                        .append("，状态 ").append(deriveStatusText(a.getStartTime(), a.getEndTime()))
                         .append('\n');
             }
             if (activities.isEmpty()) {
@@ -202,11 +209,18 @@ public class AiChatServiceImpl implements AiChatService {
         return time == null ? "?" : time.format(DTF);
     }
 
-    private String statusText(Integer status) {
-        if (status == null) {
-            return "?";
+    /** M7：秒杀场次状态按实时时间窗推导（不信任 DB status 快照），供目录文案使用 */
+    private String deriveStatusText(LocalDateTime start, LocalDateTime end) {
+        if (end == null) {
+            return "未知";
         }
-        ActivityStatusEnum e = ActivityStatusEnum.fromValue(status);
-        return e == null ? "?" : e.getDescription();
+        LocalDateTime now = LocalDateTime.now();
+        if (start != null && now.isBefore(start)) {
+            return "未开始（即将开抢）";
+        }
+        if (!now.isBefore(end)) {
+            return "已结束";
+        }
+        return "进行中";
     }
 }

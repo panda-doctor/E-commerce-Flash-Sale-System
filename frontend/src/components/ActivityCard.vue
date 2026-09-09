@@ -24,6 +24,8 @@ const total = computed(() =>
 const remaining = computed(() =>
   stock.value != null ? stock.value : Math.max(0, total.value),
 )
+// M8：后端返回 preheated 标记；旧数据缺失该字段时按已预热兼容处理
+const preheated = computed(() => props.item.preheated !== false)
 
 const phase = computed(() => {
   const it = props.item
@@ -32,7 +34,7 @@ const phase = computed(() => {
   if (remaining.value === 0) return 'soldout'
   if (now < startMs.value) return 'soon'
   if (now >= endMs.value) return 'soldout'
-  if (stock.value == null) return 'soon' // 未预热不视为可抢
+  if (stock.value == null || !preheated.value) return 'unpreheated' // 未预热不可抢
   return 'live'
 })
 
@@ -47,6 +49,7 @@ const lowStock = computed(
 
 const countdown = computed(() => {
   const now = props.now
+  if (phase.value === 'unpreheated') return '库存未预热，点击进入'
   if (phase.value === 'soon') return `距开抢 ${formatDuration(startMs.value - now)}`
   if (phase.value === 'live') return `距结束 ${formatDuration(endMs.value - now)}`
   return ''
@@ -124,6 +127,7 @@ function open() {
           <button class="act-btn" :class="phase" @click="phase === 'soon' ? toggleRemind($event) : open()">
             <template v-if="phase === 'live'">立即抢购</template>
             <template v-else-if="phase === 'soon'">{{ reminded ? '已预约' : '提醒我' }}</template>
+            <template v-else-if="phase === 'unpreheated'">库存未预热</template>
             <template v-else>已抢光</template>
           </button>
         </div>
@@ -384,6 +388,14 @@ function open() {
   color: var(--text-3);
   background: var(--surface-3);
   cursor: default;
+}
+.act-btn.unpreheated {
+  color: #b45309;
+  border: 1px dashed rgba(180, 83, 9, 0.55);
+  background: rgba(255, 237, 213, 0.7);
+}
+.acard.unpreheated .thumb {
+  filter: saturate(0.75);
 }
 
 .cd {

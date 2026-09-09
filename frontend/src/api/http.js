@@ -3,6 +3,8 @@
 //   code === 0 成功；业务异常（如 40901 重复秒杀 / 40902 库存不足 / 42900 限流）也走 HTTP 200，
 //   通过 body.code 区分。故所有非 0 的 code 统一以 ApiError 抛出，由页面按 code 分支处理。
 
+import { userStore, tokenOf } from '../utils/store'
+
 export class ApiError extends Error {
   constructor(code, message, data = null) {
     super(message)
@@ -12,15 +14,26 @@ export class ApiError extends Error {
   }
 }
 
+// 用户访问令牌按当前演示身份携带（tokenOf 为两级查找：静态演示账号 → 本地动态令牌缓存）：
+//   静态账号匹配 → 用该账号令牌（后端 USER_TOKENS 静态白名单）；
+//   自定义 userId → 先查本地「已领取」的动态令牌缓存（顶栏点「领取令牌」注册后写入）；
+//   均未命中 → 回落 VITE_USER_TOKEN 兜底（绑 1001，绑定不一致时后端会拒）；
+//   全部为空 → 直接不带，后端返回"用户访问令牌无效"。
+function currentUserToken() {
+  const bound = tokenOf(userStore.userId)
+  return bound || import.meta.env.VITE_USER_TOKEN || ''
+}
+
 async function request(url, options = {}) {
   const method = options.method ?? 'GET'
   // multipart/FormData 由浏览器自动生成 Content-Type（含 boundary），不能手动指定
   const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData
   let response
   try {
+    const userToken = currentUserToken()
     const accessHeaders = {
       ...(import.meta.env.VITE_ADMIN_TOKEN ? { 'X-Admin-Token': import.meta.env.VITE_ADMIN_TOKEN } : {}),
-      ...(import.meta.env.VITE_USER_TOKEN ? { 'X-User-Token': import.meta.env.VITE_USER_TOKEN } : {}),
+      ...(userToken ? { 'X-User-Token': userToken } : {}),
     }
     response = await fetch(url, {
       method,
