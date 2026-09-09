@@ -1,0 +1,8 @@
+# 行尾统一策略：仓库规范为 LF（本仓库全部历史提交均为 LF）
+# - 普通文本（Java/JS/Vue/MD/XML/YAML/Lua/SQL 等）一律 LF；
+# - Windows 专用脚本（cmd/bat/ps1）签出保留 CRLF，否则 cmd 执行会出错；
+# - 配套历史噪音清理：git add --renormalize 将 CRLF 噪音清零（内容不变）。
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
