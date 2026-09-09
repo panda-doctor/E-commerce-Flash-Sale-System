@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 E-commerceFlashSaleSystem/
-├── docs/                           # project.md, developlan.md, interface.md, database.md, plan.md, audit-report.md, load-test-report.md, storage.md, notework.md
+├── docs/                           # project.md, developlan.md, interface.md, database.md, plan.md, redis-summary.md, audit-report.md, load-test-report.md, storage.md, notework.md
 ├── postman/                        # API test collection
 ├── scripts/jmeter/                 # Load testing scripts
 ├── src/main/java/.../
@@ -159,7 +159,7 @@ The project is implemented in 4 incremental phases following `docs/developlan.md
 3. **Phase 3 (Week 3):** High-concurrency defense — distributed lock, sliding window rate limit, Redis Stream async ordering
 4. **Phase 4 (Week 4):** Leaderboard, frontend, end-to-end load testing
 
-All four phases are complete (as of 2026-09-09), followed by a full code audit (R/C/E rectified in `49a0b09`) and a delivery closeout covering multi-user dynamic-token accounts + Redis hardening (HEAD `c1f689e`, 92 tests BUILD SUCCESS). Live progress is tracked in `docs/plan.md` — the authoritative status source (per-phase details in `docs/developlan.md`; see also `docs/audit-report.md`, `docs/load-test-report.md`, `docs/storage.md`).
+All four phases are complete (as of 2026-09-09), followed by a full code audit (R/C/E rectified in `49a0b09`), a delivery closeout (multi-user dynamic-token accounts + Redis hardening, `c1f689e`), and a Day-6 learning closeout — `docs/redis-summary.md` maps each Redis pattern to its real code locations, and `docs/notework.md` holds topic study notes (92 tests BUILD SUCCESS). Live progress is tracked in `docs/plan.md` — the authoritative status source (per-phase details in `docs/developlan.md`; see also `docs/redis-summary.md`, `docs/audit-report.md`, `docs/load-test-report.md`, `docs/storage.md`).
 
 ## Important Conventions
 
