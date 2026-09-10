@@ -20,7 +20,9 @@
 1. **滑动窗口限流**（`rate_limit.lua`，键 `rate:limit:{activityId}:{userId}`）——最前置，用最便宜的原子操作挡掉刷子，避免无效请求打到后续环节；
 2. **活动缓存查询**（Hash `seckill:activity:{id}`，未命中回源 DB 并按实时时间窗细分拒绝原因）；
 3. **时间窗/状态校验**（未开始/已结束/已取消拦截，售罄交给 Lua 兜底）；
-4. **整合 Lua**（`seckill_execute.lua`）：建幂等令牌 + 校验库存 + 原子扣减 + 售罄回滚；
+4. **整合 Lua**（`seckill_execute.lua`）：建幂等令牌 + 校验库存 + 原子扣减 + 售罄回滚。
+   > 【学习笔记（panda）】幂等令牌：服务端/客户端约定一个唯一标识，用它做原子去重，并可缓存第一次执行结果，使请求重试多次也只产生一次业务效果。
+   > 【校注】注意区分两种做法——本项目是**服务端在 Lua 内 `SET NX EX` 生成令牌**（值 `1`/userId，TTL 1800s），不依赖客户端传参；"客户端生成唯一请求号、服务端记录首次结果"是另一种**请求级幂等号**方案（适合支付/下单回调）。面试若被问"你的令牌谁生成"，答"服务端脚本内生成并原子去重"。
 5. **指标埋点**（三类拒绝 `HINCRBY`）；
 6. **生成订单号 → XADD** 到 `seckill:order:stream`（消息含成交价快照、`requestTime`）；
 7. **入队失败立即反向补偿**（回补库存 + 删令牌）后重抛；
@@ -31,6 +33,18 @@
 ### A3 模块划分与键收敛
 **答**：按"横切/领域/角色"三层划分：`common`（Result/异常/常量/工具）、`config`（Redis/Redisson/MyBatis/鉴权/存储映射）、`domain`（entity/dto/enums/vo）、`mapper`、`service`（cache/seckill/rank/metrics/ai/storage/stream/impl…）、`stream`（producer/consumer/scheduler）、`controller`（admin/auth/product/rank/seckill/support/health）。
 所有键前缀收敛到 `common/constant/CacheKeyConstant`，好处：①拼键不再手写字符串，避免"库存键误拼活动前缀导致 WRONGTYPE"这类事故（项目里真踩过 3 次）；②TTL/阈值/组名等常量集中，改一处全生效；③便于文档与代码对账。
+
+> 【学习笔记（panda）】**为什么幂等令牌场景容易出 key 冲突？**
+> - 幂等 key 通常由客户端传入或业务自行拼接，容易**命名空间冲突**（如 `idem:order:123` 撞上别的业务 key）；
+> - 多段代码写同一个 key 但**类型不一致**：有的 `SET` 成 String，有的 `HSET` 成 Hash；
+> - 代码升级导致**存储结构变化**：旧版本存 String，新版本按 Hash 读；
+> - **幂等 key 与锁 key 混用**（锁是 String、幂等结果是 Hash，语义混在一个键上）；
+> - 客户端传入的 token 太随意（如直接传 `user:1`），而该 key 已被其他业务占用；
+> - **没有 TTL**：历史遗留 key 长期存在，新逻辑撞上旧类型；
+> - **没有统一封装**：各服务裸写 Redis，命令与类型不统一。
+>
+> → 本项目的解法正是"前缀/类型/TTL 全部收敛到 `CacheKeyConstant` + 键命名带业务维度（`seckill:user:{aid}:{uid}`）"。
+
 **加分**：可以顺势说"配置项（限流窗口/阈值）用 yaml 参数化，常量只作默认值"。
 
 ### A4 Redis 数据结构与场景
@@ -51,12 +65,103 @@
 ③ **失败必须回滚**：Lua 内售罄回滚令牌、XADD 失败服务层反向补偿（INCR+DEL）、进死信且订单未落库时补偿库存/令牌。由此保证"Redis 上的资格"与"DB 终态"最终一致。
 **代码**：`SeckillServiceImpl#execute`、`SeckillOrderConsumer#handle`、`DeadLetterReplayService`。
 
-### A6 最有技术含量的部分
-**答**（任选一条主线讲深）：
-- **可靠性设计**：Redis Stream 消费组 + PEL 重试 + 死信 + 补偿 + 人工回放，构成"消息不丢、不重复、可兜底"的完整闭环（对应 R5 审计整改）；
-- **幂等四道闸**：Lua 内 SETNX → DB `uk_activity_user` → `selectByOrderNo` 查重 → XACK/PEL 语义；
-- **一致性补偿的三条失败路径**：售罄回滚、发消息失败回补、死信补单。
-**建议**：选"可靠性闭环"讲，因为它能把 Stream、DB 唯一键、幂等、补偿、可观测（消息日志三态）串成一条线。
+### A6 ⭐ 最有技术含量的部分（深度讲解：异步订单的可靠性闭环）
+
+**30 秒结论版**：本项目最有含量的是**"execute 只管入队、落库才算抢到"背后的可靠性闭环**——Redis Stream 消费组（XREADGROUP/XACK/PEL）+ 失败重试 + 死信流 + 三类补偿 + 人工回放 + 消息日志三态，把"消息不丢、不重复、可兜底"从口号变成了可验证的实现（对应审计高危项 R5 的整改）。另外两条可选主线：**幂等四道闸**（Lua SETNX → DB `uk_activity_user` → `selectByOrderNo` → XACK/PEL + ZADD NX）、**三条补偿失败路径**（售罄回滚 / 发消息失败回补 / 死信补单）。下面以"可靠性闭环"为主线展开，另两条会作为其中的环节自然出现。
+
+#### 1. 全景图：一条消息的四条命运路径
+
+```
+execute（Lua 占位成功）→ XADD seckill:order:stream（明文 Map 6 字段）
+        │
+        ├─ 路径① 正常：消费 → 幂等落库 seckill_order(CREATED) → ZADD NX 入榜 → 日志 SUCCESS → XACK
+        ├─ 路径② 可恢复失败：retry_count+1、状态 FAILED、不 ACK 留 PEL → 5s 后被 consumerRetry 重新拾起
+        ├─ 路径③ 不可恢复/超阈值：retry_count 达 3 → XADD 死信流 + 日志 DEAD + ACK 原消息
+        │        └─ 若订单未落库 → 补偿库存与令牌（INCR + DEL），避免资源悬空
+        └─ 路径④ 人工回放：管理端按 originalMessageId 从死信流找回快照 → 重新 Lua 占位 → 重投主 Stream → XDEL 死信
+```
+**关键键/代码**：`seckill:order:stream`、`seckill:order:dead:stream`、消费组 `seckill:order:group`（`CacheKeyConstant`）；`SeckillOrderStreamProducer`、`SeckillOrderConsumer`、`StreamConsumerScheduler`、`DeadLetterReplayService`、`seckill_message_log` 表。
+
+#### 2. 正常路径（逐步，含幂等设计）
+
+1. **入队**：`SeckillOrderStreamProducer#sendMessage` 用 `StreamRecords.mapBacked(明文 Map)` 投递 6 个字段：`activityId / productId / userId / orderNo / seckillPrice / requestTime`，返回 `RecordId`（形如 `时间戳-序号`）。
+2. **拉取**：`StreamConsumerScheduler` 每 **150ms** 调 `consumePending(64)` → `XREADGROUP GROUP group consumer COUNT 64 STREAMS stream >`（`>` = 只读从未投递的新消息）。
+3. **单条处理 `handle()`**：
+   - 严格解析（字段是 String，用 `toLong/toStr` 安全转换，**不依赖强转**）；
+   - `getOrCreateMessageLog` 按 `stream_message_id` 查/建日志（PENDING），表上有 `uk_stream_message(stream_key, stream_message_id)`，并发重复插入时用 `DuplicateKeyException` 兜底后重查；
+   - **终态短路**：日志已是 SUCCESS/DEAD 直接 ACK（重复投递不再处理；SUCCESS 还会补录一次榜单，兼容"已落库未入榜"的历史消息，NX 幂等）；
+   - `selectByOrderNo` 查重 → 不存在才 `insert` 订单（`status=CREATED`、`streamMessageId` 回写）——**这一句是整个链路的"业务落地点"**；
+   - `rankService.recordSuccess`（ZADD NX，score=`requestTime`）→ 日志置 SUCCESS → **XACK**；
+   - `DuplicateKeyException`（`uk_order_no`/`uk_activity_user`）单独分支：视为"已处理"，同样入榜 + SUCCESS + ACK（幂等而非失败）。
+
+#### 3. 失败与重试路径（"不 ACK 就是重试"）
+
+- 业务异常进入 `handleFailure`：`retry_count+1`、状态置 FAILED、`error_message` 截断 1023 字符（对齐表字段长度）后落库；
+- **未达阈值就不 XACK**：消息留在 PEL，`StreamConsumerScheduler` 每 **5s** 调 `consumerRetry(32)` → `XREADGROUP ... STREAMS stream 0`（`0` = 读 PEL 未 ACK 的消息）重新处理；
+- **阈值语义要讲准**：`MAX_RETRY=3` 判断的是 `newRetry >= 3`，即**第 3 次处理失败（首次 + 2 次重试）**时转死信，不是"失败 4 次"；
+- 达阈值：`XADD` 死信流 → 日志置 DEAD → `XACK` 原消息（把它移出 PEL，避免 PEL 无限增长）。
+
+#### 4. 毒消息与解析失败（R5 审计整改的核心）
+
+旧实现的问题：解析异常只 `log` 不 ACK → 坏消息每轮重试、**永远留在 PEL**，PEL 无限膨胀且日志永远无法进入终态。
+修复：把"解析/字段脏数据"也纳入统一失败计数——`handleUnrecoverable` 用**宽松解析** `parseMessageLenient`（坏字段置 null 不抛）重建消息与日志，再走 `handleFailure` 计数，最终同样转死信 + ACK。
+**兜底再兜底**：如果连日志表都写不进去（基础设施故障，如 DB 不可用），才保留 PEL 等待恢复——即"能计数就计数，不能计数才留在 PEL"，两条出口都有明确理由。
+
+#### 5. 死信与补偿（什么时候补偿、补偿什么）
+
+死信体是**明文 Map**：原消息 6 字段 + `originalMessageId`（主 Stream 的消息 ID）+ `errorMessage` + `failedAt`，便于人工定位与回放。
+**补偿条件很关键**：只有"订单未落库"才补偿——`selectByOrderNo(...) == null` 时执行 `INCR` 回补库存 + `DEL` 释放幂等令牌；若订单已落库（例如落库成功但后续入榜失败进死信）**不补偿**，否则会误收回已成交的库存。补偿本身按可重入语义实现（INCR 一步到位、DEL 对不存在键返回成功），失败仅记 error 日志交人工核对，**不覆盖原始异常**。
+
+#### 6. 人工回放（`DeadLetterReplayService#replay`，六步）
+
+1. **日志校验**：按 `originalMessageId` 查 `seckill_message_log`，必须是 **DEAD** 状态才允许回放；
+2. **找回快照**：从 `seckill:order:dead:stream` 遍历定位该死信（**权威数据源是死信流而非日志表**——日志表不含成交价/请求时间列，价格快照在消费失败瞬间已随死信体写入）；
+3. **幂等校验**：订单已落库 → 直接拒绝回放（提示无需回放）；
+4. **重新原子占位**：执行 `seckill_execute.lua`（库存 -1 + 建令牌），失败语义与首次入队一致——`-1` 库存不足拒绝、`-2` 用户已有进行中订单拒绝、`null` 系统错误；
+5. **重投主 Stream**：用快照字段重建消息并 `sendMessage`，拿到新的 `RecordId`；若写入失败，立即 `INCR + DEL` 归还本次占位（与首次入队失败补偿同构）；
+6. **清理死信**：`XDEL` 死信条目防重复回放，并把日志 `error_message` 更新为"已人工回放，新消息ID=xxx"（新消息会生成新的日志行，状态重新走 PENDING→SUCCESS）。
+**接口**：`POST /api/admin/seckill/dead-letters/replay`（需 `X-Admin-Token`），入参 `originalMessageId`。
+
+#### 7. "不丢 / 不重 / 可兜底"逐条对照
+
+| 风险 | 机制 | 落点 |
+|---|---|---|
+| 消息丢失（消费者崩溃） | 未 ACK 的消息在 PEL，重启后 `STREAMS stream 0` 重新拾起（至少一次语义） | `consumerRetry` / `StreamConsumerScheduler` |
+| 消息丢失（Redis 容器重启） | 建组幂等（`XGROUP CREATE ... MKSTREAM` + 沿 **cause 链**识别 BUSYGROUP），不会因组不存在而全链路失败；正式部署开 RDB/AOF | `ensureGroup` |
+| 重复下单 | `selectByOrderNo` 查重 + `uk_order_no` / `uk_activity_user` 唯一键 + `DuplicateKeyException` 兜底 | `SeckillOrderConsumer#handle` |
+| 重复计分 | 榜单 **ZADD NX**（member=userId 已存在不覆盖），终态补录也幂等 | `SeckillRankService#recordSuccess` |
+| 毒消息卡死队列 | 解析失败也计数 → 达阈值转死信 + ACK，PEL 不膨胀 | `handleUnrecoverable` / `handleFailure` |
+| 资源悬空（库存/令牌） | 三类补偿：Lua 内售罄回滚、XADD 失败回补、死信且未落库补偿 | `seckill_execute.lua` / `SeckillServiceImpl` / `compensateDeadMessage` |
+| 死信无人处理 | 人工回放：先重新占位再重投，成功后清理死信，杜绝"回放导致超卖/重复单" | `DeadLetterReplayService` |
+| 出问题查不到 | 消息日志三态（PENDING/SUCCESS/FAILED/DEAD）+ retry_count + error_message + `uk_stream_message` 一条消息一行 | `seckill_message_log` |
+
+#### 8. 关键取舍与踩坑（讲深度的加分素材）
+
+- **投递格式**：必须用**明文 Map**——早期用 `objectBacked(bean)`，字段被序列化器编码，消费端读回变 Base64（`200` → `"MjAw"`），`Long.valueOf` 直接抛 `NumberFormatException`；
+- **只 ACK 不落库**是最危险的 bug：Day 4 重构时 `handle` 一度丢失 `insert` 语句，表现为"消息消费成功但订单恒为 0"，审查必须核对副作用语句是否还在；
+- **消费端命名**：`CONSUMER_NAME` 曾用 `System.getenv("HOSTNAME")`，Windows 无该变量会拼出 `consumer-null-xxx`，改 UUID；
+- **测试隔离**：调度器是 `@ConditionalOnProperty(flash.stream.auto-poll=true)`；主 yaml 打开（演示需要自动建单），15+ 集成测试类统一覆盖为 `false` 由测试手动驱动，否则后台 poller 会**抢走测试写入的消息**造成"随机少一条"的假 flaky；跑全量前还要停 dev 后端；
+- **阈值与出口**：`MAX_RETRY=3` 必须配"转死信 + ACK"出口，否则 PEL 只进不出；错误信息入库要截断，否则超长字段再次落库失败；
+- **补偿的边界**：只补偿"订单确实未落库"的失败，且补偿动作幂等；补偿失败要留可读日志（含 stockKey/tokenKey）供人工核对。
+
+#### 9. 追问预判（面试官常顺着往下问）
+
+- **"消息真的不会丢吗？"** → 语义是**至少一次**：ACK 前都在 PEL，进程崩溃可重读；但 Redis 本身若无持久化，实例宕机仍可能丢——所以生产要开 AOF/RDB 或换 Kafka，并且"落库才算抢到"的 DB 唯一键能兜住重复、对账能兜住差异。
+- **"重复消费怎么办？"** → 四层幂等：日志终态短路（SUCCESS/DEAD 直接 ACK）、`selectByOrderNo` 查重、唯一键兜底、ZADD NX；重放不会重复建单也不会重复计分。
+- **"回放会不会造成超卖或重复单？"** → 回放**先重新原子占位**（Lua 扣库存 + 建令牌，库存不足/已有令牌直接拒绝），再重投；订单已落库则拒绝回放；重投失败会归还占位。所以回放等价于"用户重新抢一次"，而不是"凭空补一单"。
+- **"为什么不用 `XAUTOCLAIM`/`XCLAIM` 做超时认领？"** → 单消费者场景用 `STREAMS stream 0` 重读 PEL 已足够；`XAUTOCLAIM` 的价值在多消费者"认领别人超时未处理的消息"，本项目消费者名为 UUID、多实例部署时应升级为 XAUTOCLAIM + 处理超时时间（可以作为改进项主动提）。
+- **"补偿失败怎么办？"** → 记录含资源键的 error 日志 + 依赖对账（库存/订单守恒校验）发现偏差并人工介入；这就是我在"不足与改进"里提到"缺定时对账任务"的原因。
+- **"为什么不用 Kafka？"** → 教学场景要"一站一模式"、零额外部署；可靠语义（消费组/PEL/ACK）Stream 已具备。上量后换 Kafka：分区顺序、堆积能力、生态更好，但消费者幂等逻辑与补偿设计**一行都不用改**（这就是把可靠性做在业务幂等层而不是依赖 MQ 特性的价值）。
+
+#### 10. 两分钟口述版（可直接背）
+
+> "我选异步订单的可靠性闭环来讲。execute 成功后并不直接落库，而是把消息写进 Redis Stream 立即返回排队中，后台消费组异步建单、落库成功才入榜——这就是'落库才算抢到'。
+> 为了不丢消息，我用消费组 + PEL：消费成功才 XACK；失败就 `retry_count+1` 且不 ACK，消息留在 PEL 由 5 秒一次的重试任务用 `STREAMS stream 0` 重新拾起；达到 3 次就 XADD 到死信流、日志置 DEAD 并 ACK 原消息，PEL 不会无限膨胀。
+> 为了不重复，我有四层幂等：日志终态短路、`selectByOrderNo` 查重、`uk_order_no`/`uk_activity_user` 唯一键兜底、榜单 ZADD NX。
+> 为了可兜底，我做三类补偿：Lua 内售罄回滚令牌、XADD 失败立刻回补库存并删令牌、进死信且订单未落库时补偿库存与令牌；再加一个管理端人工回放接口——回放不是把旧消息塞回去，而是先重新原子占位、再重投，成功后 XDEL 死信，保证不会超卖也不会重复下单。
+> 全程用 `seckill_message_log` 三态 + retry_count + 错误信息做可观测。这套东西是审计里 R5 高危项的整改结果，毒消息不再卡死 PEL。"
+
+**证据清单（可复述）**：`SeckillMessageReliabilityTest`（成功 SUCCESS + 落库；坏消息 → retry 递增留 PEL → 达阈值转死信）；`SeckillConsumerIntegrationTest`（真实 DB 落库 + 重复消费不重复落库）；审计 R5 整改 + 全量回归；压测"成功订单数 = 库存、拒绝数守恒"。
 
 ### A7 重做会改什么
 **答**：诚实列举（正好对应 final-review 开放项）：
