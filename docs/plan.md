@@ -632,7 +632,7 @@
 |---|---|---|---|---|
 | E3 · 创建/更新业务校验 | 活动/商品创建缺校验：`endTime`≤`startTime`、价格为负、库存 ≤0、productId 不存在（FK 异常落 50000）均可入 | `ActivityRequest`/商品 DTO 增加校验（时间序、价格非负、库存 >0、productId 存在性预查），失败走统一业务码，不冒 50000 | 非法入参被业务码拦截（非 50000 脏异常）；补对应测试用例 | ✅ 已落地（CreateBusinessValidationTest +10，全绿） |
 | E4 · 限流粒度细化 | 限流仅 userId（60s/5 次）：多活动连点互相误伤、换 userId 可绕过 | 限流键升级 `userId:activityId` 双维（保留总量约束），窗口/阈值参数化进 yaml（默认 60s/5 保持现状） | 同用户跨活动不再互伤；单活动限流语义不破坏现有限流测试 | ✅ 已落地（粒度整改期已吸收；窗口/阈值 yaml 化 `flash.rate-limit.*`） |
-| E6 · 上传校验加固 | 上传仅验扩展名/大小，Content-Type 全信客户端（伪造 MIME 可藏脚本文件） | 在现有文件头白名单基础上以魔数探测为准；响应 Content-Type 由服务端按扩展名固定，不反射客户端值 | 伪造 Content-Type 文件被拒；上传响应类型服务端可控；补测试 | ✅ 已闭环（2026-09-09 魔数优先收尾：内容为白名单图片即收、按真实格式改名存储，见下「今日任务」卡；~~误拒复现挂起~~ 已根治——不再要求扩展名与内容一致） |
+| E6 · 上传校验加固 | 上传仅验扩展名/大小，Content-Type 全信客户端（伪造 MIME 可藏脚本文件） | 在现有文件头白名单基础上以魔数探测为准；响应 Content-Type 由服务端按扩展名固定，不反射客户端值 | 伪造 Content-Type 文件被拒；上传响应类型服务端可控；补测试 | ✅ 核心已落地（文件头魔数校验 + 服务端固定 Content-Type）；「文件内容与图片格式不匹配」合法图片误拒复现仍挂起待排查 |
 | E5 · 异常文案收敛（残余） | OSS 上传失败把 `e.getMessage()` 原样回用户（含 SDK 内部细节） | 用户侧固定可读文案 + `log.error` 记录完整原因，错误码区分场景 | 失败响应不再暴露 SDK 堆栈/服务器细节，日志有完整根因 | ✅ 已落地（复核无回显点；预热失败文案收敛为固定提示） |
 | E2 · limitPerUser 语义取舍 | 创建参数 `limitPerUser` 仅透传不生效；DB `uk_activity_user` 硬性一人一单（配置 >1 也不允许多买），误导使用者 | 秒杀"一人一单"是合理约束 → 建议移除该参数或创建时强制 =1 并注释说明受 DB 唯一键约束；若确需"每人 N 件"则要改表去唯一键 + Redis 计数（工程量高，教学不建议） | 参数语义与 DB 唯一键一致，无"配了不生效"的误导；文档/注释同步 | ✅ 已落地（DTO 加 @Min/@Max 夹逼=1 作 Controller 第一道闸，Service 创建/更新同入口兜底拒绝；前端 disabled+max=1+提示；测试补更新分支用例，全量 73 用例 BUILD SUCCESS） |
 | E1-r | `resetStock` 已接入管理端接口与活跃期守卫 | 落地：`POST /api/admin/seckill/activities/{id}/reset-stock`（Redisson 锁 + 活动进行中拒绝重置），语义见 `SeckillCacheService#resetStock` | 仅未开始/已结束可重置；进行中重置返回业务错误 | ✅ 已落地（2026-09-09 复核） |
@@ -808,48 +808,8 @@
 - **「落库才算抢到」是全局一致的主线**：令牌是排队资格、订单落库才入榜、失败须补偿令牌/库存——一切以 DB 终态为准（审计 R2/R5 同源）。
 - **本工程反直觉教训 Top3**：Redis 反序列化 `@class` 需白名单（S2）；压测/集成回归前必须停 dev（auto-poll 抢消费）；Stream 消息用明文 Map 防 Base64 二次编码。
 
-### 今日任务（2026-09-09 · 审计前端 F 系列红线项 F2/F3/F5/F6 ✅ 已实现，待 panda 终审）
-
-> audit-report（2026-09-08 版）第四节「前端完整闭环」的**必改红线项**（F1/F3/F4/F6）此前仅 F1/F4 随审计整改闭环，F2/F3/F5/F6 遗留（plan/final-review 未逐条登记，本次核验发现）；本卡收尾——只动前端 3 个文件，无后端/契约改动，92 用例基线不受影响。
-
-| # | 问题 | 落地要点 | 状态 |
-|---|---|---|---|
-| F2 | AI 页侧栏按 status 快照恒判"即将开抢"（DB status 不会自动翻转 RUNNING） | `AiServiceView.vue`：新增 `livePhaseOf` 按本地时间窗 + 实时库存推导（CANCELLED 排除 → now&lt;start 预告 → now≥end 已结束 → stock=0 已售罄 → 秒杀中），口径同首页 `phaseOf`；热门列表仅推荐「秒杀中/即将开抢」且进行中优先；顺带 30s 静默刷新（`document.hidden` 暂停，F8 口径） | ✅ 已实现（vite build 通过） |
-| F3 | 首页列表 catch 静默置空，误示"暂无场次" | `ActivityListView.vue`：catch 内 `toastErr`；连续失败仅提醒一次（页面 8s 轮询防刷屏），成功后重置提醒标记 | ✅ 已实现（vite build 通过） |
-| F5 | 管理台上传无前端 MIME/size 预检 | `AdminView.vue`：`onFileChange` 入口预检 MIME（jpeg/png/webp/gif/bmp）∪ 扩展名白名单 + ≤5MB，与后端 `AbstractImageStorage` 白名单/上限对齐，无效文件不再发起上传 | ✅ 已实现（vite build 通过） |
-| F6 | AI 对话 sendText 无 typing 防重入 | `AiServiceView.vue`：sendText 入口 `if (typing.value) return`（拦回车连发/连点/快捷问题）；发送按钮追加 `:disabled="typing || …"` | ✅ 已实现（vite build 通过） |
-
-> **验证口径**：`node node_modules/vite/bin/vite.js build` ✅（前端依赖在 Linux 侧重装后构建 1.41s，产物 dist 正常）；纯前端改动，`mvn test` 92 用例基线不受影响。低优遗留 F7/F9 与 E6 误拒已另卡收尾（见下「今日任务」卡）。
-
-### 今日任务（2026-09-09 · F7/F9 前端收尾 + E6 魔数优先根治 ✅ 已实现，待 panda 终审与全量回归）
-
-> 承接上卡：审计前端遗留 F7（半）/F9（低）与 E6 误拒复现排查。E6 无失败样本，经排查确认为**校验策略问题**——旧逻辑要求「扩展名与文件头一致」，而微信/网页另存等真实图片常「扩展名与实际格式不符」（如 .png 实为 JPEG）→ 必然误拒。经 panda 确认采用**魔数优先**策略根治。
-
-| # | 问题 | 落地要点 | 状态 |
-|---|---|---|---|
-| E6 | 「文件内容与图片格式不匹配」合法图片误拒 | `AbstractImageStorage` 重构为魔数优先：文件头探测真实格式（png/jpg/gif/bmp/webp）为唯一权威，扩展名/客户端 Content-Type 不再拦截与采信；存储文件名与 Content-Type **按真实格式**生成（uuid.真实ext）；`Local/OssImageStorageService` 同步改用探测结果命名；单测 2→8 用例（各格式放行 / 扩展名不符放行 / 无扩展名可收 / 伪装脚本与 PDF 被拒 / 空文件 / 超 5MB） | ✅ 已实现（待 mvn test 回归：预期全量 **98** = 92−2+8） |
-| F7 | 商品面板改编号未重载直接保存 → 脏写 | `AdminView.vue`：新增 `loadedFromId` 归属记录（载入/新建/创建成功时维护）；保存前比对「当前编号 == 表单数据归属编号」，不一致直接提示先「载入商品」，杜绝 A 数据覆盖 B | ✅ 已实现（vite build 通过） |
-| F9 | 低：汉堡按钮无 handler / AI 页死按钮 / 未用导出 | `App.vue`：≤760px 显示汉堡按钮并**实现移动端下拉导航**（路由切换自动收起，桌面强制隐藏）；`AiServiceView.vue`：删除 🎤/⋯/📎/🖼 死按钮、不可达的「商品推荐卡片」模板与全部 pc-*/product-cards/msg-products/ib-btn 死 CSS；`format.js`：删除未使用导出 `STATUS_TEXT` | ✅ 已实现（vite build 通过） |
-
-> **验证口径**：前端 `vite build` ✅ 1.37s；后端改动含单测扩展但**本环境无 JDK，未执行 mvn test** —— 请 panda 在开发机跑全量回归（预期 98 用例 BUILD SUCCESS，先停 dev 后端）。推送由 panda 在开发机执行（当前本地领先 5 个提交）。
-
-### 交付物（2026-09-09 · 面试备考文档 ✅ 已产出，非代码改动）
-
-| 交付 | 状态 | 内容 |
-|---|---|---|
-| `docs/interview-questions.md`（问卷·自测版） | ✅ 新增 | 12 大类 **67 题**（项目架构/缓存三兄弟/防超卖与 Lua/幂等/分布式锁/限流/Stream 可靠性/MySQL/性能压测/安全工程化/场景设计/复盘），⭐ 标 25 道必会题，附自测评分建议 |
-| `docs/interview-answers.md`（答案·配套版） | ✅ 新增 | 与问卷同编号一一对应：参考答案（结论句 + 原理 + 本项目代码位置/真实数字）、追问深挖、陷阱与加分项；覆盖 Lua 返回码契约、幂等四道闸、Redisson 看门狗、滑窗 member 唯一性、PEL/死信/回放、订单号碰撞、10 万 QPS 演进等 |
-
-> **口径说明**：全部答案以仓库真实实现为准（键名/TTL/锁参数/重试阈值/压测数字/审计 38 项均可复核）；文中「98 用例」为 E6 批次后的预期值，待开发机回归确认。
-
-> **追加（2026-09-09 深夜，AI 实现 · 待 panda 校阅）**：
-> ① **A6 深度讲解**已扩写进 `interview-answers.md`——以「异步订单可靠性闭环」为主线：四条消息命运路径（正常/PEL 重试/死信/人工回放）、`MAX_RETRY=3` 精确语义、毒消息 `handleUnrecoverable`、死信补偿边界（仅订单未落库才补偿）、回放六步（先原子占位再重投 + XDEL）、"不丢/不重/可兜底"对照表、8 条追问预判与两分钟口播稿；
-> ② 新增 `docs/interview-cheatsheet.md`（一页速查卡：数字速记 / 键位表 / 决策"为什么" / 12 条追问一句话答 / 陷阱清单 / 两分钟骨架）；
-> ③ **简历稿数字核对完成**：`docs/resume-project-description.md` 修正 4 处与代码不符的表述（最重要：execute 主链**不加** Redisson 锁，锁只护预热/库存重置；幂等为四道闸而非"令牌+锁+唯一键"三层；限流为活动×用户双维；审计口径补为 38 项含 5 项高危），并把 A6 可靠性闭环同步进项目条目；CC-Forum 稿补充"数字自查命令清单"。简历稿属个人材料，**未入库**（如需私有留存建议 `git add`，如防误推 origin 可加 `.gitignore` 规则 `docs/resume-*.md`）。
-
-
 ---
 
 *文档创建日期：2026-07-29*
 *上次更新：2026-09-09（**Day 6 复盘总结与学习收口完成**：新增 `docs/redis-summary.md`《Redis 实战总结》+ 扩充 `docs/notework.md` 学习笔记 + plan.md 收尾，路线图 4 阶段全部 ✅，见上「第 4 阶段 Day 6」小节；此前交付前收尾 `c1f689e` 与文档同步 `c035ca8` 均已提交，全量 mvn test **92 用例 BUILD SUCCESS**）*
-*下次开始位置：①面试备考三件套（questions/answers/cheatsheet）已产出、A6 已扩写为深度讲解、简历稿数字已核对修正——均待 panda 校阅；②F7/F9/E6 与文档批次待开发机全量回归（预期 98 用例）并推送 origin；③简历稿（resume-project-*.md）为未跟踪个人材料，需决定是否入库/加 .gitignore；④如需继续增强或复盘迭代，按 2026-09-09 分工（AI 实现 → panda 终审）推进*
+*下次开始位置：①图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；②如需继续增强或复盘迭代，按 2026-09-09 分工（AI 实现 → panda 终审）推进；③计划内主体开发已完成，可按需把项目提交推送到 origin（当前本地领先待 push）*

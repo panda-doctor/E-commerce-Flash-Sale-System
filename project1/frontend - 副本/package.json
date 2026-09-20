@@ -1,0 +1,20 @@
+{
+  "name": "flash-sale-live-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "轻量级电商秒杀系统前端看板（Vue 3 + Vite）——活动秒杀 / 倒计时 / 排行榜 / 运行指标",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.4.27",
+    "vue-router": "^4.3.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.4",
+    "vite": "^5.2.11"
+  }
+}

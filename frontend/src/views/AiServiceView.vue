@@ -1,8 +1,8 @@
 <script setup>
-import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
-import { fenToYuan, parseServerTime } from '../utils/format'
+import { fenToYuan } from '../utils/format'
 
 /* ============================================================
    AI 客服 · 对接真实后端大模型
@@ -25,7 +25,6 @@ const historyMsgs = ref([])
 
 // 实时秒杀活动列表（侧栏"热门活动"，来源 GET /api/seckill/activities）
 const hotActivities = ref([])
-let hotRefreshTimer = null // 侧栏热门活动静默刷新句柄（F2/F8：切后台暂停）
 
 // 正在输入指示
 const typing = ref(false)
@@ -49,39 +48,16 @@ const ACTIVITY_TAG = {
   CANCELLED: { text: '已取消', cls: 'gray' },
 }
 
-/**
- * F2：侧栏状态按本地实时时间窗 + 实时库存推导，不再信任后端列表的 status 快照。
- * DB status 是创建/预热时的快照、不会自动翻转 RUNNING——预热后到点/已过期的活动若按
- * 快照判"即将开抢"会一直误标。口径与首页 ActivityListView.phaseOf 一致：
- * CANCELLED 显式排除 → now<startTime 预告 → now≥endTime 已结束 → stock=0 已售罄 → 秒杀中。
- */
-function livePhaseOf(a, now) {
-  if (a.status === 'CANCELLED') return 'CANCELLED'
-  const start = parseServerTime(a.startTime)
-  const end = parseServerTime(a.endTime)
-  if (start > 0 && now < start) return 'NOT_STARTED'
-  if (now >= end) return 'ENDED'
-  const stock = a.stock != null ? Number(a.stock) : null
-  if (stock === 0) return 'SOLD_OUT'
-  return 'RUNNING'
-}
-
-// 侧栏实时热门活动：取"秒杀中 / 即将开抢"的最近几场（已结束/已售罄/已取消不推荐）
+// 侧栏实时热门活动：取后端活动列表中"进行中 + 即将开抢"的最近几场
 async function loadActivities() {
   try {
-    const now = Date.now()
     const list = (await api.listActivities()) || []
     const hot = list
-      .map((a) => ({ a, phase: livePhaseOf(a, now) }))
-      .filter(({ phase }) => phase === 'RUNNING' || phase === 'NOT_STARTED')
-      .sort((x, y) => {
-        // 进行中优先；同为进行中/预告时按开始时间近者优先
-        if (x.phase !== y.phase) return x.phase === 'RUNNING' ? -1 : 1
-        return parseServerTime(x.a.startTime) - parseServerTime(y.a.startTime)
-      })
+      .filter((a) => a.status === 'RUNNING' || a.status === 'NOT_STARTED')
+      .sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)))
       .slice(0, 5)
-    hotActivities.value = hot.map(({ a, phase }) => {
-      const tag = ACTIVITY_TAG[phase] || { text: phase, cls: 'blue' }
+    hotActivities.value = hot.map((a) => {
+      const tag = ACTIVITY_TAG[a.status] || { text: a.status, cls: 'blue' }
       return {
         activityId: a.activityId,
         name: a.productName || a.activityName || `活动 #${a.activityId}`,
@@ -126,8 +102,6 @@ function pushMessage(msg) {
 }
 
 async function sendText(text) {
-  // F6：请求在途时忽略重复触发（回车连发 / 连点 / 快捷问题），防并发叠加空耗外部配额
-  if (typing.value) return
   const q = (text ?? inputText.value).trim()
   if (!q) return
   inputText.value = ''
@@ -158,18 +132,10 @@ function askQuick(q) {
   sendText(q)
 }
 
-// 初始化：载入实时活动 + 定位到底部；热门活动 30s 静默刷新（后台标签页暂停）
+// 初始化：载入实时活动 + 定位到底部
 onMounted(() => {
   scrollToBottom()
   loadActivities()
-  hotRefreshTimer = setInterval(() => {
-    if (!document.hidden) loadActivities()
-  }, 30_000)
-})
-
-onBeforeUnmount(() => {
-  clearInterval(hotRefreshTimer)
-  hotRefreshTimer = null
 })
 </script>
 
@@ -279,6 +245,8 @@ onBeforeUnmount(() => {
           </div>
           <div class="chat-bar-right">
             <button class="cb-btn" title="清空对话" @click="resetChat">🗑</button>
+            <button class="cb-btn" title="语音输入">🎤</button>
+            <button class="cb-btn" title="更多">⋯</button>
           </div>
         </div>
 
@@ -297,6 +265,30 @@ onBeforeUnmount(() => {
               <!-- 文本气泡 -->
               <div v-if="msg.type === 'text'" class="msg-bubble" :class="msg.role === 'user' ? 'bubble-user' : 'bubble-ai'">
                 <p class="msg-text">{{ msg.content }}</p>
+              </div>
+
+              <!-- 商品推荐卡片 -->
+              <div v-else-if="msg.type === 'products'" class="msg-products">
+                <div class="msg-bubble bubble-ai">
+                  <p class="msg-text">{{ msg.content }}</p>
+                </div>
+                <div class="product-cards">
+                  <div v-for="p in msg.products" :key="p.id" class="product-card">
+                    <div class="pc-thumb">
+                      <span class="pc-ico">📦</span>
+                      <span class="pc-tag" :class="`pc-tag-${p.tagColor || 'red'}`">{{ p.tag }}</span>
+                    </div>
+                    <div class="pc-body">
+                      <h4 class="pc-name">{{ p.name }}</h4>
+                      <p class="pc-desc">{{ p.desc }}</p>
+                      <div class="pc-price-row">
+                        <span class="pc-price">{{ p.price }}</span>
+                        <span class="pc-origin">{{ p.origin }}</span>
+                      </div>
+                    </div>
+                    <button class="pc-btn">去抢购</button>
+                  </div>
+                </div>
               </div>
 
               <span class="msg-time">{{ msg.time }}</span>
@@ -326,6 +318,8 @@ onBeforeUnmount(() => {
         <!-- 输入区 -->
         <div class="chat-input">
           <div class="input-bar">
+            <button class="ib-btn" title="附件">📎</button>
+            <button class="ib-btn" title="图片">🖼</button>
             <input
               v-model="inputText"
               type="text"
@@ -333,7 +327,7 @@ onBeforeUnmount(() => {
               placeholder="输入你的问题，如「今天有什么秒杀？」"
               @keydown.enter="sendText()"
             />
-            <button class="ib-send" :class="{ 'send-active': inputText.trim() }" :disabled="typing || !inputText.trim()" @click="sendText()">
+            <button class="ib-send" :class="{ 'send-active': inputText.trim() }" :disabled="!inputText.trim()" @click="sendText()">
               <span class="send-ico">➤</span>
               <span>发送</span>
             </button>
@@ -875,6 +869,116 @@ onBeforeUnmount(() => {
   padding: 0 4px;
 }
 
+/* 商品推荐卡片 */
+.msg-products {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.product-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.product-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  transition: all 0.18s var(--ease-out);
+  width: 100%;
+  max-width: 420px;
+}
+.product-card:hover {
+  border-color: rgba(99, 102, 241, 0.3);
+  box-shadow: var(--shadow-2);
+  transform: translateY(-2px);
+}
+.pc-thumb {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.pc-ico {
+  font-size: 26px;
+}
+.pc-tag {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  color: #fff;
+}
+.pc-tag-red { background: var(--accent); }
+.pc-tag-orange { background: var(--aux); }
+.pc-tag-green { background: var(--success); }
+.pc-tag-blue { background: var(--info); }
+.pc-body {
+  flex: 1;
+  min-width: 0;
+}
+.pc-name {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.pc-desc {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pc-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pc-price {
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--accent);
+  font-family: var(--font-num);
+}
+.pc-origin {
+  font-size: 12px;
+  color: var(--text-3);
+  text-decoration: line-through;
+  font-family: var(--font-num);
+}
+.pc-btn {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 9px;
+  background: var(--grad-cta);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 4px 10px -3px rgba(255, 45, 85, 0.45);
+  transition: transform 0.16s, filter 0.16s;
+}
+.pc-btn:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
 /* 正在输入动画 */
 .typing-bubble {
   display: flex;
@@ -940,6 +1044,20 @@ onBeforeUnmount(() => {
 .input-bar:focus-within {
   border-color: var(--ai-primary);
   box-shadow: 0 0 0 3px var(--ai-soft);
+}
+.ib-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  font-size: 17px;
+  color: var(--text-3);
+  background: transparent;
+  transition: all 0.16s;
+  flex-shrink: 0;
+}
+.ib-btn:hover {
+  background: var(--surface-2);
+  color: var(--ai-primary);
 }
 .ib-input {
   flex: 1;
@@ -1073,6 +1191,14 @@ onBeforeUnmount(() => {
   }
   .msg-row {
     max-width: 95%;
+  }
+  .product-card {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .pc-btn {
+    width: 100%;
+    margin-top: 4px;
   }
   .chat-input {
     padding: 12px 14px 14px;

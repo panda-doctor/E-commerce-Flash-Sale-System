@@ -27,6 +27,15 @@ export function formatDuration(ms) {
   return `${pad(h)}:${pad(m)}:${pad(s)}`
 }
 
+// 秒杀活动状态徽章映射（与后端 ActivityStatusEnum.name 对齐）
+export const STATUS_TEXT = {
+  NOT_STARTED: '未开始',
+  RUNNING: '抢购中',
+  ENDED: '已结束',
+  SOLD_OUT: '已售罄',
+  CANCELLED: '已取消',
+}
+
 // check 返回的 reason -> 提示文案
 export const CHECK_REASON_TEXT = {
   ACTIVITY_NOT_PREHEATED: '活动库存尚未预热',

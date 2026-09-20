@@ -1,0 +1,335 @@
+package com.ghb.ecommerceflashsalesystem.service.impl;
+
+import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
+import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
+import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
+import com.ghb.ecommerceflashsalesystem.common.util.OrderNoGenerator;
+import com.ghb.ecommerceflashsalesystem.domain.dto.message.SeckillOrderMessage;
+import com.ghb.ecommerceflashsalesystem.domain.dto.request.SeckillRequest;
+import com.ghb.ecommerceflashsalesystem.domain.dto.response.SeckillResponse;
+import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;
+import com.ghb.ecommerceflashsalesystem.domain.enums.ActivityStatusEnum;
+import com.ghb.ecommerceflashsalesystem.domain.enums.OrderStatusEnum;
+import com.ghb.ecommerceflashsalesystem.domain.vo.SeckillActivityVO;
+import com.ghb.ecommerceflashsalesystem.mapper.SeckillActivityMapper;
+import com.ghb.ecommerceflashsalesystem.service.cache.SeckillCacheService;
+import com.ghb.ecommerceflashsalesystem.service.seckill.SeckillService;
+import com.ghb.ecommerceflashsalesystem.stream.producer.SeckillOrderStreamProducer;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.Arrays;
+
+/**
+ * 秒杀服务实现：第 2 阶段 Day 2/4/5 核心链路
+ * 链路：查活动（缓存优先 -> DB 回源）-> 时间窗口校验 -> status 辅助
+ *       -> 整合 Lua 原子脚本（SETNX 幂等令牌 + 库存扣减 + 售罄自动回滚令牌）-> 返回 QUEUED / 抛异常
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class SeckillServiceImpl implements SeckillService {
+
+    // ==================== v1 旧实现复盘（SeckillServerImpl 1.0 错误保留，便于对照学习） ====================
+    /*
+    【1. 结构错误】v1 定义为 abstract class SeckillServer，且曾在类内同时声明两个同签名 execute
+       （一个有方法体、一个 abstract），Java 不允许同签名方法重复定义，编译失败。
+       已修正：SeckillService（interface）+ SeckillServiceImpl（implements），见旧代码：
+       // public abstract class SeckillServer {                        // v1 错误写法
+       //     SeckillResponse execute(SeckillRequest request) {         // v1 与下方 abstract 同签名重复定义
+       //         return null;                                          // v1 编译报错点
+       //     }
+       //     public abstract SeckillResponse execute(SeckillRequest request);
+       // }
+
+    【2. 链路错误】v1 直接查库、绕过预热缓存，未遵循「缓存优先 -> DB 回源」约定：
+       // SeckillActivity activity = seckillActivityMapper.selectById(activityId);   // v1 错误写法
+       已修正：getActivityVO() 先读 SeckillCacheService 缓存，未命中再回源数据库。
+
+    【3. 状态判定错误】v1 强依赖 DB 的 status == RUNNING 才放行：
+       // ActivityStatusEnum statusEnum = ActivityStatusEnum.fromValue(activity.getStatus());
+       // if (statusEnum != ActivityStatusEnum.RUNNING) {
+       //     throw new BusinessException(ResultCode.NOT_FOUND,
+       //             "活动当前状态不可秒杀：" + statusEnum.getDescription());   // statusEnum 为 null 时空指针
+       // }
+       问题：
+       a) 活动存在却被抛 40004（NOT_FOUND），语义错误，未开放应返回 40001；
+       b) DB status 是创建时的快照，不会自动翻转为 RUNNING，预热后到点的活动也永远抢不到；
+       c) fromValue 对非法值返回 null，调用 getDescription() 会空指针。
+       已修正：以缓存时间窗口动态判定为主（startTime <= now < endTime 才放行），
+       status 仅作辅助（显式 CANCELLED 提前拦截），售罄交给 Lua 兜底。
+
+    【4. 库存键前缀错误】v1 曾误用活动 Hash 前缀拼接库存键（Lua GET Hash 键会报 WRONGTYPE）：
+       // String stockKey = CacheKeyConstant.SECKILL_ACTIVITY_PREFIX + activityId;  // v1 错误写法
+       已修正：库存预热键与扣减键均为 SECKILL_STOCK_PREFIX（seckill:stock:{activityId}）。
+
+    【5. 时间边界】v1 用 now.isAfter(endTime)，endTime 时刻恰好相等仍放行：
+       // if (now.isBefore(activity.getStartTime()) || now.isAfter(activity.getEndTime())) { ... }
+       已修正：now >= endTime（!now.isBefore）即视为活动已结束。
+    */
+    private final SeckillCacheService seckillCacheService;
+    private final SeckillActivityMapper seckillActivityMapper;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final RedisScript<Long> seckillExecuteScript;
+    private final RedisScript<Long> rateLimitScript;
+    private final SeckillOrderStreamProducer seckillOrderStreamProducer;
+
+    // E4：限流参数 yaml 可调（application.yaml flash.rate-limit.*），默认与 CacheKeyConstant 一致；
+    // 常量仍被 RateLimitTest 等脚本级测试引用，调整配置时请保持两处默认一致。
+    @Value("${flash.rate-limit.window-seconds:60}")
+    private long rateLimitWindowSeconds;
+
+    @Value("${flash.rate-limit.max-count:5}")
+    private long rateLimitMaxCount;
+    // 【复盘】曾误在此重复注入 streamProducer（与上行同类型，纯冗余）与 rankService——
+    // execute 抢单成功 ≠ 订单落库成功，榜单在订单成功落库的消费者侧记录（ZADD NX 幂等），execute 无需榜单依赖。
+
+    @Override
+    public SeckillResponse execute(SeckillRequest request) {
+        Long activityId = request.getActivityId();
+        Long userId = request.getUserId();
+
+
+        // 0. 滑动窗口限流（最前置防刷闸门）：超限直接 42900，
+        //    保证无效/恶意请求到不了后面的活动查询与幂等扣减
+        String rateKey = CacheKeyConstant.RATE_LIMIT_PREFIX + activityId + ":" + userId;
+        long time = System.currentTimeMillis() / 1000; //秒级时间戳
+        String member = time + "-" + System.nanoTime(); //唯一成员标识
+        Long resultLimit = redisTemplate.execute(
+                rateLimitScript,
+                Arrays.asList(rateKey),
+                time,
+                rateLimitWindowSeconds,
+                rateLimitMaxCount,
+                member
+        );
+
+        if (resultLimit == null || resultLimit == 0) {
+            // 限流拒绝 → 埋点（曾误用 METRIC_FIELD_DUPLICATE，限流应记 RATE_LIMIT 字段）
+            incrementMetric(activityId, CacheKeyConstant.METRIC_FIELD_RATE_LIMIT);
+            throw new BusinessException(ResultCode.RATE_LIMITED, "请求过于频繁");
+        }
+
+        // 1. 查询活动：缓存优先，未命中回源数据库（修正 v1 错误点 2）
+        SeckillActivityVO activityVO = seckillCacheService.getActivityFromCache(activityId);
+        if (activityVO == null) {
+            // M4：缓存未命中（未预热 / 已过期）时按 DB 时间窗给出精确拒绝原因，
+            // 避免「已结束 / 未开始」的活动一律误报"活动尚未预热"（误导管理员去预热）。
+            SeckillActivity activity = seckillActivityMapper.selectById(activityId);
+            if (activity == null) {
+                throw new BusinessException(ResultCode.NOT_FOUND, "活动不存在，activityId=" + activityId);
+            }
+            assertOpenWindow(activity, LocalDateTime.now());
+            throw new BusinessException(ResultCode.PARAM_ERROR, "活动尚未预热，暂不可参与秒杀");
+        }
+
+        // 2. 时间窗口动态校验：秒杀是否开放以实时时间窗为准（修正 v1 错误点 3/5）
+        LocalDateTime now = LocalDateTime.now();
+        if (now.isBefore(activityVO.getStartTime())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "活动未开始");
+        }
+        // v1 写 now.isAfter(endTime) 边界错误；now >= endTime 即视为已结束
+        if (!now.isBefore(activityVO.getEndTime())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "活动已结束");
+        }
+
+        // 3. 状态辅助校验：仅显式取消需提前拦截；NOT_STARTED/RUNNING/ENDED 是创建时的快照
+        //    （预热缓存写入的也是当时的 status），故售罄等实时状态统一交给 Lua 库存兜底
+        ActivityStatusEnum statusEnum = activityVO.getStatus();
+        if (statusEnum == ActivityStatusEnum.CANCELLED) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "活动已取消");
+        }
+/*
+        // 4. SETNX 幂等令牌（Day 4）：建成功才允许继续扣库存；建失败说明该用户已抢过，直接拒绝
+        // 【复盘】曾误用 SECKILL_ACTIVITY_PREFIX 拼令牌键（与 v1 库存键前缀错误同源），
+        //   正确应为 SECKILL_USER_PREFIX -> seckill:user:{activityId}:{userId}
+
+        String tokenKey = CacheKeyConstant.SECKILL_USER_PREFIX + activityId + ":" + userId;
+        Boolean tokenSet = redisTemplate.opsForValue().setIfAbsent(
+                tokenKey, "1",
+                CacheKeyConstant.SECKILL_USER_TOKEN_TTL,
+                TimeUnit.SECONDS
+        );
+        if (tokenSet == null || !tokenSet) {
+            // 令牌已存在 ⇒ 该用户已成功秒杀过该活动（或正在处理）
+            throw new BusinessException(ResultCode.DUPLICATE_PURCHASE, "请勿重复秒杀");
+        }
+
+        // 5. Lua 原子扣减库存（修正 v1 错误点 4：库存键必须是 SECKILL_STOCK_PREFIX）
+        String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
+        Long result = redisTemplate.execute(decrStockScript, Arrays.asList(stockKey), 1);
+
+        // 6. 扣减结果分支：>=0 扣减成功进入排队；<0 库存不足/键不存在
+        if (result == null || result < 0) {
+            // 售罄回滚（Day 4 设计取舍）：删除刚建的幂等令牌，避免「没抢到却锁 30 分钟」；
+            // 「已抢到」的最终判定以订单落库为准，售罄/失败不应残留令牌（Day 5 整合 Lua 时沿用此语义）
+            redisTemplate.delete(tokenKey);
+            log.warn("库存不足或未预热，已回滚幂等令牌，activityId={}, userId={}", activityId, userId);
+            throw new BusinessException(ResultCode.OUT_OF_STOCK, "库存不足");
+        }
+
+        // 7. 秒杀成功，返回排队中状态
+        SeckillResponse seckillResponse = new SeckillResponse();
+        seckillResponse.setActivityId(activityId);
+        seckillResponse.setUserId(userId);
+        seckillResponse.setResult("QUEUED");
+
+        log.info("秒杀成功，activityId={}, userId={}, 剩余库存={}", activityId, userId, result);
+        return seckillResponse;*/
+
+
+        // 4. 执行整合 Lua 脚本（原子：建令牌 + 扣库存 + 失败回滚）
+        String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
+        String tokenKey = CacheKeyConstant.SECKILL_USER_PREFIX + activityId + ":" + userId;
+
+        Long result = redisTemplate.execute(seckillExecuteScript,
+                Arrays.asList(stockKey, tokenKey),
+                "1",
+                CacheKeyConstant.SECKILL_USER_TOKEN_TTL);
+
+        //处理返回值
+        if (result == null) {
+            // 脚本执行异常（理论上不应发生），打日志并降级为系统错误
+            log.error("秒杀脚本执行返回 null，activityId={}, userId={}", activityId, userId);
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, "系统繁忙，请稍后重试");
+        }
+
+        if (result >= 0) {
+            // 扣减成功 → 第 3 阶段 Day 2 接入 Stream 削峰：
+            // 顺序不可反——必须先扣库存成功、再发消息，消息是"已拥有库存"的凭证
+            // （曾把发送逻辑写在 if/else 全终止之后形成不可达代码，且误用 activity/scriptResult 变量）
+            String orderNo = OrderNoGenerator.generate();
+
+            // 消息体：活动信息从 activityVO 取（productId / 成交价快照，防活动改价后金额不一致）
+            SeckillOrderMessage message = SeckillOrderMessage.builder()
+                    .activityId(activityId)
+                    .productId(activityVO.getProductId())
+                    .userId(userId)
+                    .orderNo(orderNo)
+                    .seckillPrice(activityVO.getSeckillPrice())
+                    .requestTime(System.currentTimeMillis())
+                    .build();
+
+            // XADD 失败时库存已扣、令牌已建 → 立即反向补偿（回补库存 + 删除令牌）后重抛，
+            // 否则该用户 30 分钟内重试会命中令牌被判"重复秒杀"，且库存永久悬空无订单
+            try {
+                seckillOrderStreamProducer.sendMessage(message);
+            } catch (Exception e) {
+                log.error("发送订单消息失败，开始反向补偿，orderNo={}, activityId={}, userId={}", orderNo, activityId, userId, e);
+                compensateAfterSendFailure(stockKey, tokenKey, activityId, userId);
+                throw new BusinessException(ResultCode.SYSTEM_ERROR, "消息队列异常，请稍后重试");
+            }
+
+            SeckillResponse response = new SeckillResponse();
+            response.setActivityId(activityId);
+            response.setUserId(userId);
+            response.setResult("QUEUED");
+            response.setOrderNo(orderNo);
+            log.info("秒杀成功，orderNo={}, 剩余库存={}", orderNo, result);
+            return response;
+        } else if (result == -1) {
+            // 库存不足 → 埋点
+            incrementMetric(activityId, CacheKeyConstant.METRIC_FIELD_SOLD_OUT);
+            // 库存不足（令牌已在脚本内回滚）
+            throw new BusinessException(ResultCode.OUT_OF_STOCK, "库存不足");
+        } else if (result == -2) {
+            // 重复秒杀 → 埋点
+            incrementMetric(activityId, CacheKeyConstant.METRIC_FIELD_DUPLICATE);
+
+            // 重复秒杀（令牌已存在）
+            throw new BusinessException(ResultCode.DUPLICATE_PURCHASE, "请勿重复秒杀");
+        } else {
+            // 未知返回值（防御）
+            log.error("脚本返回未知值: {}, activityId={}, userId={}", result, activityId, userId);
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, "系统异常");
+        }
+    }
+
+    /**
+     * M4：按 DB 活动记录校验秒杀是否处于开放时间窗（缓存未命中回源时的精确拒绝）。
+     * 判定顺序与缓存命中路径一致：CANCELLED 显式拦截 → 未开始 → 已结束；
+     * 仅当落在开放时间窗内才通过（上层随后抛"尚未预热"），保证拒绝文案语义不误导。
+     */
+    private void assertOpenWindow(SeckillActivity activity, LocalDateTime now) {
+        Integer dbStatus = activity.getStatus();
+        if (dbStatus != null && dbStatus == ActivityStatusEnum.CANCELLED.getCode()) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "活动已取消");
+        }
+        if (activity.getStartTime() != null && now.isBefore(activity.getStartTime())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "活动未开始");
+        }
+        if (activity.getEndTime() == null || !now.isBefore(activity.getEndTime())) {
+            throw new BusinessException(ResultCode.PARAM_ERROR, "活动已结束");
+        }
+    }
+
+    /**
+     * 消息发送失败后的反向补偿：回补库存 + 删除幂等令牌，保证"未产生订单凭证"时资源归还。
+     * 补偿按可重入语义实现（INCR 一步回补；DEL 对不存在键返回成功），失败仅记日志告警，
+     * 不覆盖原始异常——库存/令牌最终一致性由人工核对或后续补偿任务兜底。
+     */
+    private void compensateAfterSendFailure(String stockKey, String tokenKey,
+                                            Long activityId, Long userId) {
+        try {
+            redisTemplate.opsForValue().increment(stockKey, 1);
+            redisTemplate.delete(tokenKey);
+            log.warn("已反向补偿库存与令牌，activityId={}, userId={}", activityId, userId);
+        } catch (Exception ce) {
+            log.error("反向补偿失败，需人工核对，activityId={}, userId={}, stockKey={}, tokenKey={}",
+                    activityId, userId, stockKey, tokenKey, ce);
+        }
+    }
+
+    private void incrementMetric(Long activityId, String field) {
+        try {
+            String key = CacheKeyConstant.SECKILL_METRIC_PREFIX + activityId;
+            redisTemplate.opsForHash().increment(key, field, 1);
+        }catch (Exception e) {
+            log.warn("指标埋点失败，activityId={}, field={}", activityId, field, e);
+        }
+    }
+
+    /**
+     * 查询活动视图：缓存优先，未命中回源数据库
+     */
+    private SeckillActivityVO getActivityVO(Long activityId) {
+        // 缓存优先：已预热的活动由 SeckillCacheService 从 Redis Hash + 实时库存组装
+        SeckillActivityVO cached = seckillCacheService.getActivityFromCache(activityId);
+        if (cached != null) {
+            log.info("命中活动缓存，activityId={}", activityId);
+            return cached;
+        }
+        // 未命中：回源数据库兜底（与 SeckillActivityServiceImpl.getActivityDetail 行为一致）
+        log.info("活动缓存未命中，回源数据库，activityId={}", activityId);
+        SeckillActivity activity = seckillActivityMapper.selectById(activityId);
+        if (activity == null) {
+            return null;
+        }
+        return convertToVO(activity);
+    }
+
+    /**
+     * 实体转 VO（未预热回源场景），字段映射与 SeckillActivityServiceImpl.convertToVO 保持一致
+     */
+    private SeckillActivityVO convertToVO(SeckillActivity activity) {
+        SeckillActivityVO vo = new SeckillActivityVO();
+        vo.setActivityId(activity.getId());
+        vo.setProductId(activity.getProductId());
+        vo.setActivityName(activity.getActivityName());
+        vo.setStartTime(activity.getStartTime());
+        vo.setEndTime(activity.getEndTime());
+        vo.setSeckillPrice(activity.getSeckillPrice());
+        // 未预热回源时库存取数据库配置库存，扣减仍以 Redis 库存键实时为准
+        vo.setStock(activity.getSeckillStock());
+        vo.setLimitPerUser(activity.getLimitPerUser());
+        if (activity.getStatus() != null) {
+            vo.setStatus(ActivityStatusEnum.fromValue(activity.getStatus()));
+        }
+        return vo;
+    }
+}

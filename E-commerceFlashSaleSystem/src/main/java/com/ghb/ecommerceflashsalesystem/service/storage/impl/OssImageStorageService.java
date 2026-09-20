@@ -50,19 +50,17 @@ public class OssImageStorageService extends AbstractImageStorage {
 
     @Override
     public String store(MultipartFile file) {
-        // E6（魔数优先）：按文件头探测真实格式（内容校验）；对象键扩展名与 OSS Content-Type
-        // 均按真实格式设置，不信任客户端文件名/Content-Type（防伪装脚本、防类型错乱）
-        String ext = validateAndDetectExt(file);
+        validate(file);
         validateConfigured();
 
         String month = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
-        String objectKey = "uploads/" + month + "/" + safeName(ext);
+        String objectKey = "uploads/" + month + "/" + safeName(file.getOriginalFilename());
 
         OSS oss = null;
         try {
             oss = new OSSClientBuilder().build(endpoint, accessKeyId, accessKeySecret);
             ObjectMetadata meta = new ObjectMetadata();
-            meta.setContentType(mediaTypeOf(ext));
+            meta.setContentType(mediaTypeOf(file.getOriginalFilename()));
             meta.setContentLength(file.getSize());
             try (InputStream in = file.getInputStream()) {
                 oss.putObject(new PutObjectRequest(bucketName, objectKey, in, meta));

@@ -74,8 +74,6 @@ async function createAndPreheat() {
 const prodPanel = reactive({
   productId: '1',
   loaded: false,
-  // F7：当前表单数据归属的商品编号（载入成功/新建时记录）——保存前比对，防"改编号未重载"脏写
-  loadedFromId: '',
   name: '',
   description: '',
   priceYuan: 0,
@@ -107,7 +105,6 @@ async function quickLoad(id) {
 function newProduct() {
   prodPanel.productId = ''
   prodPanel.loaded = true
-  prodPanel.loadedFromId = '' // 新建态：数据尚未归属任何已存在编号
   prodPanel.name = ''
   prodPanel.description = ''
   prodPanel.priceYuan = 0
@@ -125,7 +122,6 @@ async function loadProduct() {
     const p = await api.getProduct(pid)
     // 雪花 ID 超 JS 安全整数，以字符串回填（不丢精度）
     prodPanel.productId = p && p.productId != null ? String(p.productId) : pid
-    prodPanel.loadedFromId = prodPanel.productId // F7：记录本次表单数据归属的商品编号
     prodPanel.loaded = true
     prodPanel.name = p.name
     prodPanel.description = p.description || ''
@@ -146,21 +142,10 @@ function pickImage() {
   if (fileInput.value) fileInput.value.click()
 }
 
-// F5：上传前端预检（MIME ∪ 扩展名 + ≤5MB），与后端 AbstractImageStorage 白名单/上限对齐；
-// 后端另按文件头魔数校验真实格式（E6 魔数优先），前端预检仅为减少无效上传
-const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp']
-const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp']
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024
-
 async function onFileChange(e) {
   const file = e.target.files?.[0]
   e.target.value = '' // 允许重复选择同一文件
   if (!file) return
-  const ext = (file.name.split('.').pop() || '').toLowerCase()
-  const mimeOk = IMAGE_MIMES.includes(file.type)
-  const extOk = !!ext && IMAGE_EXTS.includes(ext)
-  if (!mimeOk && !extOk) return toastErr('仅支持 jpg/jpeg/png/webp/gif/bmp 图片')
-  if (file.size > MAX_IMAGE_SIZE) return toastErr('图片大小不能超过 5MB')
   uploading.value = true
   try {
     const r = await api.uploadImage(file)
@@ -181,11 +166,6 @@ async function saveProduct() {
   const pidText = String(prodPanel.productId ?? '').trim()
   // 无有效编号 = 新建：不传 productId，后端生成新雪花 ID
   const isNew = !/^[1-9]\d*$/.test(pidText)
-  // F7：保存前比对——表单数据归属编号必须等于当前输入编号。载入区/编辑区结构上已隔离
-  // （改编号必须经「载入商品」重载），此处双保险，防把 A 商品数据覆盖写进 B 商品
-  if (!isNew && pidText !== prodPanel.loadedFromId) {
-    return toastWarn(`商品编号已改为 ${pidText}：请先点「载入商品」重新载入后再保存，避免旧表单覆盖其他商品`)
-  }
   saving.value = true
   try {
     const body = {
@@ -202,7 +182,6 @@ async function saveProduct() {
     if (isNew) {
       const newId = resp && resp.productId != null ? String(resp.productId) : pidText
       prodPanel.productId = newId
-      prodPanel.loadedFromId = newId // F7：创建成功后，表单数据归属新建编号
       toastOK(`已创建新商品 ${newId}，信息已生效`)
     } else {
       toastOK(`商品 ${pidText} 已保存，图片将在列表/详情页生效`)
@@ -394,7 +373,7 @@ function openExisting() {
             <input
               ref="fileInput"
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif,image/bmp"
+              accept="image/jpeg,image/png,image/webp,image/gif"
               hidden
               @change="onFileChange"
             />
