@@ -823,7 +823,7 @@
 
 | 阶段 | 主题 | 预估 | 里程碑 | 状态 |
 |---|---|---|---|---|
-| P0 | 边界治理（Maven 12 模块 + 包边界 + ArchUnit 12 规则） | 4 天 | M1 模块化单体 | ⏳ 未开工 |
+| P0 | 边界治理（Maven 12 模块 + 包边界 + ArchUnit 12 规则） | 4 天 | M1 模块化单体 | 🔄 进行中（Day 1 ✅） |
 | P1 | 基础设施（Nacos / Gateway / Compose / 追踪 / 监控） | 3 天 | M2 基建就绪 | ⏳ |
 | P2 | 边缘抽取（auth-service / ai-service / 网关统一鉴权） | 4 天 | M3 首个服务上线 | ⏳ |
 | P3 | 商品与活动（product / activity 独立库与缓存所有权） | 5 天 | M4 主数据域独立 | ⏳ |
@@ -844,8 +844,21 @@
 
 **P0 任务卡要点（已就绪，见方案文档第九章）**：12 模块目录树 · 模块依赖矩阵 · 现有代码逐文件迁移映射（含 DTO/VO、Mapper XML、Lua 归属）· 父 POM 与子模块 POM 模板 · 配置调整清单（`@MapperScan` 5 域包 / `classpath*:mapper/*.xml` / `.env` 工作目录）· ArchUnit 12 条规则 · 过渡白名单（鉴权装配、`AdminSeckillController`、`HealthController`、共享实体）· 逐日步骤与回退策略。
 
+**P0 逐日进度（模块化单体）：**
+
+| 日 | 任务 | 状态 | 验证 / 提交 |
+|---|---|---|---|
+| 前置 | 基线冻结：提交工作区（4 个逻辑提交）+ `mono-baseline-20261012` 标签 | ✅ 2026-10-12 | `345e1c6` |
+| Day 1 | 多模块骨架：父 POM（`flash-sale-parent`）+ 12 模块 + `src/` 整体迁入 `flash-sale-bootstrap` + surefire/run 工作目录治理 | ✅ 2026-10-12 | `mvnw test-compile` / `package` 通过；安全子集 16 用例绿（含 `MapperTest` 验证 `.env` 解析）；提交 `5e23798` |
+| Day 2 | 抽取 common / contracts / domain-model / infra（含 `infra.**` 包重构、空目录清理、`PageResult`/`PageResponse` 二选一） | ⏳ | — |
+| Day 3 | 抽取 user / product / activity（含 DTO/VO、Mapper XML、OSS 依赖归位） | ⏳ | — |
+| Day 4 | 抽取 seckill / order / analytics / ai + bootstrap 收薄 + ArchUnit 12 规则 + 终验（`git tag p0-done`） | ⏳ | — |
+
+> 待办验证：全量 92 用例须停 IDE dev 后端后执行（多模块与单体同纪律：`flash.stream.auto-poll=true` 会抢消费集成测试写入 Stream 的消息）。
+> Day 1 踩坑记录：`spring-boot:run` 不可写成 `<executions>`——会被 Maven 绑定进生命周期，导致 `mvn test-compile` 也启动应用（撞 8081 端口）；正确做法是插件级 `<configuration><workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>`。
+
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-10-12（新增 `docs/microservices-plan.md` 微服务演进方案，并在本路线图追加「第 5 阶段：微服务架构演进（P0~P6）」卡与本章节；规划未开工）*
-*下次开始位置：①先提交当前工作区未提交内容（用户账号体系 + 前端 TS 新架构 + 本文档变更）并打 `mono-baseline` 标签；②按 `docs/microservices-plan.md` 第九章启动第 5 阶段 P0（Day 1 多模块骨架）；③图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；④计划内单体主体已完成，可按需把项目提交推送到 origin（当前本地领先待 push）*
+*上次更新：2026-10-12（**P0 Day 1 完成**：多模块骨架落地（父 POM + 12 模块 + 源码迁入 bootstrap + 工作目录治理），提交 `5e23798`；同日落档 `docs/microservices-plan.md` 并打 `mono-baseline-20261012` 基线标签）*
+*下次开始位置：①P0 Day 2 — 抽取 common / contracts / domain-model / infra（含 `infra.**` 包重构与空目录清理）；②全量 92 用例需停 dev 后端后补跑（Day 1 仅跑安全子集 16 用例）；③图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；④计划内单体主体已完成，可按需把项目提交推送到 origin（当前本地领先待 push）*
