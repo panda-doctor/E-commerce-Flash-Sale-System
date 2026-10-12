@@ -1,34 +1,45 @@
-# 闪电秒杀 · 前端实时看板（Vue 3 + Vite）
+# 闪购集市与运营管理中心
 
-秒杀系统前端演示工程。页面以浏览器方式完整呈现系统能力：
+基于 Vue 3、TypeScript、Vite 与 Element Plus。一个前端包含顾客商城与运营后台，页面调用项目后端接口；不生成模拟商品、订单或用户记录。
 
-- **秒杀大厅**（`/`）：按活动编号进入场次 → 商品与秒杀价展示 → 倒计时（开抢前自动解锁）→ 一键秒杀 → 排队建单轮询 → 成功提示 → 实时手速榜刷新；底部为活动运行指标（库存/订单/队列积压/三类拒绝）。
-- **管理控制台**（`/admin`）：新建演示活动（自动预热到 Redis）或对既有活动预热，随后跳转大厅开抢。
-- **AI 客服**（`/ai-service`）：与后端接入的 OpenAI 兼容大模型（通义千问 / DeepSeek / OpenAI 等）多轮对话，系统提示词实时注入商城在售商品与秒杀场次目录，可问商品、场次与秒杀规则；侧栏「热门活动」为后端实时活动列表。
+## 页面
 
-## 技术说明
+- `/`：已上架商品、秒杀活动、价格与库存展示；活动库存每 20 秒刷新。
+- `/products/{商品编号}`：商品详情、秒杀资格检查、下单与订单状态跟踪。
+- `/sign-in`、`/register`：账号密码登录与注册；登录态使用后端的 `HttpOnly` Cookie。
+- `/account/orders`：当前账号的秒杀订单与处理状态。
+- `/dashboard`、`/products`、`/activities`、`/operations`、`/users`：运营后台。
 
-- Vue 3（`<script setup>`）+ Vite 5 + Vue Router 4，无重型 UI 库，样式基于语义色 CSS 令牌（参照 `docs` 与 ui-ux 设计规范：CTA 橙 `#ea580c`、成功绿、破坏红；价格/倒计时/榜单数字用 tabular 等宽防抖动）。
-- 与后端为前后端分离：Vite dev server 将 `/api` 代理到 `http://localhost:8081`（Spring Boot），因此浏览器无跨域问题。
-- 项目无用户体系，`userId` 由页面顶部「演示用户」输入透传（后端按业务号处理）。
+## 首次准备
 
-## 运行
+需要 Node.js、Java 17、MySQL 与 Redis。先启动后端所需服务并执行数据库初始化；已有数据库还需手动执行：
 
-```bash
-# 前置：后端 Spring Boot 已在 :8081 启动（数据库与 Redis 就绪）
+```text
+E-commerceFlashSaleSystem/src/main/resources/db/migration/V20261010__user_accounts_and_sessions.sql
+```
+
+前端开发代理把 `/api` 转发到 `http://localhost:8081`。
+
+```powershell
+cd frontend
 npm install
 npm run dev
-# 打开 http://localhost:5173
 ```
 
-演示三步曲：
+打开 `http://localhost:5173`。后端与数据库说明见仓库根目录的 `CLAUDE.md`、`docs/database.md`、`docs/interface.md`。
 
-1. 进入「管理控制台」，默认参数已可一键「创建并预热活动」（15 秒后开抢、库存 30）；
-2. 自动跳到「秒杀大厅」，等待倒计时归零按钮解锁 → 立即秒杀 → 排队建单 → 成功；
-3. 顶部切换「演示用户」可换身份再抢；榜单按抢到先后排序，指标面板实时反映库存与三类拒绝计数。
+## 构建与检查
 
-## 构建
-
-```bash
-npm run build   # 产物在 dist/，可交由任意静态服务器托管
+```powershell
+npm run typecheck
+npm run build
+npm run preview
 ```
+
+## 配置说明
+
+后端浏览器会话的 `SESSION_COOKIE_SECURE` 在本地开发默认为 `false`；生产环境应使用 HTTPS 并设置为 `true`。`ALLOWED_ORIGINS` 需填允许访问后端的前端来源。登录后防跨站令牌仅保存在内存，写请求会发送 `X-CSRF-Token`。
+
+后台继续使用现有 `X-Admin-Token` 管理令牌。前端 `VITE_ADMIN_TOKEN` 会进入浏览器构建产物，只适用于本地演示，不可当作生产秘密凭证。旧压测令牌兼容默认关闭。
+
+商品原价和秒杀价在后台以元输入，发送后端时换算为分。商品图片由现有图片上传接口保存。
