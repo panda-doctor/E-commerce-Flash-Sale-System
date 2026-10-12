@@ -4,104 +4,162 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <!-- 1. 使用 Spring Boot 3.3.4 稳定版本（不要用不存在的 4.1.0） -->
+    <!--
+        多模块父工程（第 5 阶段 P0：模块化单体）
+        - 继续继承 Spring Boot 父 POM：所有三方依赖版本与单体现状保持完全一致
+        - 依赖版本统一在 dependencyManagement；三方版本变更只在本文件发生
+        - 库模块不要声明 spring-boot-maven-plugin，避免被 repackage 成可执行包
+    -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>3.3.4</version>
-        <relativePath/> <!-- lookup parent from repository -->
+        <relativePath/>
     </parent>
 
     <groupId>com.ghb</groupId>
-    <artifactId>E-commerceFlashSaleSystem</artifactId>
+    <artifactId>flash-sale-parent</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>E-commerceFlashSaleSystem</name>
-    <description>E-commerce Flash Sale System</description>
+    <packaging>pom</packaging>
+    <name>flash-sale-parent</name>
+    <description>轻量级电商秒杀系统 - 多模块父工程（P0 模块化单体）</description>
+
+    <modules>
+        <module>flash-sale-common</module>
+        <module>flash-sale-contracts</module>
+        <module>flash-sale-domain-model</module>
+        <module>flash-sale-infra</module>
+        <module>flash-sale-user</module>
+        <module>flash-sale-product</module>
+        <module>flash-sale-activity</module>
+        <module>flash-sale-seckill</module>
+        <module>flash-sale-order</module>
+        <module>flash-sale-analytics</module>
+        <module>flash-sale-ai</module>
+        <module>flash-sale-bootstrap</module>
+    </modules>
 
     <properties>
         <java.version>17</java.version>
-        <!-- 可选：显式指定 MyBatis-Plus 版本已由 starter 管理，无需再定义 -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- 三方版本：与单体保持一致（仅在此处维护） -->
+        <redisson.version>3.34.0</redisson.version>
+        <mybatis-plus.version>3.5.7</mybatis-plus.version>
+        <aliyun-oss.version>3.17.4</aliyun-oss.version>
+        <spring-dotenv.version>4.0.0</spring-dotenv.version>
+        <mysql-connector.version>8.0.33</mysql-connector.version>
+        <archunit.version>1.3.0</archunit.version>
     </properties>
 
+    <dependencyManagement>
+        <dependencies>
+            <!-- ========== 内部模块（版本统一跟随父工程） ========== -->
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-contracts</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-domain-model</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-infra</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-user</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-product</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-activity</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-seckill</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-order</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-analytics</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-ai</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-bootstrap</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- ========== 三方依赖（锁定与现状一致的版本） ========== -->
+            <dependency>
+                <groupId>org.redisson</groupId>
+                <artifactId>redisson</artifactId>
+                <version>${redisson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>me.paulschwarz</groupId>
+                <artifactId>spring-dotenv</artifactId>
+                <version>${spring-dotenv.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.aliyun.oss</groupId>
+                <artifactId>aliyun-sdk-oss</artifactId>
+                <version>${aliyun-oss.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mysql</groupId>
+                <artifactId>mysql-connector-j</artifactId>
+                <version>${mysql-connector.version}</version>
+                <scope>runtime</scope>
+            </dependency>
+
+            <!-- ========== 测试：架构约束（P0 Day 4 启用 ArchUnit 规则） ========== -->
+            <dependency>
+                <groupId>com.tngtech.archunit</groupId>
+                <artifactId>archunit-junit5</artifactId>
+                <version>${archunit.version}</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- ========== 全模块通用依赖：Lombok + 测试基座 ========== -->
     <dependencies>
-        <!-- ========== Web 层 ========== -->
-        <!-- 使用 spring-boot-starter-web，而不是 webmvc（虽然 webmvc 也能用，但标准是 web） -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-
-        <!-- ========== Redis ========== -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
-
-        <!-- ========== Redisson ========== -->
-        <dependency>
-            <groupId>org.redisson</groupId>
-            <artifactId>redisson</artifactId>
-            <version>3.34.0</version>
-        </dependency>
-
-        <!-- ========== MyBatis-Plus ========== -->
-        <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
-            <version>3.5.7</version>
-        </dependency>
-
-        <!-- ========== Validation ========== -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-
-        <!-- 用户密码单向哈希；只引入密码编码器，不启用整套 Spring Security 过滤链。 -->
-        <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-crypto</artifactId>
-        </dependency>
-
-        <!-- ========== .env 环境变量加载（本地密钥收敛；.env 不入库） ========== -->
-        <dependency>
-            <groupId>me.paulschwarz</groupId>
-            <artifactId>spring-dotenv</artifactId>
-            <version>4.0.0</version>
-        </dependency>
-
-        <!-- ========== 阿里云 OSS（图片存储，本地/OSS 双策略，默认本地） ========== -->
-        <dependency>
-            <groupId>com.aliyun.oss</groupId>
-            <artifactId>aliyun-sdk-oss</artifactId>
-            <version>3.17.4</version>
-        </dependency>
-
-        <!-- ========== MySQL 驱动 ========== -->
-        <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
-            <version>8.0.33</version>
-            <scope>runtime</scope>
-        </dependency>
-
-        <!-- ========== Lombok ========== -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
-
-        <!-- ========== DevTools（开发时热部署） ========== -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-devtools</artifactId>
-            <scope>runtime</scope>
-            <optional>true</optional>
-        </dependency>
-
-        <!-- ========== 测试依赖（修正！） ========== -->
-        <!-- 使用 spring-boot-starter-test 替代错误的 webmvc-test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -117,33 +175,42 @@
     </dependencies>
 
     <build>
-        <plugins>
-            <!-- Spring Boot Maven 插件 -->
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <configuration>
-                    <excludes>
-                        <exclude>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
-
-            <!-- Maven 编译插件（已由 Spring Boot 父管理，无需额外配置 Lombok 注解处理器） -->
-            <!-- 如果你需要显式配置，可以保留，但推荐使用 spring-boot-starter-parent 的默认配置 -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <source>${java.version}</source>
-                    <target>${java.version}</target>
-                    <!-- 注解处理器由 Lombok 注解处理器自动发现，无需显式指定路径 -->
-                </configuration>
-            </plugin>
-        </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <source>${java.version}</source>
+                        <target>${java.version}</target>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration>
+                        <!--
+                            P0 关键点：子模块跑测试时以聚合根为工作目录，
+                            spring-dotenv 才能读到根级 .env（MySQL 口令等），
+                            uploads/ 等相对路径解析也与单体时期一致。
+                        -->
+                        <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration>
+                        <excludes>
+                            <exclude>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </exclude>
+                        </excludes>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
 
 </project>
