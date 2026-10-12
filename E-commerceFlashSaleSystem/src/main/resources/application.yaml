@@ -14,6 +14,11 @@ server:
 security:
   admin-token: ${ADMIN_TOKEN:}
   user-tokens: ${USER_TOKENS:}
+  legacy-user-tokens-enabled: ${LEGACY_USER_TOKENS_ENABLED:false}
+  session-cookie-name: ${SESSION_COOKIE_NAME:FLASH_SESSION}
+  session-cookie-secure: ${SESSION_COOKIE_SECURE:false}
+  session-ttl-hours: ${SESSION_TTL_HOURS:168}
+  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
 
 # Stream 自动消费开关：浏览器演示 / JMeter 压测需要消费者自动异步建单时开启
 # 集成测试侧已在 @SpringBootTest(properties = "flash.stream.auto-poll=false") 中显式关闭，

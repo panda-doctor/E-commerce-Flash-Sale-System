@@ -57,6 +57,12 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- 用户密码单向哈希；只引入密码编码器，不启用整套 Spring Security 过滤链。 -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+
         <!-- ========== .env 环境变量加载（本地密钥收敛；.env 不入库） ========== -->
         <dependency>
             <groupId>me.paulschwarz</groupId>

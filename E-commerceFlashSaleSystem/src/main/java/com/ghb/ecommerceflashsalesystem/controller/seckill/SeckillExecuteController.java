@@ -25,9 +25,10 @@ public class SeckillExecuteController {
     @PostMapping("/execute")
     public Result<SeckillResponse> execute(@Valid @RequestBody SeckillRequest request, HttpServletRequest httpRequest) {
         Long authenticatedUserId = (Long) httpRequest.getAttribute(ApiAccessInterceptor.AUTHENTICATED_USER_ID);
-        if (authenticatedUserId == null || !authenticatedUserId.equals(request.getUserId())) {
+        if (authenticatedUserId == null || (request.getUserId() != null && !authenticatedUserId.equals(request.getUserId()))) {
             throw new BusinessException(ResultCode.UNAUTHORIZED, "请求用户与访问令牌不匹配");
         }
+        request.setUserId(authenticatedUserId);
         try {
             SeckillResponse execute = seckillService.execute(request);
             log.info("秒杀执行成功，activityId={}, userId={}", request.getActivityId(), request.getUserId());

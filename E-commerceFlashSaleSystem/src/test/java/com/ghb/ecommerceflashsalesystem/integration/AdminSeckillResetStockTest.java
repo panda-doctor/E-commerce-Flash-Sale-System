@@ -111,7 +111,7 @@ public class AdminSeckillResetStockTest {
         verify(redisTemplate).expire(eq(stockKey), anyLong(), eq(TimeUnit.SECONDS));
     }
 
-    /** 已结束：同样放行（运维复位场景），不校验 TTL 细节只断言库存写回 */
+    /** 已结束：同样放行；即使原活动缓存已过期，也必须为重置后的库存设置最短 TTL */
     @Test
     void reset_alreadyEnded_writeBackConfigStock() {
         LocalDateTime now = LocalDateTime.now();
@@ -123,8 +123,8 @@ public class AdminSeckillResetStockTest {
 
         String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + ACTIVITY_ID;
         verify(valueOps).set(eq(stockKey), eq(CONFIG_STOCK));
-        // 已结束活动 TTL 计算可能为 0（取决于 EXTRA 缓冲），不断言 expire
-        verify(redisTemplate, never()).delete(anyString());
+        verify(redisTemplate).expire(eq(stockKey), eq(60L), eq(TimeUnit.SECONDS));
+        verify(redissonClient).getLock(CacheKeyConstant.SECKILL_LOCK_PREFIX + "activity-cache:" + ACTIVITY_ID);
     }
 
     private SeckillActivity buildActivity(LocalDateTime startTime, LocalDateTime endTime) {

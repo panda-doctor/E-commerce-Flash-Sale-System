@@ -16,6 +16,9 @@ public enum ResultCode {
     OUT_OF_STOCK(40902, "库存不足"),
     /** 动态发令牌：注册时用户标识已被占用（静态账号或他人已注册） */
     USER_ID_TAKEN(40903, "用户标识已被占用"),
+    ACCOUNT_NAME_TAKEN(40904, "账号名已被使用"),
+    INVALID_CREDENTIALS(40101, "账号名或密码错误"),
+    CSRF_INVALID(40301, "安全校验失败"),
     RATE_LIMITED(42900, "请求过于频繁"),
     SYSTEM_ERROR(50000, "系统错误"),
     /** AI 客服：外部大模型服务未配置（ai.llm.api-key 等缺失） */

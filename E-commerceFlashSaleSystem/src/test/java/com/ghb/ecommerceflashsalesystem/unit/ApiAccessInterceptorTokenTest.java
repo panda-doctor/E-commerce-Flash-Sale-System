@@ -5,6 +5,7 @@ import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.config.ApiAccessInterceptor;
 import com.ghb.ecommerceflashsalesystem.config.SecurityProperties;
 import com.ghb.ecommerceflashsalesystem.config.UserTokenRegistry;
+import com.ghb.ecommerceflashsalesystem.service.user.UserSessionService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,8 +33,9 @@ public class ApiAccessInterceptorTokenTest {
     void setUp() {
         props = new SecurityProperties();
         props.setUserTokens("user-a:1001");
+        props.setLegacyUserTokensEnabled(true);
         registry = new UserTokenRegistry(props);
-        interceptor = new ApiAccessInterceptor(registry, props);
+        interceptor = new ApiAccessInterceptor(registry, props, mock(UserSessionService.class));
     }
 
     private HttpServletRequest requestWithToken(String token) {

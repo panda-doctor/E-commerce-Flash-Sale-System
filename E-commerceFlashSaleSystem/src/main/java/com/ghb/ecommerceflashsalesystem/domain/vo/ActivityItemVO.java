@@ -60,4 +60,7 @@ public class ActivityItemVO {
      * 活动配置总库存（DB seckill_stock，用于计算"已抢百分比/已抢件数"）
      */
     private Integer totalStock;
+
+    /** 每位用户限购数量。 */
+    private Integer limitPerUser;
 }

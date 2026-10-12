@@ -1,7 +1,9 @@
 package com.ghb.ecommerceflashsalesystem.controller.admin;
 
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
+import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
+import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.domain.dto.request.ActivityRequest;
 import com.ghb.ecommerceflashsalesystem.domain.dto.request.DeadLetterReplayRequest;
 import com.ghb.ecommerceflashsalesystem.domain.enums.ActivityStatusEnum;
@@ -76,12 +78,15 @@ public class AdminSeckillController {
         String activityKey = CacheKeyConstant.SECKILL_ACTIVITY_PREFIX + activityId;
         String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
         Integer stock = seckillCacheService.getStockFromCache(activityId);
+        if (stock == null || !seckillCacheService.isActivityCacheReady(activityId)) {
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, "预热请求已执行，但活动缓存未完整写入，请刷新后重试");
+        }
 
         Map<String, Object> data = new HashMap<>();
         data.put("activityId", activityId);
         data.put("activityKey", activityKey);
         data.put("stockKey", stockKey);
-        data.put("stock", stock != null ? stock : 0);
+        data.put("stock", stock);
 
         log.info("活动预热成功，activityId={}", activityId);
         return Result.success(data);
@@ -105,11 +110,14 @@ public class AdminSeckillController {
 
         String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
         Integer stock = seckillCacheService.getStockFromCache(activityId);
+        if (stock == null) {
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, "库存重置请求已执行，但缓存库存读取失败，请刷新后重试");
+        }
 
         Map<String, Object> data = new HashMap<>();
         data.put("activityId", activityId);
         data.put("stockKey", stockKey);
-        data.put("stock", stock != null ? stock : 0);
+        data.put("stock", stock);
 
         log.info("库存重置成功，activityId={}, stock={}", activityId, stock);
         return Result.success(data);

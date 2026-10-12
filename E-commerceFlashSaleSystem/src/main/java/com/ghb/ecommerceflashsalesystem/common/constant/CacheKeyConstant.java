@@ -101,8 +101,9 @@ public class CacheKeyConstant {
 
     // ---- 分布式锁 ----
     /**
-     * 秒杀管理操作锁前缀
-     * 完整键: seckill:lock:preheat:{activityId}
+     * 秒杀管理操作锁前缀。
+     * 活动预热与库存重置共用 seckill:lock:activity-cache:{activityId}，
+     * 防止两个操作并发改写同一组缓存键。
      */
     public static final String SECKILL_LOCK_PREFIX = "seckill:lock:";
 

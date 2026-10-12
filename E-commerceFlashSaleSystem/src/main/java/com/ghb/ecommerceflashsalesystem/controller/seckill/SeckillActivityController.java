@@ -57,17 +57,18 @@ public class SeckillActivityController {
      * GET /api/seckill/activities/{activityId}/check?userId=xxx
      *
      * @param activityId 活动ID
-     * @param userId     用户ID（必填）
+     * @param userId     旧客户端兼容参数，可省略；传入时校验必须匹配登录会话
      * @return 校验结果
      */
     @GetMapping("/activities/{activityId}/check")
     public Result<ActivityCheckResponse> checkActivitiesUser(@PathVariable Long activityId,
-                                                             @RequestParam Long userId,
+                                                             @RequestParam(required = false) Long userId,
                                                              HttpServletRequest httpRequest) {
         Long authenticatedUserId = (Long) httpRequest.getAttribute(ApiAccessInterceptor.AUTHENTICATED_USER_ID);
-        if (authenticatedUserId == null || !authenticatedUserId.equals(userId)) {
+        if (authenticatedUserId == null || (userId != null && !authenticatedUserId.equals(userId))) {
             throw new BusinessException(ResultCode.UNAUTHORIZED, "请求用户与访问令牌不匹配");
         }
+        userId = authenticatedUserId;
         // service 层会处理活动不存在并抛出 BusinessException(NOT_FOUND)
 
         ActivityCheckResponse checkResponse = seckillActivityService.checkActivity( activityId, userId);

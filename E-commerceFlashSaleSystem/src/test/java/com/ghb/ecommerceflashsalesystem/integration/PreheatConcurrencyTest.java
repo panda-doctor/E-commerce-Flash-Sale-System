@@ -157,7 +157,7 @@ public class PreheatConcurrencyTest {
         assertThat(redisTemplate.hasKey(stockKey)).isTrue();
 
         // 断言：锁键已释放
-        String lockKey = CacheKeyConstant.SECKILL_LOCK_PREFIX + "preheat:" + ACTIVITY_ID;
+        String lockKey = CacheKeyConstant.SECKILL_LOCK_PREFIX + "activity-cache:" + ACTIVITY_ID;
         assertThat(redisTemplate.hasKey(lockKey)).isFalse();
     }
 }

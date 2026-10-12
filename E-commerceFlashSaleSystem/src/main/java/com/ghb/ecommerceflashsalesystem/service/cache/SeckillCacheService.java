@@ -44,6 +44,7 @@ public class SeckillCacheService {
     // 锁参数常量
     private static final long LOCK_WAIT_TIME = 5;   // 最多等待 5 秒
     private static final long LOCK_LEASE_TIME = 30; // 锁持有 30 秒自动释放（防死锁）
+    private static final long MIN_ACTIVITY_CACHE_TTL_SECONDS = 60;
 
     /**
      * 预热活动（带分布式锁，保证并发安全）
@@ -54,44 +55,30 @@ public class SeckillCacheService {
      * 锁内做双重检查：拿到锁后重新查库，等锁期间若已被别人预热则直接拒绝。
      */
     public void preheatActivity(Long activityId) {
-        String lockKey = CacheKeyConstant.SECKILL_LOCK_PREFIX + "preheat:" + activityId;
-        RLock lock = redissonClient.getLock(lockKey);
-        boolean locked = false;
-        try {
-            locked = lock.tryLock(LOCK_WAIT_TIME, LOCK_LEASE_TIME, TimeUnit.SECONDS);
-            if (!locked) {
-                throw new BusinessException(ResultCode.SYSTEM_ERROR, "获取预热锁超时，请稍后重试");
-            }
-
+        withActivityCacheLock(activityId, "预热", () -> {
             // 1. 锁内查活动（双重检查：等锁期间可能已被别的线程预热）
             SeckillActivity activity = seckillActivityMapper.selectById(activityId);
             if (activity == null) {
                 throw new BusinessException(ResultCode.NOT_FOUND, "活动不存在");
             }
 
-            // 2. 防重预热（锁内检查 DB 最新状态）
+            // 2. 只有数据库标记与两把缓存键同时存在时才算真正预热完成。
+            // TTL 到期或部分写入失败会造成 DB 标记为已预热、缓存实际不可用；此时应修复缓存，而非拒绝重试。
             if (activity.getPreheatStatus() != null
-                    && PreheatStatusEnum.PREHEATED.getCode() == activity.getPreheatStatus()) {
+                    && PreheatStatusEnum.PREHEATED.getCode() == activity.getPreheatStatus()
+                    && isActivityCacheReady(activityId)) {
                 throw new BusinessException(ResultCode.PARAM_ERROR, "活动已预热，请勿重复预热");
             }
 
             // 3. 时间窗口校验
             LocalDateTime now = LocalDateTime.now();
-            if (activity.getEndTime().isBefore(now)) {
+            if (!now.isBefore(activity.getEndTime())) {
                 throw new BusinessException(ResultCode.PARAM_ERROR, "活动已结束，无法预热");
             }
 
             // 4. 执行预热（写缓存 + 更新 DB）
             doPreheat(activity, now);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new BusinessException(ResultCode.SYSTEM_ERROR, "预热被中断");
-        } finally {
-            if (locked && lock.isHeldByCurrentThread()) {
-                lock.unlock();
-                log.debug("预热锁已释放，activityId={}", activityId);
-            }
-        }
+        });
     }
 
     /**
@@ -119,16 +106,9 @@ public class SeckillCacheService {
             redisTemplate.opsForValue().set(stockKey, activity.getSeckillStock());
 
             // 设置 TTL（活动结束时间 + 缓冲）
-            long ttlSeconds = Duration.between(now, activity.getEndTime()).getSeconds()
-                    + CacheKeyConstant.SECKILL_CACHE_TTL_EXTRA;
-            if (ttlSeconds > 0) {
-                redisTemplate.expire(activityKey, ttlSeconds, TimeUnit.SECONDS);
-                redisTemplate.expire(stockKey, ttlSeconds, TimeUnit.SECONDS);
-            } else {
-                // 极端情况：活动已结束但未校验到（防御），设置最小 TTL
-                redisTemplate.expire(activityKey, 60, TimeUnit.SECONDS);
-                redisTemplate.expire(stockKey, 60, TimeUnit.SECONDS);
-            }
+            long ttlSeconds = activityCacheTtlSeconds(now, activity.getEndTime());
+            redisTemplate.expire(activityKey, ttlSeconds, TimeUnit.SECONDS);
+            redisTemplate.expire(stockKey, ttlSeconds, TimeUnit.SECONDS);
 
             // 更新数据库预热状态为"已预热"
             UpdateWrapper<SeckillActivity> updateWrapper = new UpdateWrapper<>();
@@ -150,43 +130,65 @@ public class SeckillCacheService {
      * E1-r：活动进行中禁止重置（守卫见方法内），防止把 Redis 已扣减的库存用 DB 配置库存"复活"。
      */
     public void resetStock(Long activityId) {
-        String lockKey = CacheKeyConstant.SECKILL_LOCK_PREFIX + "reset:" + activityId;
-        RLock lock = redissonClient.getLock(lockKey);
-        boolean locked = false;
-        try {
-            locked = lock.tryLock(LOCK_WAIT_TIME, LOCK_LEASE_TIME, TimeUnit.SECONDS);
-            if (!locked) {
-                throw new BusinessException(ResultCode.SYSTEM_ERROR, "获取重置锁超时，请稍后重试");
-            }
+        withActivityCacheLock(activityId, "重置库存", () -> {
             SeckillActivity activity = seckillActivityMapper.selectById(activityId);
             if (activity == null) {
                 throw new BusinessException(ResultCode.NOT_FOUND, "活动不存在");
             }
+            if (activity.getStartTime() == null || activity.getEndTime() == null) {
+                throw new BusinessException(ResultCode.PARAM_ERROR, "活动时间配置不完整，无法重置缓存库存");
+            }
             // E1-r：活动进行中禁止重置库存（防止把 Redis 已扣减库存用 DB 配置库存"复活"）
             LocalDateTime now = LocalDateTime.now();
-            if (activity.getStartTime() != null && now.isAfter(activity.getStartTime())
-                    && (activity.getEndTime() == null || now.isBefore(activity.getEndTime()))) {
+            if (activity.getStartTime() != null && activity.getEndTime() != null
+                    && !now.isBefore(activity.getStartTime()) && now.isBefore(activity.getEndTime())) {
                 throw new BusinessException(ResultCode.PARAM_ERROR, "活动进行中，禁止重置库存");
             }
             String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
             redisTemplate.opsForValue().set(stockKey, activity.getSeckillStock());
 
-            // 刷新 TTL（活动结束时间 + 缓冲）
-            long ttlSeconds = Duration.between(LocalDateTime.now(), activity.getEndTime()).getSeconds()
-                    + CacheKeyConstant.SECKILL_CACHE_TTL_EXTRA;
-            if (ttlSeconds > 0) {
-                redisTemplate.expire(stockKey, ttlSeconds, TimeUnit.SECONDS);
-            }
+            // SET 会清除原 TTL；统一设置最短保留时间，避免重置已结束活动后产生永久键。
+            long ttlSeconds = activityCacheTtlSeconds(LocalDateTime.now(), activity.getEndTime());
+            redisTemplate.expire(stockKey, ttlSeconds, TimeUnit.SECONDS);
             log.info("库存重置成功，activityId={}, stock={}", activityId, activity.getSeckillStock());
+        });
+    }
+
+    /** 预热和重置会写入相同的活动缓存，必须在同一把锁下串行执行。 */
+    private void withActivityCacheLock(Long activityId, String action, Runnable operation) {
+        String lockKey = CacheKeyConstant.SECKILL_LOCK_PREFIX + "activity-cache:" + activityId;
+        RLock lock = redissonClient.getLock(lockKey);
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(LOCK_WAIT_TIME, LOCK_LEASE_TIME, TimeUnit.SECONDS);
+            if (!locked) {
+                throw new BusinessException(ResultCode.SYSTEM_ERROR,
+                        "获取活动缓存写锁超时（" + action + "），请稍后重试");
+            }
+            operation.run();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new BusinessException(ResultCode.SYSTEM_ERROR, "重置库存被中断");
+            throw new BusinessException(ResultCode.SYSTEM_ERROR, action + "被中断");
         } finally {
             if (locked && lock.isHeldByCurrentThread()) {
                 lock.unlock();
-                log.debug("重置锁已释放，activityId={}", activityId);
+                log.debug("活动缓存写锁已释放，activityId={}, action={}", activityId, action);
             }
         }
+    }
+
+    private long activityCacheTtlSeconds(LocalDateTime now, LocalDateTime endTime) {
+        long ttlSeconds = Duration.between(now, endTime).getSeconds()
+                + CacheKeyConstant.SECKILL_CACHE_TTL_EXTRA;
+        return Math.max(ttlSeconds, MIN_ACTIVITY_CACHE_TTL_SECONDS);
+    }
+
+    /** 活动详情 Hash 与实时库存键都存在时，缓存才处于可用的完整预热状态。 */
+    public boolean isActivityCacheReady(Long activityId) {
+        String activityKey = CacheKeyConstant.SECKILL_ACTIVITY_PREFIX + activityId;
+        String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
+        return Boolean.TRUE.equals(redisTemplate.hasKey(activityKey))
+                && Boolean.TRUE.equals(redisTemplate.hasKey(stockKey));
     }
 
     /**
