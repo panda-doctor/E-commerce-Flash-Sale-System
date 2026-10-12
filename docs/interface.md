@@ -60,10 +60,13 @@ http://localhost:8081
 | `0` | 成功 |
 | `40001` | 参数错误 |
 | `40004` | 资源不存在 |
-| `40100` | 未授权访问（管理/用户访问令牌缺失、无效或与请求用户不匹配） |
+| `40100` | 未授权访问（未登录、会话失效或管理令牌无效） |
+| `40101` | 账号名或密码错误（统一提示） |
 | `40901` | 重复秒杀 |
 | `40902` | 库存不足 |
-| `40903` | 用户标识已被占用（动态发令牌注册：静态演示账号或他人已注册） |
+| `40903` | 旧动态用户标识冲突码（公开注册已停用） |
+| `40904` | 账号名已被使用 |
+| `40301` | 防跨站请求校验失败 |
 | `42900` | 请求过于频繁 |
 | `50000` | 系统异常 |
 | `50300` | AI 服务未配置（缺 `ai.llm.api-key` / `ai.llm.base-url`） |
@@ -104,6 +107,8 @@ http://localhost:8081
 | --- | --- | --- | --- |
 | 健康检查 | `GET` | `/api/health` | 检查服务状态 |
 | 商品 | `GET` | `/api/products/{productId}` | 查询商品详情，使用缓存旁路 |
+| 商城商品 | `GET` | `/api/products?page=1&pageSize=20&keyword=` | 分页搜索仅上架商品 |
+| 管理端商品详情 | `GET` | `/api/admin/products/{productId}` | 按编号载入商品（包括下架商品，需管理令牌） |
 | 管理端商品 | `POST` | `/api/admin/products` | 创建或更新商品 |
 | 管理端活动 | `POST` | `/api/admin/seckill/activities` | 创建秒杀活动 |
 | 管理端预热 | `POST` | `/api/admin/seckill/activities/{activityId}/preheat` | 预热活动和库存到缓存 |
@@ -114,13 +119,19 @@ http://localhost:8081
 | 秒杀执行 | `POST` | `/api/seckill/execute` | 执行秒杀请求 |
 | 订单查询 | `GET` | `/api/seckill/orders/{orderNo}` | 查询订单状态 |
 | 用户订单 | `GET` | `/api/seckill/users/{userId}/orders` | 查询用户秒杀订单 |
+| 我的订单 | `GET` | `/api/seckill/users/me/orders` | 按当前登录会话查询订单 |
 | 排行榜 | `GET` | `/api/rank/top10` | 查询秒杀成功排行榜 |
 | 管理端指标 | `GET` | `/api/admin/seckill/activities/{activityId}/metrics` | 查询活动运行指标 |
 | 管理端快照 | `POST` | `/api/admin/seckill/activities/{activityId}/snapshot` | 手动打点活动指标快照（压测/复盘用） |
 | 死信回放 | `POST` | `/api/admin/seckill/dead-letters/replay` | 人工回放死信消息（需管理令牌） |
 | 图片上传 | `POST` | `/api/admin/files/image` | 上传商品图片（multipart，本地磁盘 / OSS 双策略） |
 | AI 客服 | `POST` | `/api/support/chat` | AI 客服对话（接入外部 OpenAI 兼容大模型） |
-| 用户令牌 | `POST` | `/api/auth/register` | 动态发令牌：为自定义 userId 领取服务端随机访问令牌（占用返 40903） |
+| 用户账户 | `POST` | `/api/auth/register` | 账号名、密码和可选昵称注册并创建会话 |
+| 用户账户 | `POST` | `/api/auth/login` | 账号密码登录并创建会话 |
+| 用户账户 | `GET` | `/api/auth/me` | 查询当前用户资料 |
+| 用户账户 | `POST` | `/api/auth/logout` | 撤销当前会话 |
+| 管理端用户 | `GET` | `/api/admin/users` | 分页查询、搜索与状态筛选 |
+| 管理端用户 | `GET/POST/PUT/DELETE` | `/api/admin/users/{userId}` | 管理用户资料、状态、密码及软删除 |
 
 ## 四、接口详情
 
@@ -154,7 +165,7 @@ GET /api/health
 GET /api/products/{productId}
 ```
 
-用途：查询商品信息。后续实现时应采用缓存旁路模式，先查缓存，未命中再查数据库并回写缓存。
+用途：查询上架商品信息，使用缓存旁路模式。下架商品通过该公开接口返回 `40004`；管理员应使用 `GET /api/admin/products/{productId}` 查询，包括下架商品。
 
 路径参数：
 
@@ -181,6 +192,14 @@ GET /api/products/{productId}
   "timestamp": 1785124800000
 }
 ```
+
+### 4.2.1 商城商品列表
+
+```text
+GET /api/products?page=1&pageSize=20&keyword=键盘
+```
+
+只返回已上架商品，按最近更新时间倒序。`page` 默认 `1`，`pageSize` 默认 `20`、最大 `100`，`keyword` 按商品名称搜索。`data` 使用通用分页结构：`records`、`page`、`pageSize`、`total`、`pages`；`records` 中每项包含商品编号、名称、描述、图片地址、原价（分）、库存、状态和缓存命中标记。
 
 ### 4.3 创建或更新商品
 
@@ -264,6 +283,8 @@ POST /api/admin/seckill/activities/{activityId}/preheat
 
 用途：将活动信息、活动时间窗口和秒杀库存预热到缓存。
 
+预热与库存重置共用活动缓存写锁 `seckill:lock:activity-cache:{activityId}`，避免并发覆盖同一库存键。缓存过期时间统一为活动结束时间加缓冲；剩余时间不足时至少保留 60 秒。活动列表仅在活动信息 Hash 与库存键都存在时返回 `preheated=true`，仅有库存键属于缓存不完整。
+
 路径参数：
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -328,11 +349,13 @@ GET /api/seckill/activities/{activityId}/check?userId=1001
 `ACTIVITY_SOLD_OUT` / `ACTIVITY_NOT_PREHEATED`）。用户是否重复秒杀、是否触发限流由
 `execute` 落地（返回 `40901` / `42900`），本接口不预判。
 
+身份由登录会话解析，`userId` 查询参数可省略。为兼容旧请求，如传入该参数，必须与当前登录用户一致，否则返回 `40100`。
+
 查询参数：
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `userId` | 数字 | 是 | 用户编号 |
+| `userId` | 数字 | 否 | 兼容旧客户端使用；不得与会话用户不一致 |
 
 响应示例：
 
@@ -363,12 +386,10 @@ POST /api/seckill/execute
 请求体：
 
 ```json
-{
-  "activityId": 1,
-  "productId": 1,
-  "userId": 1001
-}
+{ "activityId": 1, "productId": 1 }
 ```
+
+秒杀执行使用登录会话中的用户编号。旧 `userId` 字段可省略；若提供，必须与会话用户一致。会话写请求还需携带 `X-CSRF-Token`。
 
 成功响应示例：
 
@@ -434,7 +455,7 @@ POST /api/seckill/execute
 GET /api/seckill/orders/{orderNo}
 ```
 
-用途：秒杀请求入队后，前端可轮询此接口查询订单最终状态。
+用途：秒杀请求入队后，前端可轮询此接口查询订单最终状态。必须使用有效登录会话；订单存在时服务端校验订单归属。
 
 路径参数：
 
@@ -464,10 +485,10 @@ GET /api/seckill/orders/{orderNo}
 ### 4.10 查询用户秒杀订单
 
 ```text
-GET /api/seckill/users/{userId}/orders?activityId=1
+GET /api/seckill/users/me/orders?activityId=1
 ```
 
-用途：查询指定用户在指定活动下的订单。
+用途：根据登录会话查询当前用户在指定活动下的订单。兼容旧路径 `/users/{userId}/orders`，但路径编号必须与会话用户一致。
 
 响应示例：
 
@@ -616,6 +637,7 @@ POST /api/admin/seckill/activities/{activityId}/reset-stock
 - 仅允许「未开始」或「已结束」的活动重置库存（压测前复位、修复缓存库存异常）。
 - 活动**进行中**禁止重置，由服务端守卫拦截并返回业务错误，防止把 Redis 已扣减的库存用数据库配置库存"复活"。
 - 活动不存在返回 `40004`。
+- 重置只修改库存缓存键，不会重写活动信息 Hash；库存键设置活动结束时间加缓冲的 TTL，最短 60 秒。列表只有在活动信息 Hash 与库存键同时存在时才报告已预热。
 
 响应示例：
 
@@ -633,44 +655,33 @@ POST /api/admin/seckill/activities/{activityId}/reset-stock
 }
 ```
 
-### 4.15 动态注册用户令牌（领取令牌）
+### 4.15 用户注册、登录与会话
 
-```text
-POST /api/auth/register
-```
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/auth/register` | 注册账号并自动登录 |
+| `POST` | `/api/auth/login` | 使用账号名和密码登录 |
+| `GET` | `/api/auth/me` | 查询当前账号资料 |
+| `GET` | `/api/auth/csrf` | 轮换并返回当前会话的防跨站请求令牌 |
+| `POST` | `/api/auth/logout` | 撤销当前会话并清除 Cookie |
 
-用途：演示环境无账号体系，本接口是「自定义用户 ID → 领取动态访问令牌」的能力出口。领取成功后，令牌随受保护用户接口（`execute` / `check` / `users/{userId}/orders`）的请求头 `X-User-Token` 携带，服务端据此解析绑定 userId。
+注册请求字段：`accountName`（3 至 32 位字母、数字、点、下划线或连字符，大小写不敏感）、`password`（至少 10 个字符且 UTF-8 不超过 72 字节）、可选 `displayName`（最多 64 字符）。不收集手机号或邮箱。重复账号名返回 `40904`；登录失败统一返回 `40101`。
 
-请求体：
+注册与登录成功的 `data` 含 `user`（`id`、`accountName`、`displayName`、`status`、`createdAt`）和 `csrfToken`。响应设置 `FLASH_SESSION`（`HttpOnly; SameSite=Strict`）及 `FLASH_CSRF` Cookie。后续浏览器请求需携带凭据；会话写操作同时发送 `X-CSRF-Token` 请求头和同值的 `FLASH_CSRF` Cookie。刷新页面后先调用 `/api/auth/csrf` 获取新令牌。生产环境须设置 `SESSION_COOKIE_SECURE=true`。
 
-| 字段 | 类型 | 必填 | 校验 | 说明 |
-| --- | --- | --- | --- | --- |
-| `userId` | 数字 | 是 | 正整数 | 拟注册的用户标识，须未被占用（静态演示账号 `1001~1006` 及已注册者除外） |
+密码使用 BCrypt 单向哈希保存，用户资料响应不包含密码哈希。旧的“任意填写 userId 领取内存令牌”注册契约已停用；秒杀身份由会话确定。旧 `X-User-Token` 压测兼容默认关闭；仅显式设置 `LEGACY_USER_TOKENS_ENABLED=true` 才会读取 `USER_TOKENS`。
 
-响应示例：
+### 4.16 管理端用户 CRUD
 
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {
-    "userId": 9001,
-    "token": "6f1c0a2b3d4e5f6a7b8c9d0e1f2a3b4c"
-  },
-  "requestId": "202609091000000017",
-  "timestamp": 1786147200000
-}
-```
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/admin/users?page=1&pageSize=20&keyword=&status=1` | 分页、搜索账号名/昵称、按状态筛选 |
+| `GET` | `/api/admin/users/{userId}` | 查询用户资料 |
+| `POST` | `/api/admin/users` | 创建用户 |
+| `PUT` | `/api/admin/users/{userId}` | 更新昵称、状态或重置密码 |
+| `DELETE` | `/api/admin/users/{userId}` | 软删除用户 |
 
-错误码：
-
-- `40001`：`userId` 缺失 / 非法（非正整数、超 `Long` 范围等）
-- `40903`：用户标识已被占用（静态演示账号或已动态注册者），请更换其他用户 ID
-
-说明：
-
-- 本接口**匿名可调**（位于令牌拦截路径之外）；令牌一律**服务端随机生成**（32 位十六进制），不接收客户端传入的令牌，防止他人任意伪装。
-- 令牌注册表由服务端内存维护（`UserTokenRegistry`），**后端重启即清空**——已领取令牌随之失效，重新注册即可；前端本地缓存 + 「已注册」按钮重领见 `plan.md` 今日任务卡片。
+以上接口使用现有 `X-Admin-Token`。`status` 仅支持 `0`（禁用）和 `1`（正常），`pageSize` 最大 100。禁用、重置密码及软删除都会撤销用户的全部会话。删除不会清除用户记录或订单。
 
 ## 五、核心链路约定
 

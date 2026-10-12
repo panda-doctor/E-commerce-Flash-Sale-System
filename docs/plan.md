@@ -38,6 +38,9 @@
 ✅ 第 3 阶段：高并发防护体系（Day 1 ~ Day 5 全部完成，40 用例 BUILD SUCCESS）
 ✅ 第 4 阶段：排行榜、前端与全链路压测（Day 1 ~ Day 5 完成，另含增强①图片存储、增强② AI 客服，59 用例）
 ✅ 第 4 阶段收尾：全量代码审计整改（R1~R5 / C1~C6 / E1~E6）+ E 卡收尾 + F/G 多账号 + S2/M 交付前收尾 + Day 6 复盘学习收口（《Redis 实战总结》/ notework 笔记；HEAD `c035ca8`，92 用例 BUILD SUCCESS）—— 4 个阶段全部完成
+⏳ 第 5 阶段：微服务架构演进（P0 ~ P6，规划中 · 未开工，方案与 P0 任务卡见 `docs/microservices-plan.md`）
+  ⏳ P0 边界治理（模块化单体）  ⏳ P1 基础设施  ⏳ P2 边缘抽取  ⏳ P3 商品与活动
+  ⏳ P4 核心交易链路  ⏳ P5 读模型收口  ⏳ P6 质量与运维
 ```
 
 ---
@@ -810,6 +813,39 @@
 
 ---
 
+## 八、第 5 阶段：微服务架构演进（规划中 · 未开工）
+
+> 方案与 P0 详细任务卡：**`docs/microservices-plan.md`**（2026-10-12 落档：迁移策略 / 服务划分 / 技术选型 / 阶段规划 / 质量运维 / 风险 / 时间线 + P0 逐日步骤）。
+>
+> 本阶段定位：在单体（4 阶段全部完成、92 用例基线）之上做「模块化单体 → 绞杀者式微服务抽取」的渐进演进；坚持**可停可回退**，任意阶段停下都是完整可演示系统。
+
+**阶段路线（P0 ~ P6）：**
+
+| 阶段 | 主题 | 预估 | 里程碑 | 状态 |
+|---|---|---|---|---|
+| P0 | 边界治理（Maven 12 模块 + 包边界 + ArchUnit 12 规则） | 4 天 | M1 模块化单体 | ⏳ 未开工 |
+| P1 | 基础设施（Nacos / Gateway / Compose / 追踪 / 监控） | 3 天 | M2 基建就绪 | ⏳ |
+| P2 | 边缘抽取（auth-service / ai-service / 网关统一鉴权） | 4 天 | M3 首个服务上线 | ⏳ |
+| P3 | 商品与活动（product / activity 独立库与缓存所有权） | 5 天 | M4 主数据域独立 | ⏳ |
+| P4 | 核心交易（seckill / order / `order.created` 事件 / 数据迁移） | 6 天 | M5 跨服务交易闭环 | ⏳ |
+| P5 | 读模型收口（analytics 事件驱动，CQRS 完成） | 3 天 | M6 读模型分离 | ⏳ |
+| P6 | 质量运维（CI/CD / 告警 / 混沌演练 / Runbook） | 4 天 | M7 可运维交付 | ⏳ |
+
+**规模口径**：8 服务 + 1 网关（gateway / auth / product / activity / seckill / order / analytics / ai）封顶；同步用 OpenFeign、异步复用 Redis Stream（进阶可换 Kafka）；注册与配置用 Nacos，网关用 Spring Cloud Gateway，限流熔断用 Sentinel。
+
+**与单体计划的衔接：**
+- 第 1~3 阶段的 Lua / Stream / PEL / 死信 / 补偿资产原样进入 seckill / order 服务；
+- 第 4 阶段的榜单 / 指标 → P5 改为事件驱动读模型；
+- `scripts/jmeter` 5000 并发脚本 → P4 复测基准（改指向网关）；
+- `interface.md` 契约与 `Result` 信封冻结，前端只改 `VITE_API_BASE_URL`；
+- 92 用例基线按模块归位，作为每阶段回归红线。
+
+**开工前置**：①先提交当前工作区未提交内容（用户账号体系 / 前端 TS 新架构 / 文档变更），打 `mono-baseline` 标签；②P0 按 `docs/microservices-plan.md` 第九节 Day 1~Day 4 逐日执行（每步绿 + 每步提交）。
+
+**P0 任务卡要点（已就绪，见方案文档第九章）**：12 模块目录树 · 模块依赖矩阵 · 现有代码逐文件迁移映射（含 DTO/VO、Mapper XML、Lua 归属）· 父 POM 与子模块 POM 模板 · 配置调整清单（`@MapperScan` 5 域包 / `classpath*:mapper/*.xml` / `.env` 工作目录）· ArchUnit 12 条规则 · 过渡白名单（鉴权装配、`AdminSeckillController`、`HealthController`、共享实体）· 逐日步骤与回退策略。
+
+---
+
 *文档创建日期：2026-07-29*
-*上次更新：2026-09-09（**Day 6 复盘总结与学习收口完成**：新增 `docs/redis-summary.md`《Redis 实战总结》+ 扩充 `docs/notework.md` 学习笔记 + plan.md 收尾，路线图 4 阶段全部 ✅，见上「第 4 阶段 Day 6」小节；此前交付前收尾 `c1f689e` 与文档同步 `c035ca8` 均已提交，全量 mvn test **92 用例 BUILD SUCCESS**）*
-*下次开始位置：①图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；②如需继续增强或复盘迭代，按 2026-09-09 分工（AI 实现 → panda 终审）推进；③计划内主体开发已完成，可按需把项目提交推送到 origin（当前本地领先待 push）*
+*上次更新：2026-10-12（新增 `docs/microservices-plan.md` 微服务演进方案，并在本路线图追加「第 5 阶段：微服务架构演进（P0~P6）」卡与本章节；规划未开工）*
+*下次开始位置：①先提交当前工作区未提交内容（用户账号体系 + 前端 TS 新架构 + 本文档变更）并打 `mono-baseline` 标签；②按 `docs/microservices-plan.md` 第九章启动第 5 阶段 P0（Day 1 多模块骨架）；③图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；④计划内单体主体已完成，可按需把项目提交推送到 origin（当前本地领先待 push）*
