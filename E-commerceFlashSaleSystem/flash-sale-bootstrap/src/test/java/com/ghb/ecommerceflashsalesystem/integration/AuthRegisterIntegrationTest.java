@@ -59,13 +59,17 @@ class AuthRegisterIntegrationTest {
         mockMvc.perform(get("/api/auth/me").cookie(sessionCookie, csrfCookie))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.accountName").value(account));
 
+        // 会话 + CSRF 头：证明会话身份被采纳（请求体可省略 userId），并进入业务层（活动不存在 → 40004）
         mockMvc.perform(post("/api/seckill/execute").cookie(sessionCookie, csrfCookie)
+                        .header("X-CSRF-Token", csrf)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"activityId\":999999}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(not(ResultCode.UNAUTHORIZED.getCode())))
                 .andExpect(jsonPath("$.data.userId").isNotEmpty());
 
+        // 会话身份与请求体 userId 不符 → 40100（身份绑定校验在 CSRF 校验通过之后、业务之前）
         mockMvc.perform(post("/api/seckill/execute").cookie(sessionCookie, csrfCookie)
+                        .header("X-CSRF-Token", csrf)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"activityId\":999999,\"userId\":123}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(ResultCode.UNAUTHORIZED.getCode()));
 
