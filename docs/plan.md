@@ -849,16 +849,16 @@
 | 日 | 任务 | 状态 | 验证 / 提交 |
 |---|---|---|---|
 | 前置 | 基线冻结：提交工作区（4 个逻辑提交）+ `mono-baseline-20261012` 标签 | ✅ 2026-10-12 | `345e1c6` |
-| Day 1 | 多模块骨架：父 POM（`flash-sale-parent`）+ 12 模块 + `src/` 整体迁入 `flash-sale-bootstrap` + surefire/run 工作目录治理 | ✅ 2026-10-12 | `mvnw test-compile` / `package` 通过；安全子集 16 用例绿（含 `MapperTest` 验证 `.env` 解析）；提交 `5e23798` |
+| Day 1 | 多模块骨架：父 POM（`flash-sale-parent`）+ 12 模块 + `src/` 整体迁入 `flash-sale-bootstrap` + surefire/run 工作目录治理 | ✅ 2026-10-12 | `mvnw test-compile` / `package` 通过；**全量 97 用例 BUILD SUCCESS**；提交 `5e23798` + 测试修正 `867e1d7` |
 | Day 2 | 抽取 common / contracts / domain-model / infra（含 `infra.**` 包重构、空目录清理、`PageResult`/`PageResponse` 二选一） | ⏳ | — |
 | Day 3 | 抽取 user / product / activity（含 DTO/VO、Mapper XML、OSS 依赖归位） | ⏳ | — |
 | Day 4 | 抽取 seckill / order / analytics / ai + bootstrap 收薄 + ArchUnit 12 规则 + 终验（`git tag p0-done`） | ⏳ | — |
 
-> 待办验证：全量 92 用例须停 IDE dev 后端后执行（多模块与单体同纪律：`flash.stream.auto-poll=true` 会抢消费集成测试写入 Stream 的消息）。
+> 全量回归（2026-10-12 补跑）：停 dev 后端后 `mvnw clean test` → **97 用例 BUILD SUCCESS**（较 9 月的 92 增长 5，来自用户体系测试）。过程中发现并修正 1 处**基线既有**的过期测试：`AuthRegisterIntegrationTest` 会话态 `execute` 写请求须携带 `X-CSRF-Token`（CSRF 校验先于身份绑定，漏带头会返回 40301 且全局响应无 `data`），提交 `867e1d7`。
 > Day 1 踩坑记录：`spring-boot:run` 不可写成 `<executions>`——会被 Maven 绑定进生命周期，导致 `mvn test-compile` 也启动应用（撞 8081 端口）；正确做法是插件级 `<configuration><workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>`。
 
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-10-12（**P0 Day 1 完成**：多模块骨架落地（父 POM + 12 模块 + 源码迁入 bootstrap + 工作目录治理），提交 `5e23798`；同日落档 `docs/microservices-plan.md` 并打 `mono-baseline-20261012` 基线标签）*
-*下次开始位置：①P0 Day 2 — 抽取 common / contracts / domain-model / infra（含 `infra.**` 包重构与空目录清理）；②全量 92 用例需停 dev 后端后补跑（Day 1 仅跑安全子集 16 用例）；③图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；④计划内单体主体已完成，可按需把项目提交推送到 origin（当前本地领先待 push）*
+*上次更新：2026-10-12（**P0 Day 1 完成并全量回归**：多模块骨架落地 + `mvnw clean test` **97 用例 BUILD SUCCESS**（含修正 1 处基线过期测试 `867e1d7`）；同日落档 `docs/microservices-plan.md` 并打 `mono-baseline-20261012` 标签）*
+*下次开始位置：①P0 Day 2 — 抽取 common / contracts / domain-model / infra（含 `infra.**` 包重构与空目录清理）；②图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；③计划内单体主体已完成，可按需把项目提交推送到 origin（当前本地领先待 push）*
