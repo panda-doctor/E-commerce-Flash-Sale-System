@@ -1,16 +1,16 @@
-package com.ghb.ecommerceflashsalesystem.controller.auth;
+package com.ghb.ecommerceflashsalesystem.user.controller;
 
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
-import com.ghb.ecommerceflashsalesystem.domain.dto.request.LoginRequest;
-import com.ghb.ecommerceflashsalesystem.domain.dto.request.RegisterRequest;
-import com.ghb.ecommerceflashsalesystem.domain.dto.response.AuthResponse;
-import com.ghb.ecommerceflashsalesystem.domain.dto.response.UserProfileResponse;
+import com.ghb.ecommerceflashsalesystem.user.dto.request.LoginRequest;
+import com.ghb.ecommerceflashsalesystem.user.dto.request.RegisterRequest;
+import com.ghb.ecommerceflashsalesystem.user.dto.response.AuthResponse;
+import com.ghb.ecommerceflashsalesystem.user.dto.response.UserProfileResponse;
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserAccount;
-import com.ghb.ecommerceflashsalesystem.service.user.UserAccountService;
-import com.ghb.ecommerceflashsalesystem.service.user.UserSessionService;
-import com.ghb.ecommerceflashsalesystem.service.user.UserSessionService.AuthenticatedSession;
+import com.ghb.ecommerceflashsalesystem.user.service.UserAccountService;
+import com.ghb.ecommerceflashsalesystem.user.service.UserSessionService;
+import com.ghb.ecommerceflashsalesystem.user.service.UserSessionService.AuthenticatedSession;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;

@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.config;
+package com.ghb.ecommerceflashsalesystem.user.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

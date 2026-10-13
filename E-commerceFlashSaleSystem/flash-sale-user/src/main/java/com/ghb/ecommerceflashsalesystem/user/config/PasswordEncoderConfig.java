@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.config;
+package com.ghb.ecommerceflashsalesystem.user.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

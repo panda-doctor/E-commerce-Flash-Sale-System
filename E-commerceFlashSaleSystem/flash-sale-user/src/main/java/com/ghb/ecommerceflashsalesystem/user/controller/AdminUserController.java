@@ -1,11 +1,11 @@
-package com.ghb.ecommerceflashsalesystem.controller.admin;
+package com.ghb.ecommerceflashsalesystem.user.controller;
 
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
-import com.ghb.ecommerceflashsalesystem.domain.dto.request.AdminUserCreateRequest;
-import com.ghb.ecommerceflashsalesystem.domain.dto.request.AdminUserUpdateRequest;
-import com.ghb.ecommerceflashsalesystem.domain.dto.response.PageResponse;
-import com.ghb.ecommerceflashsalesystem.domain.dto.response.UserProfileResponse;
-import com.ghb.ecommerceflashsalesystem.service.user.UserAccountService;
+import com.ghb.ecommerceflashsalesystem.user.dto.request.AdminUserCreateRequest;
+import com.ghb.ecommerceflashsalesystem.user.dto.request.AdminUserUpdateRequest;
+import com.ghb.ecommerceflashsalesystem.common.api.PageResponse;
+import com.ghb.ecommerceflashsalesystem.user.dto.response.UserProfileResponse;
+import com.ghb.ecommerceflashsalesystem.user.service.UserAccountService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;

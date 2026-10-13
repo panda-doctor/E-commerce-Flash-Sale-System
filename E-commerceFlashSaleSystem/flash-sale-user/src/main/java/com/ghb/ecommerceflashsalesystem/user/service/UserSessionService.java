@@ -1,11 +1,11 @@
-package com.ghb.ecommerceflashsalesystem.service.user;
+package com.ghb.ecommerceflashsalesystem.user.service;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
-import com.ghb.ecommerceflashsalesystem.config.SecurityProperties;
+import com.ghb.ecommerceflashsalesystem.user.config.SecurityProperties;
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserAccount;
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserSession;
-import com.ghb.ecommerceflashsalesystem.mapper.UserSessionMapper;
+import com.ghb.ecommerceflashsalesystem.user.mapper.UserSessionMapper;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

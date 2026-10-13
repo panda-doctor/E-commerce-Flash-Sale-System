@@ -2,8 +2,10 @@ package com.ghb.ecommerceflashsalesystem.config;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
-import com.ghb.ecommerceflashsalesystem.service.user.UserSessionService;
-import com.ghb.ecommerceflashsalesystem.service.user.UserSessionService.AuthenticatedSession;
+import com.ghb.ecommerceflashsalesystem.user.config.SecurityProperties;
+import com.ghb.ecommerceflashsalesystem.user.config.UserTokenRegistry;
+import com.ghb.ecommerceflashsalesystem.user.service.UserSessionService;
+import com.ghb.ecommerceflashsalesystem.user.service.UserSessionService.AuthenticatedSession;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;

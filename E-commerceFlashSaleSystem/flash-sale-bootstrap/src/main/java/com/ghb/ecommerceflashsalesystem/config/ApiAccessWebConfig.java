@@ -1,5 +1,6 @@
 package com.ghb.ecommerceflashsalesystem.config;
 
+import com.ghb.ecommerceflashsalesystem.user.config.SecurityProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.HandlerInterceptor;

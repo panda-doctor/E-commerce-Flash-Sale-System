@@ -3,7 +3,7 @@ package com.ghb.ecommerceflashsalesystem.controller.product;
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
-import com.ghb.ecommerceflashsalesystem.domain.dto.response.PageResponse;
+import com.ghb.ecommerceflashsalesystem.common.api.PageResponse;
 import com.ghb.ecommerceflashsalesystem.domain.entity.Product;
 import com.ghb.ecommerceflashsalesystem.domain.enums.ProductStatusEnum;
 import com.ghb.ecommerceflashsalesystem.domain.vo.ProductVO;

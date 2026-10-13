@@ -1,7 +1,7 @@
 package com.ghb.ecommerceflashsalesystem.unit;
 
-import com.ghb.ecommerceflashsalesystem.config.SecurityProperties;
-import com.ghb.ecommerceflashsalesystem.config.UserTokenRegistry;
+import com.ghb.ecommerceflashsalesystem.user.config.SecurityProperties;
+import com.ghb.ecommerceflashsalesystem.user.config.UserTokenRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;

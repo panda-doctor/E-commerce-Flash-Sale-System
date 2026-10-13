@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.domain.dto.response;
+package com.ghb.ecommerceflashsalesystem.user.dto.response;
 
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserAccount;
 import lombok.AllArgsConstructor;

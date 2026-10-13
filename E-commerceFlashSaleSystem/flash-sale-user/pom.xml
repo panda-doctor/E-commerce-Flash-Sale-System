@@ -13,4 +13,24 @@
     <artifactId>flash-sale-user</artifactId>
     <name>flash-sale-user</name>
     <description>用户域：注册 / 登录 / 会话 / CSRF / 后台用户管理</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-domain-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-infra</artifactId>
+        </dependency>
+        <!-- 密码单向哈希（BCrypt），仅编码器，不启用 Security 过滤链 -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+    </dependencies>
 </project>

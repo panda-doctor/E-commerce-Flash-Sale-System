@@ -1,18 +1,18 @@
-package com.ghb.ecommerceflashsalesystem.service.user;
+package com.ghb.ecommerceflashsalesystem.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.common.util.IdGenerator;
-import com.ghb.ecommerceflashsalesystem.domain.dto.request.AdminUserCreateRequest;
-import com.ghb.ecommerceflashsalesystem.domain.dto.request.AdminUserUpdateRequest;
-import com.ghb.ecommerceflashsalesystem.domain.dto.request.RegisterRequest;
-import com.ghb.ecommerceflashsalesystem.domain.dto.response.PageResponse;
-import com.ghb.ecommerceflashsalesystem.domain.dto.response.UserProfileResponse;
+import com.ghb.ecommerceflashsalesystem.user.dto.request.AdminUserCreateRequest;
+import com.ghb.ecommerceflashsalesystem.user.dto.request.AdminUserUpdateRequest;
+import com.ghb.ecommerceflashsalesystem.user.dto.request.RegisterRequest;
+import com.ghb.ecommerceflashsalesystem.common.api.PageResponse;
+import com.ghb.ecommerceflashsalesystem.user.dto.response.UserProfileResponse;
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserAccount;
-import com.ghb.ecommerceflashsalesystem.mapper.UserAccountMapper;
-import com.ghb.ecommerceflashsalesystem.mapper.UserSessionMapper;
+import com.ghb.ecommerceflashsalesystem.user.mapper.UserAccountMapper;
+import com.ghb.ecommerceflashsalesystem.user.mapper.UserSessionMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;

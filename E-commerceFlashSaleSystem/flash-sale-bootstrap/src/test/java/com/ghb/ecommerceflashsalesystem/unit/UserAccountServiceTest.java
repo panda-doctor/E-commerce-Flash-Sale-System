@@ -2,11 +2,11 @@ package com.ghb.ecommerceflashsalesystem.unit;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
-import com.ghb.ecommerceflashsalesystem.domain.dto.request.RegisterRequest;
+import com.ghb.ecommerceflashsalesystem.user.dto.request.RegisterRequest;
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserAccount;
-import com.ghb.ecommerceflashsalesystem.mapper.UserAccountMapper;
-import com.ghb.ecommerceflashsalesystem.mapper.UserSessionMapper;
-import com.ghb.ecommerceflashsalesystem.service.user.UserAccountService;
+import com.ghb.ecommerceflashsalesystem.user.mapper.UserAccountMapper;
+import com.ghb.ecommerceflashsalesystem.user.mapper.UserSessionMapper;
+import com.ghb.ecommerceflashsalesystem.user.service.UserAccountService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DuplicateKeyException;

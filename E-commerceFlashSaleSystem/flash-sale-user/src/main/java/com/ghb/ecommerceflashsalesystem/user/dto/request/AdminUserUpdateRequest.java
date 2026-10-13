@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.domain.dto.request;
+package com.ghb.ecommerceflashsalesystem.user.dto.request;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Max;

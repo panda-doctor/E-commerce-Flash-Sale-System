@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.domain.dto.response;
+package com.ghb.ecommerceflashsalesystem.common.api;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

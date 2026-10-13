@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.mapper;
+package com.ghb.ecommerceflashsalesystem.user.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserAccount;
