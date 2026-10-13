@@ -12,8 +12,8 @@ import com.ghb.ecommerceflashsalesystem.ai.vo.ChatReplyVO;
 import com.ghb.ecommerceflashsalesystem.product.mapper.ProductMapper;
 import com.ghb.ecommerceflashsalesystem.activity.mapper.SeckillActivityMapper;
 import com.ghb.ecommerceflashsalesystem.ai.service.AiChatService;
-import com.ghb.ecommerceflashsalesystem.ai.service.LlmChatClient;
-import com.ghb.ecommerceflashsalesystem.ai.service.OpenAiChatMessage;
+import com.ghb.ecommerceflashsalesystem.ai.client.LlmChatClient;
+import com.ghb.ecommerceflashsalesystem.ai.client.OpenAiChatMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 

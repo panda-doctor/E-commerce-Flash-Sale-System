@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.ai.service;
+package com.ghb.ecommerceflashsalesystem.ai.client;
 
 /**
  * OpenAI Chat Completions 协议中的一条消息。

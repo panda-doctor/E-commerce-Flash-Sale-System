@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.ai.config.AiLlmProperties;
-import com.ghb.ecommerceflashsalesystem.ai.service.OpenAiChatMessage;
-import com.ghb.ecommerceflashsalesystem.ai.service.OpenAiCompatibleChatClient;
+import com.ghb.ecommerceflashsalesystem.ai.client.OpenAiChatMessage;
+import com.ghb.ecommerceflashsalesystem.ai.client.OpenAiCompatibleChatClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 

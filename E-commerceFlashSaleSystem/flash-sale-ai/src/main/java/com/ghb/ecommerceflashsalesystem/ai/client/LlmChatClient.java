@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.ai.service;
+package com.ghb.ecommerceflashsalesystem.ai.client;
 
 import java.util.List;
 

@@ -1,5 +1,8 @@
 package com.ghb.ecommerceflashsalesystem.product.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ghb.ecommerceflashsalesystem.common.api.PageResponse;
 import com.ghb.ecommerceflashsalesystem.common.util.IdGenerator;
 import com.ghb.ecommerceflashsalesystem.product.dto.request.ProductRequest;
 import com.ghb.ecommerceflashsalesystem.domain.entity.Product;
@@ -17,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant.PRODUCT_LOCK_PREFIX;
@@ -142,6 +146,22 @@ public class ProductServiceImpl implements ProductService {
                 log.debug("锁已释放，productId={}", productId);
             }
         }
+    }
+
+    @Override
+    public PageResponse<ProductVO> listOnShelf(long page, long pageSize, String keyword) {
+        QueryWrapper<Product> query = new QueryWrapper<Product>()
+                .eq("status", ProductStatusEnum.ON_SHELF.getCode());
+        if (keyword != null && !keyword.isBlank()) {
+            query.like("name", keyword.trim());
+        }
+        query.orderByDesc("updated_at");
+        Page<Product> records = productMapper.selectPage(new Page<>(page, pageSize), query);
+        List<ProductVO> items = records.getRecords().stream()
+                .map(product -> convertToVO(product, false))
+                .toList();
+        return new PageResponse<>(items, records.getCurrent(), records.getSize(),
+                records.getTotal(), records.getPages());
     }
 
     @Override

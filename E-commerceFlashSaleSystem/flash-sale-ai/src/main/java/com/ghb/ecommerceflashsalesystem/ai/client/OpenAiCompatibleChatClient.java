@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.ai.service;
+package com.ghb.ecommerceflashsalesystem.ai.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

@@ -122,6 +122,13 @@
             <scope>runtime</scope>
             <optional>true</optional>
         </dependency>
+
+        <!-- ========== 架构约束测试（ArchUnit）：P0 模块边界的自动化守卫 ========== -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
