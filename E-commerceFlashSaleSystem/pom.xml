@@ -126,6 +126,12 @@
                 <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
                 <version>${mybatis-plus.version}</version>
             </dependency>
+            <!-- 仅注解包：供 flash-sale-domain-model 的实体使用（避免模型层引入整套 starter） -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-annotation</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
             <dependency>
                 <groupId>me.paulschwarz</groupId>
                 <artifactId>spring-dotenv</artifactId>

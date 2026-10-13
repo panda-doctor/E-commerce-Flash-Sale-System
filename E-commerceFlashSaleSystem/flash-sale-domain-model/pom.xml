@@ -13,4 +13,12 @@
     <artifactId>flash-sale-domain-model</artifactId>
     <name>flash-sale-domain-model</name>
     <description>领域模型层：实体与枚举（模块化单体阶段共享，P3/P4 拆服务时逐步私有化）</description>
+
+    <dependencies>
+        <!-- 实体使用 @TableName/@TableId/@Version/@TableField，仅需注解包 -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-annotation</artifactId>
+        </dependency>
+    </dependencies>
 </project>
