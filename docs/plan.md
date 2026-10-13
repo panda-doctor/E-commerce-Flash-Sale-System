@@ -38,8 +38,8 @@
 ✅ 第 3 阶段：高并发防护体系（Day 1 ~ Day 5 全部完成，40 用例 BUILD SUCCESS）
 ✅ 第 4 阶段：排行榜、前端与全链路压测（Day 1 ~ Day 5 完成，另含增强①图片存储、增强② AI 客服，59 用例）
 ✅ 第 4 阶段收尾：全量代码审计整改（R1~R5 / C1~C6 / E1~E6）+ E 卡收尾 + F/G 多账号 + S2/M 交付前收尾 + Day 6 复盘学习收口（《Redis 实战总结》/ notework 笔记；HEAD `c035ca8`，92 用例 BUILD SUCCESS）—— 4 个阶段全部完成
-⏳ 第 5 阶段：微服务架构演进（P0 ~ P6，规划中 · 未开工，方案与 P0 任务卡见 `docs/microservices-plan.md`）
-  ⏳ P0 边界治理（模块化单体）  ⏳ P1 基础设施  ⏳ P2 边缘抽取  ⏳ P3 商品与活动
+🔄 第 5 阶段：微服务架构演进（P0 ~ P6，进行中，方案与任务卡见 `docs/microservices-plan.md`）
+  ✅ P0 边界治理（模块化单体，M1 达成 2026-10-13）  ⏳ P1 基础设施  ⏳ P2 边缘抽取  ⏳ P3 商品与活动
   ⏳ P4 核心交易链路  ⏳ P5 读模型收口  ⏳ P6 质量与运维
 ```
 
@@ -823,7 +823,7 @@
 
 | 阶段 | 主题 | 预估 | 里程碑 | 状态 |
 |---|---|---|---|---|
-| P0 | 边界治理（Maven 12 模块 + 包边界 + ArchUnit 12 规则） | 4 天 | M1 模块化单体 | 🔄 进行中（Day 1 ✅） |
+| P0 | 边界治理（Maven 12 模块 + 包边界 + ArchUnit 规则） | 4 天 | M1 模块化单体 | ✅ 完成（2026-10-13） |
 | P1 | 基础设施（Nacos / Gateway / Compose / 追踪 / 监控） | 3 天 | M2 基建就绪 | ⏳ |
 | P2 | 边缘抽取（auth-service / ai-service / 网关统一鉴权） | 4 天 | M3 首个服务上线 | ⏳ |
 | P3 | 商品与活动（product / activity 独立库与缓存所有权） | 5 天 | M4 主数据域独立 | ⏳ |
@@ -852,15 +852,16 @@
 | Day 1 | 多模块骨架：父 POM（`flash-sale-parent`）+ 12 模块 + `src/` 整体迁入 `flash-sale-bootstrap` + surefire/run 工作目录治理 | ✅ 2026-10-12 | `mvnw test-compile` / `package` 通过；**全量 97 用例 BUILD SUCCESS**；提交 `5e23798` + 测试修正 `867e1d7` |
 | Day 2 | 抽取 common / contracts / domain-model / infra（含 `infra.**` 包重构、空目录清理、`PageResult`/`PageResponse` 二选一） | ✅ 2026-10-13 | 模块抽取提交 `f717a7f`/`b02b383`/`8ebec4e`/`1a50ba5`；`PageResult` 判定死代码删除（分页统一 `PageResponse`）；**全量 97 用例 BUILD SUCCESS** |
 | Day 3 | 抽取 user / product / activity（含 DTO/VO、Mapper XML、OSS 依赖归位） | ✅ 2026-10-13 | 两次原子提交 `b0f777d`（user + `PageResponse` 上移 common）/ `1898947`（product + activity，含 2 个 Mapper XML）；全量 97 用例 BUILD SUCCESS |
-| Day 4 | 抽取 seckill / order / analytics / ai + bootstrap 收薄 + ArchUnit 12 规则 + 终验（`git tag p0-done`） | ⏳ | — |
+| Day 4 | 抽取 seckill / order / analytics / ai + bootstrap 收薄 + ArchUnit 规则 + 终验 | ✅ 2026-10-13 | 三次提交 `328c5de`/`691b6c4`/`fffcb4d`；bootstrap 仅剩启动类 + 4 个白名单组件；**ArchUnit 16 条断言全绿**；全量 **113 用例 BUILD SUCCESS**；`git tag p0-done` |
 
 > 全量回归（2026-10-12 补跑）：停 dev 后端后 `mvnw clean test` → **97 用例 BUILD SUCCESS**（较 9 月的 92 增长 5，来自用户体系测试）。过程中发现并修正 1 处**基线既有**的过期测试：`AuthRegisterIntegrationTest` 会话态 `execute` 写请求须携带 `X-CSRF-Token`（CSRF 校验先于身份绑定，漏带头会返回 40301 且全局响应无 `data`），提交 `867e1d7`。
 > Day 1 踩坑记录：`spring-boot:run` 不可写成 `<executions>`——会被 Maven 绑定进生命周期，导致 `mvn test-compile` 也启动应用（撞 8081 端口）；正确做法是插件级 `<configuration><workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>`。
 > Day 2 踩坑记录：①跨模块后"同包免 import"不再成立——`GlobalExceptionHandler` 迁出 `common.exception` 后必须显式 `import BusinessException`，否则编译报"找不到符号"（IDE 重构会自动补，命令行迁移要人工核对）；②PowerShell 中 `git mv "目录"/*.java` 通配符不会展开（原生命令不走 PowerShell 通配），需 `Get-ChildItem | ForEach-Object { git mv ... }` 逐个迁移；③`PageResult` 经全库引用扫描确认零引用（死代码），直接删除并把分页结构统一为 `PageResponse`。
 > Day 3 踩坑记录：①**归属调整 3 例**——`PageResponse` 上移 `common.api`（否则 user→bootstrap 循环依赖）、`SecurityProperties` 随会话域从白名单提前归位 `user.config`（`UserSessionService` 依赖它）、`ActivityCheckResponse` 归 `activity`（`check` 由活动域产出，Day 4 的 seckill 通过 seckill→activity 依赖边取用）；②**新依赖边**：`activity → product`（活动创建需校验商品存在，走 `ProductMapper`；文档矩阵已同步）；③**多模块 Mapper 扫描**：`@MapperScan` 增至 4 个包，`mapper-locations` 必须改 `classpath*:mapper/*.xml`（否则只扫到 bootstrap 的 XML）；④同包免 import 问题在反向方向再次出现（`ApiAccessInterceptor`/`ApiAccessWebConfig` 需显式 import `SecurityProperties`/`UserTokenRegistry`）。
+> Day 4 踩坑记录：①**解环设计**——analytics 需要订单数据、order 需要写榜单，直接互赖成环；引入端口倒置（analytics 定义 `OrderQueryPort`，order 提供 `OrderQueryAdapter`）后依赖方向单一；②**鉴权常量上移**——控制器原先引用 bootstrap 的 `ApiAccessInterceptor.AUTHENTICATED_USER_ID`，形成"业务→装配层"反向依赖，常量上移 `common.constant.AuthAttributeConstant`；③**控制器直连 Mapper 两处**（OrderController / ProductController）按分层规则收敛到服务层（新增 `OrderQueryService`、`ProductService.listOnShelf`）；④**共享技术资产不硬塞业务域**——Lua 脚本与 3 个 `RedisScript` Bean、`SeckillOrderStreamProducer` 被 seckill 与 order 共同使用，保留在 infra（避免 order→seckill 边），P4 再收口为 seckill-service 内部接口；⑤**ArchUnit API 细节**——`slices()` 位于 `library.dependencies.SlicesRuleDefinition`；命名规则需用谓词排除内嵌类（如 `UserSessionService$AuthenticatedSession`）；⑥**PowerShell 运算符优先级**——`@($X+'a',$X+'b')` 会被解析为单元素（逗号优先级高于 `+`），数组构造避免 `+` 与 `,` 混用（当日曾因此导致一次"0 文件替换"，靠文件抽查及时确认未损坏）。
 
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-10-13（**P0 Day 3 完成**：user / product / activity 三个业务域抽取（`b0f777d` / `1898947`），含 Mapper XML 迁移、依赖边调整与配置接线；全量 `mvnw clean test` **97 用例 BUILD SUCCESS**）*
-*下次开始位置：①P0 Day 4 — 抽取 seckill / order / analytics / ai + bootstrap 收薄 + ArchUnit 12 规则 + 终验（`git tag p0-done`）；②图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；③计划内单体主体已完成，可按需把项目提交推送到 origin（当前本地领先待 push）*
+*上次更新：2026-10-13（**P0 完成 · M1 达成**：13 模块（父 + 12）落地，业务代码全部模块化、bootstrap 收薄至启动类 + 4 个白名单组件；ArchUnit 16 条架构断言全绿；全量 **113 用例 BUILD SUCCESS**（97 业务 + 16 架构）；打 `p0-done` 标签）*
+*下次开始位置：①P1 基础设施 — Nacos / Gateway / Compose / 日志与追踪 / 监控，先把单体作为"遗留服务"注册进注册中心；②图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；③计划内单体主体已完成，可按需把项目提交推送到 origin（当前本地领先待 push）*

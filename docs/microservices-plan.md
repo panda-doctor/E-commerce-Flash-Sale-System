@@ -374,12 +374,12 @@ E-commerceFlashSaleSystem/                     # 聚合根（mvnw / .env / uploa
 | common | 无（仅 jackson-annotations / jakarta.validation-api） |
 | contracts | common |
 | domain-model | common |
-| infra | common、domain-model、Spring Web/Redis/Redisson/MyBatis-Plus |
+| infra | common、contracts（共享消息发布器）、domain-model、Spring Web/Redis/Redisson/MyBatis-Plus |
 | user | common、domain-model、infra |
 | product | common、domain-model、infra |
 | activity | common、domain-model、infra、product（活动创建校验商品存在） |
 | seckill | common、contracts、domain-model、infra、activity |
-| order | common、contracts、domain-model、infra |
+| order | common、contracts、domain-model、infra、analytics（落单成功后写榜单） |
 | analytics | common、contracts、domain-model、infra |
 | ai | common、domain-model、infra、product、activity |
 | bootstrap | 全部模块（唯一装配层） |
@@ -397,7 +397,7 @@ E-commerceFlashSaleSystem/                     # 聚合根（mvnw / .env / uploa
 | **user** | `controller/auth/UserAuthController`、`controller/admin/AdminUserController`、`service/user/{UserAccountService, UserSessionService}`、`mapper/{UserAccountMapper, UserSessionMapper}`、`dto/request/{LoginRequest, RegisterRequest, AdminUserCreateRequest, AdminUserUpdateRequest}`、`dto/response/{AuthResponse, RegisterResponse, UserProfileResponse}`、`config/{UserTokenRegistry, PasswordEncoderConfig}`；**实施补充（Day 3）**：`config/SecurityProperties` 随会话域归位（`UserSessionService` 依赖，原白名单项提前） | `user.**` |
 | **product** | `controller/product/ProductController`、`controller/admin/{AdminProductController, AdminFileController}`、`service/product/ProductService`、`service/impl/ProductServiceImpl`、`service/cache/ProductCacheService`、`service/storage/**`、`mapper/ProductMapper`、`dto/request/ProductRequest`、`vo/ProductVO`、`config/FileStorageWebConfig` | `product.**` |
 | **activity** | `service/seckill/SeckillActivityService`、`service/impl/SeckillActivityServiceImpl`、`service/cache/SeckillCacheService`、`mapper/SeckillActivityMapper`、`dto/request/ActivityRequest`、`dto/response/ActivityCheckResponse`（Day 3 补充：check 由活动域产出，Day 4 的 seckill 经 seckill→activity 取用）、`vo/{SeckillActivityVO, ActivityItemVO}`、`controller/admin/AdminSeckillController`（→ 过渡白名单，见 9.10） | `activity.**` |
-| **seckill** | `controller/seckill/{SeckillExecuteController, SeckillActivityController}`、`service/seckill/SeckillService`、`service/impl/SeckillServiceImpl`、`stream/producer/SeckillOrderStreamProducer`、`dto/request/SeckillRequest`、`dto/response/{SeckillResponse, ActivityCheckResponse}`、`resources/lua/*.lua`、`RedisConfig` 中 3 个 `RedisScript` Bean（抽为 `seckill.config.SeckillScriptConfig`） | `seckill.**` |
+| **seckill** | `controller/seckill/{SeckillExecuteController, SeckillActivityController}`、`service/seckill/SeckillService`、`service/impl/SeckillServiceImpl`、`dto/request/SeckillRequest`、`dto/response/SeckillResponse`；**实施调整（Day 4）**：`stream/producer/SeckillOrderStreamProducer` 归 `infra.messaging`（seckill 与 order 死信回放共用，避免 order→seckill 边）；`lua/*.lua` 与 3 个 `RedisScript` Bean 暂留 `infra`（P4 收口为 seckill-service 内部接口）；`ActivityCheckResponse` 归 `activity` | `seckill.**` |
 | **order** | `stream/consumer/SeckillOrderConsumer`、`stream/scheduler/StreamConsumerScheduler`、`controller/seckill/OrderController`、`service/seckill/DeadLetterReplayService`、`mapper/{SeckillOrderMapper, SeckillMessageLogMapper}`、`dto/request/DeadLetterReplayRequest`、`resources/mapper/{SeckillOrderMapper, SeckillMessageLogMapper}.xml` | `order.**` |
 | **analytics** | `controller/rank/RankController`、`controller/admin/AdminMetricsController`、`service/rank/SeckillRankService`、`service/impl/SeckillRankServiceImpl`、`service/metrics/MetricsService`、`service/impl/MetricsServiceImpl`、`mapper/SeckillActivitySnapshotMapper`、`vo/{RankEntryVO, ActivityMetricsVO}` | `analytics.**` |
 | **ai** | `controller/support/AiSupportController`、`service/ai/**`（4）、`service/impl/AiChatServiceImpl`、`dto/request/AiChatRequest`、`vo/ChatReplyVO`、`config/AiLlmProperties` | `ai.**` |
@@ -697,3 +697,36 @@ E-commerceFlashSaleSystem/                     # 聚合根（mvnw / .env / uploa
 | Maven 环境问题（历史踩坑） | `ClassNotFoundException: ...classworlds...` | 统一用 `.\mvnw.cmd`（wrapper 3.9.16），不要用损坏的用户级 Maven |
 
 **回退策略**：P0 全过程"每步绿 + 每步提交"，任一时刻可 `git reset --hard <上一步 commit>`；P0 结束打 `p0-done` 标签，P1 出问题可整体回到模块化单体。
+
+### 9.12 P0 实施结果（2026-10-13 完成 · M1 达成）
+
+**最终模块结构（13 个模块 = 父 POM + 12 子模块，主代码 106 个类）**
+
+| 模块 | main 类数 | 说明 |
+|---|---|---|
+| flash-sale-common | 9 | Result / ResultCode / BusinessException / PageResponse / 工具 / 常量 / 鉴权常量 |
+| flash-sale-contracts | 1 | SeckillOrderMessage（跨域消息契约） |
+| flash-sale-domain-model | 12 | 7 实体 + 5 枚举（仅依赖 `mybatis-plus-annotation`） |
+| flash-sale-infra | 6 | Redis / Redisson / MyBatis-Plus 配置、全局异常处理、消息发布器（infra.messaging） |
+| flash-sale-user | 16 | 账号 / 会话 / CSRF / 令牌注册表 / 后台用户管理 |
+| flash-sale-product | 14 | 商品 CRUD + 缓存三防护 + 图片存储（本地/OSS） |
+| flash-sale-activity | 8 | 活动管理与预热编排（含预热/重置锁） |
+| flash-sale-seckill | 6 | 滑动窗口限流 + Lua 原子扣减 + Stream 投递 |
+| flash-sale-order | 10 | 消费落单 / 订单查询 / 消息日志 / 死信回放 + 订单查询端口适配 |
+| flash-sale-analytics | 10 | 榜单 / 指标 / 快照 + `OrderQueryPort`（读模型端口） |
+| flash-sale-ai | 9 | AI 客服（LLM 客户端适配独立在 `ai.client`） |
+| flash-sale-bootstrap | 5 (+27 测试) | 启动类 + 4 个白名单装配组件 + 全部测试 |
+
+**实施中相对原方案的关键调整（4 处）**
+
+1. **解环替代方案**：原方案未预见 analytics ↔ order 双向依赖（榜单需要订单数据、订单落库要写榜单）。最终以**端口倒置**解决：`analytics.port.OrderQueryPort` 由 `order.adapter.OrderQueryAdapter` 实现，依赖方向保持单向，未引入运行期反射或循环依赖。
+2. **共享技术资产留守 infra**：`SeckillOrderStreamProducer`、`lua/*.lua` 与 3 个 `RedisScript` Bean 被 seckill 与 order 共同使用，为保证"seckill ↔ order 无直接依赖"而保留在 infra；P4 抽取 seckill-service 时改为内部接口调用。
+3. **白名单提前归位**：`SecurityProperties` 因被 `UserSessionService` 依赖，从"暂留 bootstrap"提前在 Day 3 归位 `user.config`；`ActivityCheckResponse` 归 `activity`。
+4. **分层修复随行**：`OrderController` / `ProductController` 两处 controller → mapper 直连按 R4 收敛（新增 `OrderQueryService`、`ProductService.listOnShelf`）；LLM 客户端 3 类迁出 `service` 包（`ai.client`）。
+
+**验证记录**
+
+- `mvnw clean test` → **113 用例，0 Failures / 0 Errors，BUILD SUCCESS**（97 业务用例 + 16 条架构断言）；
+- ArchUnit 断言覆盖计划中的 12 类约束（部分约束拆分为多条表达，如 seckill/order 双向隔离）；
+- 运行形态与接口契约不变：bootstrap 仍是单进程 :8081，前端零改动；
+- 标签：`p0-done`；随后可进入 **P1 基础设施**（Nacos / Gateway / Compose / 可观测）。
