@@ -377,7 +377,7 @@ E-commerceFlashSaleSystem/                     # 聚合根（mvnw / .env / uploa
 | infra | common、domain-model、Spring Web/Redis/Redisson/MyBatis-Plus |
 | user | common、domain-model、infra |
 | product | common、domain-model、infra |
-| activity | common、domain-model、infra |
+| activity | common、domain-model、infra、product（活动创建校验商品存在） |
 | seckill | common、contracts、domain-model、infra、activity |
 | order | common、contracts、domain-model、infra |
 | analytics | common、contracts、domain-model、infra |
@@ -390,13 +390,13 @@ E-commerceFlashSaleSystem/                     # 聚合根（mvnw / .env / uploa
 
 | 目标模块 | 现有文件（包路径） | 目标包 |
 |---|---|---|
-| **common** | `common/api/Result`、`common/api/ResultCode`、`common/exception/BusinessException`、`common/util/{IdGenerator, OrderNoGenerator, RequestIdUtil}`、`common/constant/CacheKeyConstant` | 不变 |
+| **common** | `common/api/Result`、`common/api/ResultCode`、`common/exception/BusinessException`、`common/util/{IdGenerator, OrderNoGenerator, RequestIdUtil}`、`common/constant/CacheKeyConstant`；**实施补充（Day 3）**：`domain/dto/response/PageResponse` 上移 `common/api`（跨域分页响应，避免域模块反向依赖 bootstrap） | 不变（PageResponse → `common.api`） |
 | **infra** | `common/api/PageResult`（依赖 MP 的 Page）、`common/exception/GlobalExceptionHandler`（Web 关注点）、`config/{RedisConfig（剥脚本 Bean）, RedissonConfig, MybatisPlusConfig, MybatisPlusMetaObjectHandler}` | `infra.**` |
 | **contracts** | `domain/dto/message/SeckillOrderMessage` | `contracts.message` |
 | **domain-model** | `domain/entity/*`（7）、`domain/enums/*`（5） | 不变 |
-| **user** | `controller/auth/UserAuthController`、`controller/admin/AdminUserController`、`service/user/{UserAccountService, UserSessionService}`、`mapper/{UserAccountMapper, UserSessionMapper}`、`dto/request/{LoginRequest, RegisterRequest, AdminUserCreateRequest, AdminUserUpdateRequest}`、`dto/response/{AuthResponse, RegisterResponse, UserProfileResponse}`、`config/{UserTokenRegistry, PasswordEncoderConfig}` | `user.**` |
+| **user** | `controller/auth/UserAuthController`、`controller/admin/AdminUserController`、`service/user/{UserAccountService, UserSessionService}`、`mapper/{UserAccountMapper, UserSessionMapper}`、`dto/request/{LoginRequest, RegisterRequest, AdminUserCreateRequest, AdminUserUpdateRequest}`、`dto/response/{AuthResponse, RegisterResponse, UserProfileResponse}`、`config/{UserTokenRegistry, PasswordEncoderConfig}`；**实施补充（Day 3）**：`config/SecurityProperties` 随会话域归位（`UserSessionService` 依赖，原白名单项提前） | `user.**` |
 | **product** | `controller/product/ProductController`、`controller/admin/{AdminProductController, AdminFileController}`、`service/product/ProductService`、`service/impl/ProductServiceImpl`、`service/cache/ProductCacheService`、`service/storage/**`、`mapper/ProductMapper`、`dto/request/ProductRequest`、`vo/ProductVO`、`config/FileStorageWebConfig` | `product.**` |
-| **activity** | `service/seckill/SeckillActivityService`、`service/impl/SeckillActivityServiceImpl`、`service/cache/SeckillCacheService`、`mapper/SeckillActivityMapper`、`dto/request/ActivityRequest`、`vo/{SeckillActivityVO, ActivityItemVO}`、`controller/admin/AdminSeckillController`（→ 过渡白名单，见 9.10） | `activity.**` |
+| **activity** | `service/seckill/SeckillActivityService`、`service/impl/SeckillActivityServiceImpl`、`service/cache/SeckillCacheService`、`mapper/SeckillActivityMapper`、`dto/request/ActivityRequest`、`dto/response/ActivityCheckResponse`（Day 3 补充：check 由活动域产出，Day 4 的 seckill 经 seckill→activity 取用）、`vo/{SeckillActivityVO, ActivityItemVO}`、`controller/admin/AdminSeckillController`（→ 过渡白名单，见 9.10） | `activity.**` |
 | **seckill** | `controller/seckill/{SeckillExecuteController, SeckillActivityController}`、`service/seckill/SeckillService`、`service/impl/SeckillServiceImpl`、`stream/producer/SeckillOrderStreamProducer`、`dto/request/SeckillRequest`、`dto/response/{SeckillResponse, ActivityCheckResponse}`、`resources/lua/*.lua`、`RedisConfig` 中 3 个 `RedisScript` Bean（抽为 `seckill.config.SeckillScriptConfig`） | `seckill.**` |
 | **order** | `stream/consumer/SeckillOrderConsumer`、`stream/scheduler/StreamConsumerScheduler`、`controller/seckill/OrderController`、`service/seckill/DeadLetterReplayService`、`mapper/{SeckillOrderMapper, SeckillMessageLogMapper}`、`dto/request/DeadLetterReplayRequest`、`resources/mapper/{SeckillOrderMapper, SeckillMessageLogMapper}.xml` | `order.**` |
 | **analytics** | `controller/rank/RankController`、`controller/admin/AdminMetricsController`、`service/rank/SeckillRankService`、`service/impl/SeckillRankServiceImpl`、`service/metrics/MetricsService`、`service/impl/MetricsServiceImpl`、`mapper/SeckillActivitySnapshotMapper`、`vo/{RankEntryVO, ActivityMetricsVO}` | `analytics.**` |
@@ -679,7 +679,7 @@ E-commerceFlashSaleSystem/                     # 聚合根（mvnw / .env / uploa
 
 | 组件 | 现状问题 | P0 处理 | 收口阶段 |
 |---|---|---|---|
-| `ApiAccessInterceptor` / `ApiAccessWebConfig` / `SecurityProperties` | 横切鉴权 + 管理/用户双令牌，跨 user 与 admin 双域 | 暂留 `bootstrap`，ArchUnit 显式豁免 | P2（抽 auth-service 时归位；P1 后可改为网关过滤器） |
+| `ApiAccessInterceptor` / `ApiAccessWebConfig` | 横切鉴权 + 管理/用户双令牌，跨 user 与 admin 双域 | 暂留 `bootstrap`，ArchUnit 显式豁免（`SecurityProperties` 已于 Day 3 归位 `user.config`） | P2（抽 auth-service 时归位；P1 后可改为网关过滤器） |
 | `AdminSeckillController` | 一个控制器混合活动管理与死信回放（order 域） | 暂留 `bootstrap`，仅依赖 activity/order 的 Service 接口 | P4（拆 `AdminDeadLetterController` 到 order-service） |
 | `HealthController` | 全局健康检查 | 暂留 bootstrap | P1（改为各服务 Actuator + 网关聚合） |
 | `domain-model` 共享实体 | 多域共用一个实体模块（微服务反模式的前身） | 过渡接受，登记改造项 | P3/P4（各域私有实体 + contracts 替代） |

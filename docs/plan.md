@@ -851,15 +851,16 @@
 | 前置 | 基线冻结：提交工作区（4 个逻辑提交）+ `mono-baseline-20261012` 标签 | ✅ 2026-10-12 | `345e1c6` |
 | Day 1 | 多模块骨架：父 POM（`flash-sale-parent`）+ 12 模块 + `src/` 整体迁入 `flash-sale-bootstrap` + surefire/run 工作目录治理 | ✅ 2026-10-12 | `mvnw test-compile` / `package` 通过；**全量 97 用例 BUILD SUCCESS**；提交 `5e23798` + 测试修正 `867e1d7` |
 | Day 2 | 抽取 common / contracts / domain-model / infra（含 `infra.**` 包重构、空目录清理、`PageResult`/`PageResponse` 二选一） | ✅ 2026-10-13 | 模块抽取提交 `f717a7f`/`b02b383`/`8ebec4e`/`1a50ba5`；`PageResult` 判定死代码删除（分页统一 `PageResponse`）；**全量 97 用例 BUILD SUCCESS** |
-| Day 3 | 抽取 user / product / activity（含 DTO/VO、Mapper XML、OSS 依赖归位） | ⏳ | — |
+| Day 3 | 抽取 user / product / activity（含 DTO/VO、Mapper XML、OSS 依赖归位） | ✅ 2026-10-13 | 两次原子提交 `b0f777d`（user + `PageResponse` 上移 common）/ `1898947`（product + activity，含 2 个 Mapper XML）；全量 97 用例 BUILD SUCCESS |
 | Day 4 | 抽取 seckill / order / analytics / ai + bootstrap 收薄 + ArchUnit 12 规则 + 终验（`git tag p0-done`） | ⏳ | — |
 
 > 全量回归（2026-10-12 补跑）：停 dev 后端后 `mvnw clean test` → **97 用例 BUILD SUCCESS**（较 9 月的 92 增长 5，来自用户体系测试）。过程中发现并修正 1 处**基线既有**的过期测试：`AuthRegisterIntegrationTest` 会话态 `execute` 写请求须携带 `X-CSRF-Token`（CSRF 校验先于身份绑定，漏带头会返回 40301 且全局响应无 `data`），提交 `867e1d7`。
 > Day 1 踩坑记录：`spring-boot:run` 不可写成 `<executions>`——会被 Maven 绑定进生命周期，导致 `mvn test-compile` 也启动应用（撞 8081 端口）；正确做法是插件级 `<configuration><workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>`。
 > Day 2 踩坑记录：①跨模块后"同包免 import"不再成立——`GlobalExceptionHandler` 迁出 `common.exception` 后必须显式 `import BusinessException`，否则编译报"找不到符号"（IDE 重构会自动补，命令行迁移要人工核对）；②PowerShell 中 `git mv "目录"/*.java` 通配符不会展开（原生命令不走 PowerShell 通配），需 `Get-ChildItem | ForEach-Object { git mv ... }` 逐个迁移；③`PageResult` 经全库引用扫描确认零引用（死代码），直接删除并把分页结构统一为 `PageResponse`。
+> Day 3 踩坑记录：①**归属调整 3 例**——`PageResponse` 上移 `common.api`（否则 user→bootstrap 循环依赖）、`SecurityProperties` 随会话域从白名单提前归位 `user.config`（`UserSessionService` 依赖它）、`ActivityCheckResponse` 归 `activity`（`check` 由活动域产出，Day 4 的 seckill 通过 seckill→activity 依赖边取用）；②**新依赖边**：`activity → product`（活动创建需校验商品存在，走 `ProductMapper`；文档矩阵已同步）；③**多模块 Mapper 扫描**：`@MapperScan` 增至 4 个包，`mapper-locations` 必须改 `classpath*:mapper/*.xml`（否则只扫到 bootstrap 的 XML）；④同包免 import 问题在反向方向再次出现（`ApiAccessInterceptor`/`ApiAccessWebConfig` 需显式 import `SecurityProperties`/`UserTokenRegistry`）。
 
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-10-13（**P0 Day 2 完成**：共享层抽取 common / domain-model / contracts / infra 四个模块并清理死代码；全量 `mvnw clean test` **97 用例 BUILD SUCCESS**）*
-*下次开始位置：①P0 Day 3 — 抽取 user / product / activity（含 DTO/VO、Mapper XML、OSS 依赖归位）；②图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；③计划内单体主体已完成，可按需把项目提交推送到 origin（当前本地领先待 push）*
+*上次更新：2026-10-13（**P0 Day 3 完成**：user / product / activity 三个业务域抽取（`b0f777d` / `1898947`），含 Mapper XML 迁移、依赖边调整与配置接线；全量 `mvnw clean test` **97 用例 BUILD SUCCESS**）*
+*下次开始位置：①P0 Day 4 — 抽取 seckill / order / analytics / ai + bootstrap 收薄 + ArchUnit 12 规则 + 终验（`git tag p0-done`）；②图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起（待提供失败图片路径后继续）；③计划内单体主体已完成，可按需把项目提交推送到 origin（当前本地领先待 push）*
