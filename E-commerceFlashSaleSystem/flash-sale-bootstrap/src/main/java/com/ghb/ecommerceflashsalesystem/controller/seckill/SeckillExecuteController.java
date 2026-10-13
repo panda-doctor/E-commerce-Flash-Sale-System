@@ -7,7 +7,7 @@ import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.config.ApiAccessInterceptor;
 import com.ghb.ecommerceflashsalesystem.domain.dto.request.SeckillRequest;
 import com.ghb.ecommerceflashsalesystem.domain.dto.response.SeckillResponse;
-import com.ghb.ecommerceflashsalesystem.domain.vo.SeckillActivityVO;
+import com.ghb.ecommerceflashsalesystem.activity.vo.SeckillActivityVO;
 import com.ghb.ecommerceflashsalesystem.service.seckill.SeckillService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

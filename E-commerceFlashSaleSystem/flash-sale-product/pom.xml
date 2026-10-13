@@ -13,4 +13,24 @@
     <artifactId>flash-sale-product</artifactId>
     <name>flash-sale-product</name>
     <description>商品域：商品 CRUD / 缓存三防护 / 图片存储（本地磁盘与 OSS 双策略）</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-domain-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-infra</artifactId>
+        </dependency>
+        <!-- OSS 图片存储策略 -->
+        <dependency>
+            <groupId>com.aliyun.oss</groupId>
+            <artifactId>aliyun-sdk-oss</artifactId>
+        </dependency>
+    </dependencies>
 </project>

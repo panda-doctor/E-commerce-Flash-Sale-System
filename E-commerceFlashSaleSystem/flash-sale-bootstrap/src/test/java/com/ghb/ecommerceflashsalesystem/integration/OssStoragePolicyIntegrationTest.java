@@ -2,7 +2,7 @@ package com.ghb.ecommerceflashsalesystem.integration;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
-import com.ghb.ecommerceflashsalesystem.service.storage.ImageStorageService;
+import com.ghb.ecommerceflashsalesystem.product.storage.ImageStorageService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

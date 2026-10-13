@@ -1,7 +1,7 @@
 package com.ghb.ecommerceflashsalesystem.unit;
 
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
-import com.ghb.ecommerceflashsalesystem.service.storage.AbstractImageStorage;
+import com.ghb.ecommerceflashsalesystem.product.storage.AbstractImageStorage;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;

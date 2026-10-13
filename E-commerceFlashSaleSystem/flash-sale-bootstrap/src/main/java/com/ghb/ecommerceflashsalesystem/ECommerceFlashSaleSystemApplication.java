@@ -6,7 +6,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 @MapperScan({
         "com.ghb.ecommerceflashsalesystem.mapper",
-        "com.ghb.ecommerceflashsalesystem.user.mapper"
+        "com.ghb.ecommerceflashsalesystem.user.mapper",
+        "com.ghb.ecommerceflashsalesystem.product.mapper",
+        "com.ghb.ecommerceflashsalesystem.activity.mapper"
 })
 @EnableScheduling
 @SpringBootApplication

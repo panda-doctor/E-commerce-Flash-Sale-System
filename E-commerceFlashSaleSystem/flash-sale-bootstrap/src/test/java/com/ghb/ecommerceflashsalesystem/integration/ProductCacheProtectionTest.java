@@ -3,9 +3,9 @@ package com.ghb.ecommerceflashsalesystem.integration;
 
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
 import com.ghb.ecommerceflashsalesystem.domain.entity.Product;
-import com.ghb.ecommerceflashsalesystem.domain.vo.ProductVO;
-import com.ghb.ecommerceflashsalesystem.mapper.ProductMapper;
-import com.ghb.ecommerceflashsalesystem.service.product.ProductService;
+import com.ghb.ecommerceflashsalesystem.product.vo.ProductVO;
+import com.ghb.ecommerceflashsalesystem.product.mapper.ProductMapper;
+import com.ghb.ecommerceflashsalesystem.product.service.ProductService;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

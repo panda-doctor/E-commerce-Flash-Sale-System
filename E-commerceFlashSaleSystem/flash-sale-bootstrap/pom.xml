@@ -36,6 +36,14 @@
             <groupId>com.ghb</groupId>
             <artifactId>flash-sale-user</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-product</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-activity</artifactId>
+        </dependency>
 
         <!-- ========== Web 层 ========== -->
         <dependency>

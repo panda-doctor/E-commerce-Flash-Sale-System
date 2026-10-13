@@ -117,7 +117,8 @@ spring:
 # MyBatis-Plus 配置
 # =====================================================
 mybatis-plus:
-  mapper-locations: classpath:mapper/*.xml
+  # 多模块后 XML 分散在各模块 jar，必须用 classpath* 通配扫描
+  mapper-locations: classpath*:mapper/*.xml
   type-aliases-package: com.ghb.ecommerceflashsalesystem.domain.entity
   configuration:
     map-underscore-to-camel-case: true

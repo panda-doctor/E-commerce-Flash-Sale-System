@@ -13,4 +13,24 @@
     <artifactId>flash-sale-activity</artifactId>
     <name>flash-sale-activity</name>
     <description>活动域：秒杀活动管理与预热编排（含预热/重置分布式锁）</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-domain-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-infra</artifactId>
+        </dependency>
+        <!-- 活动创建需校验关联商品存在（activity → product，允许的依赖边） -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-product</artifactId>
+        </dependency>
+    </dependencies>
 </project>
