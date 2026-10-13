@@ -19,6 +19,11 @@
             <groupId>com.ghb</groupId>
             <artifactId>flash-sale-common</artifactId>
         </dependency>
+        <!-- 技术层复用跨域契约（Stream 订单消息发布器 infra.messaging） -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-contracts</artifactId>
+        </dependency>
 
         <!-- Web：全局异常处理（@RestControllerAdvice）与 Web 相关异常类型 -->
         <dependency>

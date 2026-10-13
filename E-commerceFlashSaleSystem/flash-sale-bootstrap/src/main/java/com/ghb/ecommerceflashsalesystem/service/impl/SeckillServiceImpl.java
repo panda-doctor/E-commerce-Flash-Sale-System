@@ -14,7 +14,7 @@ import com.ghb.ecommerceflashsalesystem.activity.vo.SeckillActivityVO;
 import com.ghb.ecommerceflashsalesystem.activity.mapper.SeckillActivityMapper;
 import com.ghb.ecommerceflashsalesystem.activity.cache.SeckillCacheService;
 import com.ghb.ecommerceflashsalesystem.service.seckill.SeckillService;
-import com.ghb.ecommerceflashsalesystem.stream.producer.SeckillOrderStreamProducer;
+import com.ghb.ecommerceflashsalesystem.infra.messaging.SeckillOrderStreamProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;

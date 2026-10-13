@@ -1,6 +1,7 @@
 package com.ghb.ecommerceflashsalesystem.config;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
+import com.ghb.ecommerceflashsalesystem.common.constant.AuthAttributeConstant;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.user.config.SecurityProperties;
 import com.ghb.ecommerceflashsalesystem.user.config.UserTokenRegistry;
@@ -28,8 +29,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ApiAccessInterceptor {
 
-    /** 鉴权通过后写入 request attribute 的 userId 键名，业务 Controller 据此与请求参数比对 */
-    public static final String AUTHENTICATED_USER_ID = "authenticatedUserId";
+    /** 鉴权通过后写入 request attribute 的 userId 键名（值收敛到 common 常量，业务模块不反向依赖本类） */
+    public static final String AUTHENTICATED_USER_ID = AuthAttributeConstant.AUTHENTICATED_USER_ID;
     private static final String ADMIN_TOKEN_HEADER = "X-Admin-Token";
     private static final String USER_TOKEN_HEADER = "X-User-Token";
 

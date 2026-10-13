@@ -3,7 +3,7 @@ package com.ghb.ecommerceflashsalesystem.controller.seckill;
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
-import com.ghb.ecommerceflashsalesystem.config.ApiAccessInterceptor;
+import com.ghb.ecommerceflashsalesystem.common.constant.AuthAttributeConstant;
 import jakarta.servlet.http.HttpServletRequest;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillOrder;
 import com.ghb.ecommerceflashsalesystem.domain.enums.OrderStatusEnum;
@@ -34,7 +34,7 @@ public class OrderController {
     public Result<Map<String, Object>> getOrderStatus(@PathVariable String orderNo,
                                                       HttpServletRequest httpRequest) {
         SeckillOrder order = seckillOrderMapper.selectByOrderNo(orderNo);
-        Long authenticatedUserId = (Long) httpRequest.getAttribute(ApiAccessInterceptor.AUTHENTICATED_USER_ID);
+        Long authenticatedUserId = (Long) httpRequest.getAttribute(AuthAttributeConstant.AUTHENTICATED_USER_ID);
         if (order != null && (authenticatedUserId == null || !authenticatedUserId.equals(order.getUserId()))) {
             throw new BusinessException(ResultCode.UNAUTHORIZED, "无权查看该订单");
         }
@@ -72,7 +72,7 @@ public class OrderController {
     public Result<List<Map<String, Object>>> listUserOrders(@PathVariable Long userId,
                                                              @RequestParam(required = false) Long activityId,
                                                              HttpServletRequest httpRequest) {
-        Long authenticatedUserId = (Long) httpRequest.getAttribute(ApiAccessInterceptor.AUTHENTICATED_USER_ID);
+        Long authenticatedUserId = (Long) httpRequest.getAttribute(AuthAttributeConstant.AUTHENTICATED_USER_ID);
         if (authenticatedUserId == null || !authenticatedUserId.equals(userId)) {
             throw new BusinessException(ResultCode.UNAUTHORIZED, "请求用户与访问令牌不匹配");
         }
@@ -94,7 +94,7 @@ public class OrderController {
     @GetMapping("/users/me/orders")
     public Result<List<Map<String, Object>>> listMyOrders(@RequestParam(required = false) Long activityId,
                                                           HttpServletRequest httpRequest) {
-        Long authenticatedUserId = (Long) httpRequest.getAttribute(ApiAccessInterceptor.AUTHENTICATED_USER_ID);
+        Long authenticatedUserId = (Long) httpRequest.getAttribute(AuthAttributeConstant.AUTHENTICATED_USER_ID);
         if (authenticatedUserId == null) throw new BusinessException(ResultCode.UNAUTHORIZED, "请先登录");
         return listUserOrders(authenticatedUserId, activityId, httpRequest);
     }

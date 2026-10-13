@@ -17,7 +17,7 @@ import com.ghb.ecommerceflashsalesystem.activity.cache.SeckillCacheService;
 import com.ghb.ecommerceflashsalesystem.service.seckill.DeadLetterReplayService;
 import com.ghb.ecommerceflashsalesystem.service.seckill.SeckillService;
 import com.ghb.ecommerceflashsalesystem.stream.consumer.SeckillOrderConsumer;
-import com.ghb.ecommerceflashsalesystem.stream.producer.SeckillOrderStreamProducer;
+import com.ghb.ecommerceflashsalesystem.infra.messaging.SeckillOrderStreamProducer;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

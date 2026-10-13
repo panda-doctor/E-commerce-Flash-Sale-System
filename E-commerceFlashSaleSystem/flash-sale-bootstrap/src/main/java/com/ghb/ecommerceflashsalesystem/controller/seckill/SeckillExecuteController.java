@@ -4,7 +4,7 @@ package com.ghb.ecommerceflashsalesystem.controller.seckill;
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
-import com.ghb.ecommerceflashsalesystem.config.ApiAccessInterceptor;
+import com.ghb.ecommerceflashsalesystem.common.constant.AuthAttributeConstant;
 import com.ghb.ecommerceflashsalesystem.domain.dto.request.SeckillRequest;
 import com.ghb.ecommerceflashsalesystem.domain.dto.response.SeckillResponse;
 import com.ghb.ecommerceflashsalesystem.activity.vo.SeckillActivityVO;
@@ -24,7 +24,7 @@ public class SeckillExecuteController {
 
     @PostMapping("/execute")
     public Result<SeckillResponse> execute(@Valid @RequestBody SeckillRequest request, HttpServletRequest httpRequest) {
-        Long authenticatedUserId = (Long) httpRequest.getAttribute(ApiAccessInterceptor.AUTHENTICATED_USER_ID);
+        Long authenticatedUserId = (Long) httpRequest.getAttribute(AuthAttributeConstant.AUTHENTICATED_USER_ID);
         if (authenticatedUserId == null || (request.getUserId() != null && !authenticatedUserId.equals(request.getUserId()))) {
             throw new BusinessException(ResultCode.UNAUTHORIZED, "请求用户与访问令牌不匹配");
         }

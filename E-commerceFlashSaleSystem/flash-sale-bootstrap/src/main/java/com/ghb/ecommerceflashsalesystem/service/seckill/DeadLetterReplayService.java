@@ -10,7 +10,7 @@ import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillOrder;
 import com.ghb.ecommerceflashsalesystem.domain.enums.MessageLogStatusEnum;
 import com.ghb.ecommerceflashsalesystem.mapper.SeckillMessageLogMapper;
 import com.ghb.ecommerceflashsalesystem.mapper.SeckillOrderMapper;
-import com.ghb.ecommerceflashsalesystem.stream.producer.SeckillOrderStreamProducer;
+import com.ghb.ecommerceflashsalesystem.infra.messaging.SeckillOrderStreamProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Range;

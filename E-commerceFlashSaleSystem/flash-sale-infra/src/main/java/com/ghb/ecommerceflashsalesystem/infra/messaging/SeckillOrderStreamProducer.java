@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.stream.producer;
+package com.ghb.ecommerceflashsalesystem.infra.messaging;
 
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
 import com.ghb.ecommerceflashsalesystem.contracts.message.SeckillOrderMessage;
