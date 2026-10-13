@@ -1,8 +1,9 @@
-package com.ghb.ecommerceflashsalesystem.common.exception;
+package com.ghb.ecommerceflashsalesystem.infra.web;
 
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
+import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;

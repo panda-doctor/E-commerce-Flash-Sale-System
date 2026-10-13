@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.config;
+package com.ghb.ecommerceflashsalesystem.infra.config;
 
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
