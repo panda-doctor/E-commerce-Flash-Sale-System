@@ -13,4 +13,12 @@
     <artifactId>flash-sale-common</artifactId>
     <name>flash-sale-common</name>
     <description>公共层：统一响应 / 状态码 / 业务异常 / 工具 / 常量（保持零框架依赖）</description>
+
+    <dependencies>
+        <!-- 仅注解：Result 使用 @JsonInclude（版本由 Boot 父管理） -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+        </dependency>
+    </dependencies>
 </project>

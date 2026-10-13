@@ -15,6 +15,24 @@
     <description>启动器：应用入口 + 全局配置 + 跨域集成测试（P0 阶段承载全部现有源码，Day 2~4 逐步迁出到各业务模块）</description>
 
     <dependencies>
+        <!-- ========== 内部模块（P0 Day 2 起逐步迁出，bootstrap 作为装配层聚合） ========== -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-contracts</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-domain-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-infra</artifactId>
+        </dependency>
+
         <!-- ========== Web 层 ========== -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
