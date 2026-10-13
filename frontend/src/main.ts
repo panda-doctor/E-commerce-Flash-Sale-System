@@ -24,5 +24,10 @@ components.forEach((component) => {
 })
 app.use(ElLoading)
 app.use(router)
-app.mount('#app')
+
+// F2 修复：等待首次路由解析完成后再挂载。
+// App.vue 依据 route.meta.surface 在「商城布局 / 后台壳层」之间分流，
+// 而首帧渲染时 route.meta 仍为空（路由尚未 resolve），会先画出后台壳层再切换（可见闪屏）。
+// 先 await isReady() 可保证首次渲染即命中正确布局。
+void router.isReady().then(() => app.mount('#app'))
 

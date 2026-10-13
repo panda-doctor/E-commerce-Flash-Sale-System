@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  闪购集市 favicon（F1 修复）
+  品牌色取自 styles/main.css：--brand #c32929 / --brand-strong #a91f1f
+  使用 SVG 免去二进制图标维护成本，浏览器按 <link rel="icon"> 直接加载。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="闪购集市">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d93a3a"/>
+      <stop offset="1" stop-color="#a91f1f"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#brand)"/>
+  <text x="32" y="45" text-anchor="middle" fill="#ffffff" font-size="38"
+        font-weight="700" font-family="'PingFang SC','Microsoft YaHei',sans-serif">闪</text>
+</svg>
