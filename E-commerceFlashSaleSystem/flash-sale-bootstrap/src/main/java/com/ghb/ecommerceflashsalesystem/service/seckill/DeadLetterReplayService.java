@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
-import com.ghb.ecommerceflashsalesystem.domain.dto.message.SeckillOrderMessage;
+import com.ghb.ecommerceflashsalesystem.contracts.message.SeckillOrderMessage;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillMessageLog;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillOrder;
 import com.ghb.ecommerceflashsalesystem.domain.enums.MessageLogStatusEnum;

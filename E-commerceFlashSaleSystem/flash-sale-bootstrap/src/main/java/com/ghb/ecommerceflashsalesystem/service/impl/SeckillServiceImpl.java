@@ -4,7 +4,7 @@ import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.common.util.OrderNoGenerator;
-import com.ghb.ecommerceflashsalesystem.domain.dto.message.SeckillOrderMessage;
+import com.ghb.ecommerceflashsalesystem.contracts.message.SeckillOrderMessage;
 import com.ghb.ecommerceflashsalesystem.domain.dto.request.SeckillRequest;
 import com.ghb.ecommerceflashsalesystem.domain.dto.response.SeckillResponse;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;

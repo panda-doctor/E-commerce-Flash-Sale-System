@@ -2,7 +2,7 @@ package com.ghb.ecommerceflashsalesystem.integration;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
-import com.ghb.ecommerceflashsalesystem.domain.dto.message.SeckillOrderMessage;
+import com.ghb.ecommerceflashsalesystem.contracts.message.SeckillOrderMessage;
 import com.ghb.ecommerceflashsalesystem.domain.dto.request.SeckillRequest;
 import com.ghb.ecommerceflashsalesystem.domain.dto.response.SeckillResponse;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;

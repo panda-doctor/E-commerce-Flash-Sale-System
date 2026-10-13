@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.domain.dto.message;
+package com.ghb.ecommerceflashsalesystem.contracts.message;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

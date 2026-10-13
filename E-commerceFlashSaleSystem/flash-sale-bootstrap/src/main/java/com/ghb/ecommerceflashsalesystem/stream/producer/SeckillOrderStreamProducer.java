@@ -1,7 +1,7 @@
 package com.ghb.ecommerceflashsalesystem.stream.producer;
 
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
-import com.ghb.ecommerceflashsalesystem.domain.dto.message.SeckillOrderMessage;
+import com.ghb.ecommerceflashsalesystem.contracts.message.SeckillOrderMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.stream.RecordId;
