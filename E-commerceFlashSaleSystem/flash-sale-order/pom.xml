@@ -13,4 +13,28 @@
     <artifactId>flash-sale-order</artifactId>
     <name>flash-sale-order</name>
     <description>订单域：Stream 消费落单 / 订单查询 / 消息日志 / 重试 / 死信与回放</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-contracts</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-domain-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-infra</artifactId>
+        </dependency>
+        <!-- 落单成功后写入实时榜（order → analytics；P5 改为事件驱动） -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-analytics</artifactId>
+        </dependency>
+    </dependencies>
 </project>

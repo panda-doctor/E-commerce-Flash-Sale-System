@@ -2,11 +2,11 @@ package com.ghb.ecommerceflashsalesystem.integration;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
-import com.ghb.ecommerceflashsalesystem.domain.dto.request.AiChatRequest;
-import com.ghb.ecommerceflashsalesystem.domain.vo.ChatReplyVO;
-import com.ghb.ecommerceflashsalesystem.service.ai.AiChatService;
-import com.ghb.ecommerceflashsalesystem.service.ai.LlmChatClient;
-import com.ghb.ecommerceflashsalesystem.service.ai.OpenAiChatMessage;
+import com.ghb.ecommerceflashsalesystem.ai.dto.request.AiChatRequest;
+import com.ghb.ecommerceflashsalesystem.ai.vo.ChatReplyVO;
+import com.ghb.ecommerceflashsalesystem.ai.service.AiChatService;
+import com.ghb.ecommerceflashsalesystem.ai.service.LlmChatClient;
+import com.ghb.ecommerceflashsalesystem.ai.service.OpenAiChatMessage;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -12,5 +12,29 @@
 
     <artifactId>flash-sale-ai</artifactId>
     <name>flash-sale-ai</name>
-    <description>AI 客服域：OpenAI 兼容大模型对话（无状态，目录数据经商品/活动接口获取）</description>
+    <description>AI 客服域：OpenAI 兼容大模型对话（无状态，目录数据经商品/活动模块获取）</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-domain-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-infra</artifactId>
+        </dependency>
+        <!-- 实时目录数据（在售商品 + 活动场次） -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-product</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-activity</artifactId>
+        </dependency>
+    </dependencies>
 </project>

@@ -7,7 +7,7 @@ import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillOrder;
 import com.ghb.ecommerceflashsalesystem.product.mapper.ProductMapper;
 import com.ghb.ecommerceflashsalesystem.activity.mapper.SeckillActivityMapper;
-import com.ghb.ecommerceflashsalesystem.mapper.SeckillOrderMapper;
+import com.ghb.ecommerceflashsalesystem.order.mapper.SeckillOrderMapper;
 import lombok.extern.slf4j.Slf4j;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;

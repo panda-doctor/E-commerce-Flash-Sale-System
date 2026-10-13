@@ -13,4 +13,28 @@
     <artifactId>flash-sale-seckill</artifactId>
     <name>flash-sale-seckill</name>
     <description>秒杀执行域：滑动窗口限流 / Lua 原子扣减 / Stream 削峰投递</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-contracts</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-domain-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-infra</artifactId>
+        </dependency>
+        <!-- 执行前需读取活动缓存与时间窗（seckill → activity） -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-activity</artifactId>
+        </dependency>
+    </dependencies>
 </project>

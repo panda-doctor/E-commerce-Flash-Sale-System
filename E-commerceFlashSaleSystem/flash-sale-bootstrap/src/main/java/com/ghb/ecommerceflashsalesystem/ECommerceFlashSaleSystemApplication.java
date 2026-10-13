@@ -5,10 +5,11 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 @MapperScan({
-        "com.ghb.ecommerceflashsalesystem.mapper",
         "com.ghb.ecommerceflashsalesystem.user.mapper",
         "com.ghb.ecommerceflashsalesystem.product.mapper",
-        "com.ghb.ecommerceflashsalesystem.activity.mapper"
+        "com.ghb.ecommerceflashsalesystem.activity.mapper",
+        "com.ghb.ecommerceflashsalesystem.order.mapper",
+        "com.ghb.ecommerceflashsalesystem.analytics.mapper"
 })
 @EnableScheduling
 @SpringBootApplication

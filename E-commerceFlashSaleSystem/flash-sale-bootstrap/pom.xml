@@ -44,6 +44,22 @@
             <groupId>com.ghb</groupId>
             <artifactId>flash-sale-activity</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-seckill</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-order</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-analytics</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-ai</artifactId>
+        </dependency>
 
         <!-- ========== Web 层 ========== -->
         <dependency>

@@ -13,4 +13,24 @@
     <artifactId>flash-sale-analytics</artifactId>
     <name>flash-sale-analytics</name>
     <description>分析域：实时排行榜 / 运行指标 / 指标快照（P5 演进为事件驱动读模型）</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-contracts</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-domain-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-infra</artifactId>
+        </dependency>
+        <!-- 订单数据由 analytics.port.OrderQueryPort 提供，实现由 order 模块适配（避免 analytics→order 反向依赖） -->
+    </dependencies>
 </project>
