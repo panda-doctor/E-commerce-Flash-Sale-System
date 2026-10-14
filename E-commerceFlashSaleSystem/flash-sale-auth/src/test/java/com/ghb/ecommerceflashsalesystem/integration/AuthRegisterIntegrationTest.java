@@ -22,7 +22,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = {"flash.stream.auto-poll=false", "security.admin-token=test-admin-token"})
+/*
+ * P2 Day 2 起本用例归属 flash-sale-auth 服务（原先在单体的 bootstrap 模块）：
+ * 断言范围收敛到 auth 域的 HTTP 行为（注册 / 登录 / me / logout / 后台用户管理 / CSRF），
+ * 跨服务链路（会话驱动秒杀 execute）改由三进程联调脚本验证，不再写进本模块的单元级集成测试。
+ */
+@SpringBootTest(properties = {"security.admin-token=test-admin-token"})
 @AutoConfigureMockMvc
 class AuthRegisterIntegrationTest {
     private static final String PASSWORD = "CorrectHorse!123";
@@ -44,7 +49,7 @@ class AuthRegisterIntegrationTest {
     }
 
     @Test
-    void loginAndAuthenticatedSeckillUseSessionIdentityAndCsrf() throws Exception {
+    void loginUsesSessionIdentityAndCsrfIsEnforcedForMutations() throws Exception {
         String account = accountName();
         register(account);
         MvcResult login = mockMvc.perform(post("/api/auth/login")
@@ -59,23 +64,20 @@ class AuthRegisterIntegrationTest {
         mockMvc.perform(get("/api/auth/me").cookie(sessionCookie, csrfCookie))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.accountName").value(account));
 
-        // 会话 + CSRF 头：证明会话身份被采纳（请求体可省略 userId），并进入业务层（活动不存在 → 40004）
-        mockMvc.perform(post("/api/seckill/execute").cookie(sessionCookie, csrfCookie)
-                        .header("X-CSRF-Token", csrf)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"activityId\":999999}"))
+        // 写请求（logout）缺 X-CSRF-Token → 40301：CSRF 在会话鉴权之后、业务之前校验
+        mockMvc.perform(post("/api/auth/logout").cookie(sessionCookie, csrfCookie))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(not(ResultCode.UNAUTHORIZED.getCode())))
-                .andExpect(jsonPath("$.data.userId").isNotEmpty());
+                .andExpect(jsonPath("$.code").value(ResultCode.CSRF_INVALID.getCode()));
 
-        // 会话身份与请求体 userId 不符 → 40100（身份绑定校验在 CSRF 校验通过之后、业务之前）
-        mockMvc.perform(post("/api/seckill/execute").cookie(sessionCookie, csrfCookie)
-                        .header("X-CSRF-Token", csrf)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"activityId\":999999,\"userId\":123}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(ResultCode.UNAUTHORIZED.getCode()));
+        // 带 CSRF 头 → 退出成功
+        mockMvc.perform(post("/api/auth/logout").cookie(sessionCookie, csrfCookie)
+                        .header("X-CSRF-Token", csrf))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
 
-        mockMvc.perform(post("/api/seckill/execute").cookie(sessionCookie, csrfCookie)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"activityId\":999999}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(ResultCode.CSRF_INVALID.getCode()));
+        // 会话已撤销：再访问受保护接口 → 40100
+        mockMvc.perform(get("/api/auth/me").cookie(sessionCookie, csrfCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(ResultCode.UNAUTHORIZED.getCode()));
     }
 
     @Test

@@ -84,12 +84,8 @@ class ArchitectureTest {
             .that().resideInAPackage("..order..")
             .should().dependOnClassesThat().resideInAPackage("..seckill..");
 
-    @ArchTest
-    static final ArchRule R9_ai只允许依赖商品与活动 = noClasses()
-            .that().resideInAPackage("..ai..")
-            .should().dependOnClassesThat().resideInAnyPackage(
-                    "..user..", "..seckill..", "..order..", "..analytics..")
-            .because("AI 客服只读取商品与活动目录，不得触碰交易链路");
+    // R9（ai 只允许依赖商品与活动）已随 P2 Day 3「ai 域服务化」迁至 flash-sale-ai 模块自身的架构测试：
+    // bootstrap 不再依赖 flash-sale-ai，其类不在本测试的分析范围内（规则见 flash-sale-ai 的 AiArchitectureTest）。
 
     @ArchTest
     static final ArchRule R10_订单不得依赖商品活动秒杀 = noClasses()
