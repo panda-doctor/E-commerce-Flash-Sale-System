@@ -1,0 +1,91 @@
+# =====================================================
+# 认证服务（flash-sale-auth）—— P2 边缘抽取
+#
+# 端口 8082；服务名 flash-sale-auth（Nacos 服务发现名，网关 lb:// 目标）。
+# 过渡期说明（Day 1）：
+#   ① 数据库仍共用 flash_sale schema（P3 阶段再做 schema 隔离与双写迁移）；
+#   ② 网关尚未路由到本服务，因此线上行为与单体时期完全一致（回退点：停掉本服务即可）；
+#   ③ 鉴权拦截器（ApiAccessInterceptor）暂未纳入本服务，Day 4 由网关统一鉴权承接。
+# =====================================================
+server:
+  port: ${AUTH_PORT:8082}
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: flash-sale-auth
+
+  # 服务注册（Nacos 2.5.4 本机 standalone，未开鉴权；8848 HTTP + 9848 客户端 gRPC）
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+
+  # 过渡期共用同一 MySQL（P3 起 schema 隔离）
+  datasource:
+    url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 10000
+      max-lifetime: 1800000
+
+  # 会话/令牌相关缓存（与单体同库同实例；生产应按服务划分 key 前缀）
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+      database: 1
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 4
+          min-idle: 1
+          max-wait: 2000ms
+
+# 鉴权与令牌配置（与单体保持一致，环境变量驱动）
+security:
+  admin-token: ${ADMIN_TOKEN:}
+  user-tokens: ${USER_TOKENS:}
+  legacy-user-tokens-enabled: ${LEGACY_USER_TOKENS_ENABLED:false}
+  session-cookie-name: ${SESSION_COOKIE_NAME:FLASH_SESSION}
+  session-cookie-secure: ${SESSION_COOKIE_SECURE:false}
+  session-ttl-hours: ${SESSION_TTL_HOURS:168}
+  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+
+mybatis-plus:
+  # 多模块后 XML 分散在各模块 jar，必须用 classpath* 通配扫描
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: com.ghb.ecommerceflashsalesystem.domain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: INPUT
+
+# =====================================================
+# P2 可观测：Actuator 健康与指标（Prometheus 抓取 /actuator/prometheus）
+# =====================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    com.ghb.ecommerceflashsalesystem: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId:-}] %-5level %logger{36} - %msg%n"

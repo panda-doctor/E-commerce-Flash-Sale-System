@@ -886,6 +886,19 @@
 
 ---
 
+**P2 逐日进度（边缘抽取）：**
+
+| 日 | 任务 | 状态 | 验证 / 提交 |
+|---|---|---|---|
+| Day 1 | `flash-sale-auth` 可启动骨架（新模块 + 启动类 + 独立配置 + 父 POM 登记），**零行为变更** | ✅ 2026-10-14 | `install` 通过；`:8082` health **UP**（`db` / `redis` / `nacosDiscovery` 全 UP）；Nacos 服务列表 **3 个**（新增 `flash-sale-auth`）；`POST /api/auth/login` 返回业务错误码 `40101`（域代码在新进程已生效）；单体/网关零影响（`gw_health=200`、`gw_products=200`） |
+| Day 2 | auth 域割接：把 `user` 的 controller / service / mapper / dto 迁入 `flash-sale-auth`，单体摘除该域；网关加 `/api/auth/**`、`/api/admin/users/**` → `lb://flash-sale-auth`（置于 catch-all 之前） | ⏳ | 经网关登录/注册/我的信息/后台用户管理可用；单体侧同路径 404；用例按模块归位 |
+| Day 3 | ai 域割接：`flash-sale-ai` 变为可启动服务（含 `AiLlmProperties` / `LlmChatClient` / `AiChatServiceImpl`；过渡期目录数据仍直连 DB）；网关加 `/api/support/**` → `lb://flash-sale-ai` | ⏳ | AI 对话经网关可用（未配置 Key 时 `50300` 语义不变） |
+| Day 4 | 网关统一鉴权（管理令牌 / 用户会话下沉网关过滤器）+ 全量回归 + 文档 + `git tag p2-done` | ⏳ | 直连服务被拒 / 经网关放行；113 用例绿线 |
+
+> P2 过渡期约定（Day 1 已生效）：① 数据库仍共用 `flash_sale` schema（P3 再做 schema 隔离与双写迁移）；② 新服务内暂缺鉴权拦截器，由 Day 4 的网关统一鉴权承接；③ **回退点**：停掉 `flash-sale-auth` 进程即回退到单体全量行为（网关路由未改）。
+
+---
+
 *文档创建日期：2026-07-29*
-*上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`）*
-*下次开始位置：①**P2 边缘抽取**（auth-service / ai-service 拆出 + 网关统一鉴权；任务要点见 `docs/microservices-plan.md` 第 5.2 节与第 3.1 节服务清单）；②可选 T6 — OTel/Zipkin 替换自研 traceId；③图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起；④本地领先 origin 若干提交，可按需 push*
+*上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更））*
+*下次开始位置：①**P2 Day 2 — auth 域割接**（把 `user` 域 controller/service/mapper/dto 迁入 `flash-sale-auth`、单体摘除该域、网关加 `/api/auth/**` 与 `/api/admin/users/**` 精确路由至 `lb://flash-sale-auth`）；②可选 T6 — OTel/Zipkin 替换自研 traceId；③图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起；④本地领先 origin 若干提交，可按需 push*

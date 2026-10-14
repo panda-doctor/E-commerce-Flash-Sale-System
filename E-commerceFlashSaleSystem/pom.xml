@@ -36,6 +36,7 @@
         <module>flash-sale-order</module>
         <module>flash-sale-analytics</module>
         <module>flash-sale-ai</module>
+        <module>flash-sale-auth</module>
         <module>flash-sale-gateway</module>
         <module>flash-sale-bootstrap</module>
     </modules>
@@ -111,6 +112,11 @@
             <dependency>
                 <groupId>com.ghb</groupId>
                 <artifactId>flash-sale-ai</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-auth</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
