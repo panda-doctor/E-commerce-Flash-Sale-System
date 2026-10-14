@@ -56,10 +56,8 @@
             <groupId>com.ghb</groupId>
             <artifactId>flash-sale-analytics</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.ghb</groupId>
-            <artifactId>flash-sale-ai</artifactId>
-        </dependency>
+        <!-- P2 Day 3：flash-sale-ai 已服务化（可执行 jar，不可被依赖），单体摘除 AI 域 -->
+
 
         <!-- ========== Web 层 ========== -->
         <dependency>

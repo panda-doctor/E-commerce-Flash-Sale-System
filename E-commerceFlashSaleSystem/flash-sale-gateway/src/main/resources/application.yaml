@@ -23,6 +23,11 @@ spring:
           uri: lb://flash-sale-auth
           predicates:
             - Path=/api/auth/**,/api/admin/users/**
+        # P2 Day 3：ai 域已服务化（flash-sale-ai :8083）
+        - id: flash-sale-ai
+          uri: lb://flash-sale-ai
+          predicates:
+            - Path=/api/support/**
         # 单体（P0 模块化单体）已注册为 flash-sale-monolith；
         # lb:// 走服务发现 + 客户端负载均衡（多实例时自动轮询），不再写死 IP:端口
         - id: flash-sale-monolith

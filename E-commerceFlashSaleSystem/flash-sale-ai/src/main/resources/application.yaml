@@ -1,0 +1,90 @@
+# =====================================================
+# AI 客服服务（flash-sale-ai）—— P2 Day 3 服务化
+#
+# 端口 8083；服务名 flash-sale-ai（网关 lb:// 目标，路由 /api/support/**）。
+# 过渡期说明：
+#   ① 数据库仍共用 flash_sale schema（P3 起做 schema 隔离与双写迁移）；
+#   ② 目录数据（在售商品 / 活动场次）仍直连 DB，P3 后改为调用 product/activity 服务接口；
+#   ③ /api/support/** 为匿名接口（不在 ApiAccessWebConfig 保护路径内），故无需鉴权依赖。
+# =====================================================
+server:
+  port: ${AI_PORT:8083}
+
+spring:
+  application:
+    name: flash-sale-ai
+
+  # 服务注册（Nacos 2.5.4 本机 standalone，未开鉴权；8848 HTTP + 9848 客户端 gRPC）
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+
+  # 过渡期共用同一 MySQL（P3 起 schema 隔离）
+  datasource:
+    url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 2
+      connection-timeout: 10000
+      max-lifetime: 1800000
+
+  # infra 的 Redis/Redisson 配置需要（AI 对话本身不用缓存）
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+      database: 1
+      timeout: 5000ms
+
+# =====================================================
+# AI 客服大模型（OpenAI Chat Completions 兼容协议，默认 DeepSeek）
+# 密钥经 .env 的 AI_LLM_API_KEY 注入；留空时 /api/support/chat 返回 50300 可读提示。
+# =====================================================
+ai:
+  llm:
+    base-url: ${AI_LLM_BASE_URL:https://api.deepseek.com}
+    api-key: ${AI_LLM_API_KEY:}
+    model: ${AI_LLM_MODEL:deepseek-chat}
+    temperature: 0.7
+    max-tokens: 800
+    timeout-seconds: 30
+
+# =====================================================
+# MyBatis-Plus（目录查询：商品 / 活动）
+# =====================================================
+mybatis-plus:
+  # 多模块后 XML 分散在各模块 jar，必须用 classpath* 通配扫描
+  mapper-locations: classpath*:mapper/*.xml
+  type-aliases-package: com.ghb.ecommerceflashsalesystem.domain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: INPUT
+
+# =====================================================
+# 可观测：Actuator 健康与指标（Prometheus 抓取 /actuator/prometheus）
+# =====================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    com.ghb.ecommerceflashsalesystem: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId:-}] %-5level %logger{36} - %msg%n"
