@@ -43,6 +43,21 @@ spring:
             allow-credentials: true
 
 # =====================================================
+# 统一鉴权（P2 Day 4）：管理令牌 / 用户态凭证的准入校验
+# 服务侧拦截器保留为纵深防御（直连服务仍受保护）
+# =====================================================
+security:
+  # 与单体/各服务同源：由 .env 的 ADMIN_TOKEN 注入。
+  # 注意：网关必须以聚合根为工作目录运行（boot 插件 workingDirectory），否则读不到 .env，
+  # 会导致所有 /api/admin/** 请求被判 40100「管理端访问令牌未配置」。
+  admin-token: ${ADMIN_TOKEN:}
+
+gateway:
+  auth:
+    # 用户态准入使用的会话 Cookie 名（与单体 / auth 服务一致）
+    session-cookie-name: ${SESSION_COOKIE_NAME:FLASH_SESSION}
+
+# =====================================================
 # 健康与指标（P1-2：Prometheus 抓取 /actuator/prometheus）
 # =====================================================
 management:

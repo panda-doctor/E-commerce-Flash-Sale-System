@@ -32,6 +32,17 @@
             <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
 
+        <!-- P2 Day 4：复用 common 的状态码与 requestId 工具（网关统一鉴权需返回同一信封形态） -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-common</artifactId>
+        </dependency>
+        <!-- 读 .env（管理令牌与各服务同源；须配合 boot 插件 workingDirectory） -->
+        <dependency>
+            <groupId>me.paulschwarz</groupId>
+            <artifactId>spring-dotenv</artifactId>
+        </dependency>
+
         <!-- 自身健康与指标（P1-2 交由 Prometheus 抓取） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -41,6 +52,12 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
+        <!-- 单测（AuthGatewayFilterTest：准入规则纯单测，无需启动网关） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -49,6 +66,10 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <!-- 与其它服务一致：以聚合根为工作目录，才能读到 .env 的 ADMIN_TOKEN -->
+                    <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+                </configuration>
             </plugin>
         </plugins>
     </build>
