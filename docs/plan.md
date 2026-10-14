@@ -891,11 +891,51 @@
 | 日 | 任务 | 状态 | 验证 / 提交 |
 |---|---|---|---|
 | Day 1 | `flash-sale-auth` 可启动骨架（新模块 + 启动类 + 独立配置 + 父 POM 登记），**零行为变更** | ✅ 2026-10-14 | `install` 通过；`:8082` health **UP**（`db` / `redis` / `nacosDiscovery` 全 UP）；Nacos 服务列表 **3 个**（新增 `flash-sale-auth`）；`POST /api/auth/login` 返回业务错误码 `40101`（域代码在新进程已生效）；单体/网关零影响（`gw_health=200`、`gw_products=200`） |
-| Day 2 | auth 域割接：把 `user` 的 controller / service / mapper / dto 迁入 `flash-sale-auth`，单体摘除该域；网关加 `/api/auth/**`、`/api/admin/users/**` → `lb://flash-sale-auth`（置于 catch-all 之前） | ⏳ | 经网关登录/注册/我的信息/后台用户管理可用；单体侧同路径 404；用例按模块归位 |
+| Day 2 | auth 域割接：把 `user` 的 controller / service / mapper / dto 迁入 `flash-sale-auth`，单体摘除该域；网关加 `/api/auth/**`、`/api/admin/users/**` → `lb://flash-sale-auth`（置于 catch-all 之前） | ⏳（**详细任务卡见本节末**） | 经网关登录/注册/我的信息/后台用户管理可用；单体侧同路径 404；用例按模块归位 |
 | Day 3 | ai 域割接：`flash-sale-ai` 变为可启动服务（含 `AiLlmProperties` / `LlmChatClient` / `AiChatServiceImpl`；过渡期目录数据仍直连 DB）；网关加 `/api/support/**` → `lb://flash-sale-ai` | ⏳ | AI 对话经网关可用（未配置 Key 时 `50300` 语义不变） |
 | Day 4 | 网关统一鉴权（管理令牌 / 用户会话下沉网关过滤器）+ 全量回归 + 文档 + `git tag p2-done` | ⏳ | 直连服务被拒 / 经网关放行；113 用例绿线 |
 
 > P2 过渡期约定（Day 1 已生效）：① 数据库仍共用 `flash_sale` schema（P3 再做 schema 隔离与双写迁移）；② 新服务内暂缺鉴权拦截器，由 Day 4 的网关统一鉴权承接；③ **回退点**：停掉 `flash-sale-auth` 进程即回退到单体全量行为（网关路由未改）。
+
+### P2 Day 2 详细任务卡（方案 A：auth 域割接）
+
+> 执行方式：panda 实现 + 导师现场纠偏（本条按 panda 要求以"指导"形式交付）；预估 2~3 小时。
+
+**目标形态**：auth 域实现收敛到库 `flash-sale-auth-core`；HTTP 接口由 `flash-sale-auth`（:8082）独家提供；单体摘除该域、仅保留自持鉴权；网关精确导流。
+
+```
+flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
+├─ user/config/*   (3) 安全配置 / 令牌       ├─ user/controller/* (2) ← 唯一对外接口方
+├─ user/service/*  (2) 账号 / 会话服务       ├─ AuthServiceApplication
+├─ user/mapper/*   (2)                      └─ application.yaml（Day 1 已就绪）
+├─ user/dto/**     (7)
+└─ user/web/*      (2) 拦截器对（自 bootstrap/config 迁入并改包名）
+        ▲                                          ▲
+   flash-sale-bootstrap（依赖 core：仍自持 /api/admin/**、/api/seckill/** 鉴权，不再暴露 auth 接口）
+```
+
+**Day 2 侦察结论（决定方案形态）**：① 拦截器链 `ApiAccessInterceptor → UserSessionService → UserAccountService` → "横切库"必须承载**整个 auth 域实现**（不能只放 4 个类）；② 跨模块引用 `user.*` 仅 **5 处**（bootstrap 的 2 个 config 类 + 3 个测试类）→ 搬迁面小；③ 仅 `AuthRegisterIntegrationTest` 触碰 `/api/auth` → 测试归位可控。
+
+| 步骤 | 内容 | 要点 / 命令 |
+|---|---|---|
+| Step 0 前置 | 停 8081/8090（改结构前保持干净）；确认工作区 clean | `Get-NetTCPConnection -LocalPort 8081,8090 -State Listen \| ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }` |
+| Step 1 建 core 库 | 新建 `flash-sale-auth-core`；`git mv` 搬 `user/{config,service,mapper,dto/**}`（14 文件）+ 把 bootstrap 的 `config/{ApiAccessInterceptor,ApiAccessWebConfig}` 搬入并改包名 `...user.web`；POM 依赖 common / domain-model / infra / security-crypto（+test）；父 POM 的 `<module>` 与 `dependencyManagement` 中 `flash-sale-user` → `flash-sale-auth-core` | 除拦截器对外，**包名保持不变**（最小化 import 改动）；`spring-webmvc`/`jakarta.servlet` 由 infra 传递 |
+| Step 2 auth 承载接口 | `user/controller/*`（`UserAuthController`、`AdminUserController`）`git mv` 进 `flash-sale-auth`；auth POM 依赖改 `flash-sale-auth-core`；删除 `flash-sale-user` 空模块 | 单体从此不再暴露 `/api/auth/**`、`/api/admin/users/**` |
+| Step 3 单体收窄 | bootstrap POM：`flash-sale-user` → `flash-sale-auth-core`；修掉过期注释（boot 插件"全工程唯一"→ bootable 模块各自声明）；`@MapperScan` 不需改 | 单体仍自持 `/api/admin/**`、`/api/seckill/**` 鉴权（拦截器 Bean 来自 core） |
+| Step 4 网关路由 | 新增精确路由（**必须排在 `/api/**` 兜底之前**）：`Path=/api/auth/**,/api/admin/users/**` → `lb://flash-sale-auth` | 先匹配先赢（YAML 顺序即匹配顺序） |
+| Step 5 测试归位 | 3 个单测（`UserTokenRegistryTest` / `ApiAccessInterceptorTokenTest` / `UserAccountServiceTest`）→ `flash-sale-auth-core/src/test`；`AuthRegisterIntegrationTest` 迁到 auth app 并**删除 `/api/seckill/execute` 断言**；bootstrap 新增 `AuthEndpointsMovedTest`（`/api/auth/me`→404、`/api/admin/users`→404、`/api/admin/seckill/...` 无令牌→40100）；auth 模块新增 `src/test/resources/application.properties`（关闭 Nacos 注册） | 跨服务"登录后 execute"改由联调脚本验证，不写单测 |
+| Step 6 三进程联调 | `install` → 起 8081 / 8082 / 8090 → Nacos 3 服务；经网关注册 + 登录 + `/api/auth/me` 200；直连单体 `/api/auth/login` → 404；`/api/admin/users` 带 `X-Admin-Token` 200 / 无令牌 40100；`/api/seckill/.../check` → 40100 | 见下方验收判据 |
+| Step 7 回归收尾 | 停三进程 → `mvn clean test` 绿线；`plan.md` / `interface.md` 同步；4 个原子提交 | 提交信息见下 |
+
+**验收判据**：① Nacos 服务列表含 `flash-sale-auth`（3 服务）；② 经网关 `POST /api/auth/register` → `code=0`、`GET /api/auth/me` → `code=0`；③ 直连单体 `/api/auth/login` → **404**；④ `/api/admin/users` 带令牌 200 / 无令牌 **40100**；⑤ 单体受保护接口无会话 → **40100**（非 404/500）；⑥ 全量 `mvn clean test` 绿；⑦ 前端零改动（vite 代理已指向网关 8090）。
+
+**六个坑**：① 路由顺序（auth 必须排在 `/api/**` 之前）；② auth 服务必须扫到 `ApiAccessWebConfig`（漏了会导致 `/api/auth/me` **裸奔放行**，最危险的一种错）；③ `-pl` 运行前先 `install`（新模块 jar 不在本地仓库）；④ `ArchitectureTest` 白名单需移除已迁走的 2 个 config 类；⑤ `-Dtest=` 需带 `-Dsurefire.failIfNoSpecifiedTests=false`；⑥ 单体摘除后直连 8081 会 404（前端经网关无碍）。
+
+**回退点**：首选 `git revert`（4 个提交可逐条回退）；手工回退 = bootstrap 依赖改回 `flash-sale-user` + 恢复该模块 + 删网关那两条路由。
+
+**Day 2 引入的过渡期约定**：跨服务会话可用依赖"同一 `user_session` 表 + 同一 Cookie 名"；Day 4 网关统一鉴权后显式化为"网关注入身份头"。
+
+**提交计划（4 个原子提交）**：① `refactor(p2-day2): 抽取 flash-sale-auth-core（auth 域实现库）+ 删除 flash-sale-user`；② `feat(p2-day2): flash-sale-auth 承载 auth HTTP 接口；单体收窄为仅自持鉴权`；③ `feat(p2-day2): 网关精确路由 /api/auth/** 与 /api/admin/users/** → lb://flash-sale-auth`；④ `test(p2-day2): auth 用例按模块归位 + 单体 404 断言 + 文档同步`。
 
 ---
 
