@@ -1,0 +1,57 @@
+# =====================================================
+# 观测栈（T5）：Prometheus + Grafana
+#
+# 运行环境：WSL 发行版 redis 内的 Docker（Engine 29.7.2 / Compose v5.5.0）
+#
+# 启动 / 停止（在 Windows 侧执行）：
+#   up   : wsl -d redis -- docker compose -f /mnt/d/Project/E-commerceFlashSaleSystem/deploy/docker-compose.yml --profile obs up -d
+#   ps   : wsl -d redis -- docker compose -f /mnt/d/Project/E-commerceFlashSaleSystem/deploy/docker-compose.yml ps
+#   down : wsl -d redis -- docker compose -f /mnt/d/Project/E-commerceFlashSaleSystem/deploy/docker-compose.yml --profile obs down
+#
+# 网络方案（实测结论，2026-10-14）：
+#   本机环境下 bridge 网络容器「无法」访问 Windows 宿主上运行的应用
+#   （host.docker.internal via host-gateway → 000；直连 WSL vEthernet IP → 000），
+#   而 network_mode: host 下容器内 localhost 可直接命中宿主 8081/8090（200）。
+#   → 两个服务均使用 host 网络；服务直接监听宿主端口，因此不需要 ports 映射。
+#   Grafana 与 Prometheus 同处一个网络命名空间，数据源写 http://localhost:9090。
+#
+# 不用写 version: —— Compose v2/v5 已废弃该字段。
+# =====================================================
+name: flash-sale-obs
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: flash-obs-prometheus
+    profiles: ["obs"]
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d      # 本地演示保留 15 天，避免磁盘无限增长
+      - --web.enable-lifecycle                 # 支持 curl -X POST localhost:9090/-/reload 热加载配置
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: flash-obs-grafana
+    profiles: ["obs"]
+    restart: unless-stopped
+    network_mode: host                          # 与 prometheus 同命名空间 → 数据源走 localhost:9090
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-flashsale}   # 共享环境请改强密码（deploy/.env）
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_HTTP_PORT: "3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  prometheus-data:
+  grafana-data:

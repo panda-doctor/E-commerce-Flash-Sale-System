@@ -877,7 +877,7 @@
 | T2 | ~~Compose 基建骨架~~ → **修订（2026-10-14，panda 决策）**：Nacos **本机原生安装**（非容器、不走 WSL）；Prometheus/Grafana 观测栈保留到 T5（WSL Docker） | ✅ 2026-10-14 | 证据：Nacos **2.5.4** / standalone / 未开鉴权 / 8848+9848 双端口 / 内嵌 Derby；`deploy/README.md` 已交付（安装路径 `D:\nacos-server-2.5.4\nacos`、启停脚本、**自启现状＝未配置**〔服务/计划任务/启动夹/注册表四处核查〕+ 两种自启方案、注册信息、排查 4 条、T5 预留） |
 | T3 | 单体注册进 Nacos（父 POM 加 SCA BOM + bootstrap 加 discovery + 配置/测试资源） | ✅ 2026-10-14（**由导师直接实现，panda 指定**） | `doms:["flash-sale-monolith"]`；实例 `172.21.112.1:8081` / `healthy:true`；注册 IP 与 127.0.0.1 均 200 可达；全量 **113 用例 BUILD SUCCESS**；测试侧注册关闭（跑完服务列表为空） |
 | T4 | 网关 `lb://` 服务发现路由 | ✅ 2026-10-14（导师实现） | 网关加 `nacos-discovery` + `loadbalancer`，路由 `uri` 由静态改为 `lb://flash-sale-monolith`；经网关访问健康检查 200（`X-Trace-Id` 仍贯通）、商品列表 JSON 正常；Nacos 服务列表 2 个（`flash-sale-gateway` / `flash-sale-monolith`）；全量 113 用例 BUILD SUCCESS；⚠️ 运维提示：单体未注册时网关返回 503 |
-| T5 | Prometheus 抓取单体/网关 + Grafana 看板 | ⏳ | Targets 全 UP + 看板出图 |
+| T5 | Prometheus 抓取单体/网关 + Grafana 看板 | ✅ 2026-10-14（导师实现） | Targets 全 UP（3/3）+ 看板出图 ✅ |
 | T6（可选） | OTel/Zipkin 接入，与自研 traceId 打通 | ⏳ | Zipkin 可查 execute 链路 span |
 
 > P1-2 注意事项（导师提示）：①Compose v5 下 `version:` 字段已废弃，不要写；②`my-redis` 为 `docker run` 启动，compose 中不得重复声明 redis 抢 6379；③Nacos 2.x 必须映射 **9848**（客户端 gRPC），否则注册失败；④抓取 Windows 宿主服务需 `extra_hosts: host.docker.internal:host-gateway`；⑤**Maven 镜像必须用 HTTPS**（2026-10-14 阻塞性环境问题，已修复）：本机 `~/.m2/settings.xml` 的 alimaven 镜像为 `http://maven.aliyun.com/nexus/content/groups/public/`，被 Maven 3.8+ 的 HTTP 拦截机制阻断（报 `Blocked mirror for repositories`），导致**本地仓库没有的新依赖无法下载**（Spring Cloud Alibaba BOM 解析失败即由此引起；此前构建能过是因为依赖早已在本地仓库）→ 已改为 `https://maven.aliyun.com/repository/public`。
@@ -885,5 +885,5 @@
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-10-14（**P1-2：T1~T4 完成**：Nacos 2.5.4 本机 standalone；单体注册 `flash-sale-monolith`（healthy）；网关路由改 `lb://` 服务发现（经网关访问业务接口正常、traceId 贯通、Nacos 中 2 个服务）；`deploy/README.md` 交付；全量 113 用例 BUILD SUCCESS。另修复阻塞性环境问题：Maven 镜像 `http → https`；panda 已提交 P1-1 `8562fc2`）*
-*下次开始位置：①T5 — Prometheus + Grafana 观测栈（WSL `redis` 发行版 Docker，`deploy/docker-compose.yml` 的 `obs` profile + `prometheus/prometheus.yml`，抓 8081/8090 的 `/actuator/prometheus`）；②提交 T3/T4 与 deploy/README.md 改动（建议信息见本轮报告）；③可选 T6 OTel/Zipkin；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
+*上次更新：2026-10-14（**P1-2：T1~T5 完成**：Nacos 2.5.4 本机 standalone；单体注册 `flash-sale-monolith`（healthy）；网关 `lb://` 服务发现路由（traceId 贯通、Nacos 2 个服务）；**T5 观测栈落地** —— WSL Docker `obs` profile 起 Prometheus v2.53.0 + Grafana 11.1.0，Prometheus targets 3/3 UP、Grafana 数据源与看板 provisioning 自动加载、看板 6 面板出图（造流量后 QPS 有值）；`deploy/README.md` 扩写观测栈章节（组成/启停/访问/排查）；全量 113 用例 BUILD SUCCESS。**环境级结论**：本机 `networkingMode=mirrored` 下 bridge 容器无法访问 Windows 宿主应用（host-gateway 与直连 WSL IP 均 000）→ 观测栈必须 `network_mode: host`；Windows 侧访问须写 `127.0.0.1`（Prometheus/Grafana 仅监听 IPv4，`localhost` 优先走 `::1` 会超时）。另修复阻塞性环境问题：Maven 镜像 `http → https`；panda 已提交 P1-1 `8562fc2` 与 T2/T3/T4 `a36e38f`/`67ca26d`/`8de0ef7`）*
+*下次开始位置：①提交 T5 改动（`deploy/` 新增 6 个文件 + `README.md` 扩写 + `plan.md`）；②可选 T6 — OTel/Zipkin 替换自研 traceId（业务开发）；③T5 收尾后进入 P2 边缘抽取（auth-service / ai-service + 网关统一鉴权）；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*

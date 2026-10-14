@@ -1,0 +1,38 @@
+# =====================================================
+# Prometheus 抓取配置（T5 观测栈）
+#
+# 运行环境：WSL(redis 发行版) Docker，prometheus 容器使用 network_mode: host
+#   实测结论（2026-10-14）：本机 bridge 容器无法访问 Windows 宿主应用
+#   （host.docker.internal via host-gateway、直连 WSL vEthernet IP 均超时），
+#   而 host 网络下容器内 localhost 即命中宿主，故抓取目标写 localhost。
+# =====================================================
+global:
+  scrape_interval: 10s          # 与 Grafana 数据源 timeInterval 对齐
+  scrape_timeout: 5s
+  evaluation_interval: 15s
+  external_labels:
+    env: local
+    project: flash-sale
+
+scrape_configs:
+  # 模块化单体（P0 产物）：业务接口 + 全部业务域指标
+  - job_name: flash-sale-monolith
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['localhost:8081']
+        labels:
+          # 与 Micrometer 侧 management.metrics.tags.application 一致，便于看板统一按 application 聚合
+          application: flash-sale-monolith
+
+  # API 网关（P1-1 产物）
+  - job_name: flash-sale-gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['localhost:8090']
+        labels:
+          application: flash-sale-gateway
+
+  # Prometheus 自身（确认抓取链路与 TSDB 写入本身健康）
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

@@ -1,0 +1,14 @@
+# Grafana 数据源 provisioning（T5）：启动即自动注册，无需手点 UI
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus                 # 固定 uid：看板 JSON 用该 uid 引用数据源
+    type: prometheus
+    access: proxy
+    # 观测栈统一 host 网络：Grafana 与 Prometheus 同网络命名空间 → localhost
+    url: http://localhost:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 10s             # 与 prometheus.yml 的 scrape_interval 对齐
+      httpMethod: POST

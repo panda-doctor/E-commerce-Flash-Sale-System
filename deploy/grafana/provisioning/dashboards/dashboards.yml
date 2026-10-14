@@ -1,0 +1,15 @@
+# Grafana 看板 provisioning（T5）：从容器内挂载目录加载看板 JSON
+apiVersion: 1
+
+providers:
+  - name: flash-sale
+    orgId: 1
+    folder: 'Flash Sale'
+    folderUid: flash-sale
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30       # 改动 JSON 后 30 秒自动热加载
+    allowUiUpdates: true            # 允许在 UI 临时调整（调整后建议 Export 回写 JSON）
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
