@@ -824,7 +824,7 @@
 | 阶段 | 主题 | 预估 | 里程碑 | 状态 |
 |---|---|---|---|---|
 | P0 | 边界治理（Maven 12 模块 + 包边界 + ArchUnit 规则） | 4 天 | M1 模块化单体 | ✅ 完成（2026-10-13） |
-| P1 | 基础设施（Nacos / Gateway / Compose / 追踪 / 监控） | 3 天 | M2 基建就绪 | 🔄 P1-1 ✅ / P1-2 待 Docker |
+| P1 | 基础设施（Nacos / Gateway / Compose / 追踪 / 监控） | 3 天 | M2 基建就绪 | 🔄 P1-1 ✅ / P1-2 进行中（T1 ✅） |
 | P2 | 边缘抽取（auth-service / ai-service / 网关统一鉴权） | 4 天 | M3 首个服务上线 | ⏳ |
 | P3 | 商品与活动（product / activity 独立库与缓存所有权） | 5 天 | M4 主数据域独立 | ⏳ |
 | P4 | 核心交易（seckill / order / `order.created` 事件 / 数据迁移） | 6 天 | M5 跨服务交易闭环 | ⏳ |
@@ -865,12 +865,25 @@
 | 批次 | 任务 | 状态 | 验证 / 说明 |
 |---|---|---|---|
 | P1-1（免容器） | ① `flash-sale-gateway` 网关模块（`/api/**` 静态路由 → 单体 8081、CORS、traceId 注入，端口 8090）② 单体 Actuator + Prometheus 端点 ③ **traceId 三处贯通**（HTTP → MDC → Stream 消息体 → 消费端 MDC）④ 前端代理改走网关 | ✅ 2026-10-13 | 网关 200 + 单一 `X-Trace-Id`；同一链路号同时出现在**网关 / 生产线程 `http-nio-8081-exec-5` / 消费线程 `scheduling-1`**；`/actuator/prometheus` 200；前端经网关复验商品与活动实时渲染；全量 113 用例 BUILD SUCCESS |
-| P1-2（WSL Docker） | Compose 基建（Nacos + Prometheus/Grafana；**MySQL/Redis 继续使用宿主 MySQL 与 WSL 现有 Redis，容器化留到 P3 数据迁移**）；单体注册 Nacos 与网关 `lb://` 动态路由；OTel/Zipkin 可选 | ⏳ 待启动（panda 亲自实现，导师指导 + 审查） | 按沟通约定 #4，Docker 位于 WSL；Windows 宿主无 `docker` 命令（此前检查口径有误），以 panda 的 WSL 环境检查结果为准 |
+| P1-2（WSL Docker） | Compose 基建（Nacos + Prometheus/Grafana；**MySQL/Redis 继续使用宿主 MySQL 与 WSL 现有 Redis，容器化留到 P3 数据迁移**）；单体注册 Nacos 与网关 `lb://` 动态路由；OTel/Zipkin 可选 | 🔄 进行中（T1 ✅ 2026-10-14；panda 亲自实现，导师指导 + 审查） | Docker 位于 `redis` 发行版：Engine **29.7.2** + Compose **v5.5.0**；现有 Redis 容器 `my-redis`（6379 已发布，P1-2 不动它）；T2 起逐项验收 |
 
 > P1-1 踩坑记录：①**端口冲突**——本机 8080 被外部服务占用（uvicorn，疑似 WSL 端口转发，非本项目），网关改用 `${GATEWAY_PORT:8090}`，前端 vite 代理同步指向 8090；②**响应头重复**——网关与单体都回填 `X-Trace-Id`，网关侧提前 `set` 会与下游头合并成两条，改为 `beforeCommit` 提交前覆盖写；③**日志级别**——单体 `com.ghb...` 由 ERROR 调回 INFO（链路贯通与缓存命中观测需要业务日志可见）。
+
+**P1-2 任务进度（panda 实现，导师审查）：**
+
+| 任务 | 内容 | 状态 | 证据 / 验收 |
+|---|---|---|---|
+| T1 | WSL Docker 环境确认 | ✅ 2026-10-14 | `redis` 发行版内 Docker **29.7.2** + Compose **v5.5.0**；现有容器 `my-redis`（redis:latest，6379 已发布）；`networkingMode=mirrored`（WSL 端口直接镜像到 Windows localhost） |
+| T2 | ~~Compose 基建骨架~~ → **修订（2026-10-14，panda 决策）**：Nacos **本机原生安装**（非容器、不走 WSL）；Prometheus/Grafana 观测栈保留到 T5（WSL Docker） | 🔄 证据已核验：Nacos **2.5.4** / standalone / **未开鉴权** / **8848+9848 双端口 LISTENING** / 控制台 302 / 内嵌 Derby 不依赖 MySQL；**仅剩提交 `deploy/README.md`** | 待验收：README 含安装路径·启停·开机自启方式·控制台·鉴权·Derby 说明·排查两条 |
+| T3 | 单体注册进 Nacos | ⏳ | Nacos 服务列表出现单体实例 + 全量 `mvn test` 绿 |
+| T4 | 网关 `lb://` 服务发现路由 | ⏳ | `:8090/api/health` 仍 200 且经服务发现转发 |
+| T5 | Prometheus 抓取单体/网关 + Grafana 看板 | ⏳ | Targets 全 UP + 看板出图 |
+| T6（可选） | OTel/Zipkin 接入，与自研 traceId 打通 | ⏳ | Zipkin 可查 execute 链路 span |
+
+> P1-2 注意事项（导师提示）：①Compose v5 下 `version:` 字段已废弃，不要写；②`my-redis` 为 `docker run` 启动，compose 中不得重复声明 redis 抢 6379；③Nacos 2.x 必须映射 **9848**（客户端 gRPC），否则注册失败；④抓取 Windows 宿主服务需 `extra_hosts: host.docker.internal:host-gateway`。
 
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-10-13（**P1-1 完成**：网关模块 + traceId 三处贯通 + Actuator/Prometheus + 前端代理切换，全量 **113 用例 BUILD SUCCESS**；同日早些时候完成 P0/M1 与前端 F1/F2 修复）*
-*下次开始位置：①P1-2 基础设施（**需先安装 Docker**）——Compose 起 Nacos/观测栈、服务注册与 `lb://` 动态路由；②若暂不具备 Docker：可先做前端优化轮，或把本地提交 push 到 origin（当前领先较多且含未提交改动）；③图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
+*上次更新：2026-10-14（**P1-2 进行中**：T1 ✅ WSL Docker 环境确认（Engine 29.7.2 / Compose v5.5.0）；T2 🔄 Nacos 改为本机原生安装并核验证据（2.5.4 / standalone / 无鉴权 / 8848+9848 / Derby），仅剩 `deploy/README.md`；模式：**panda 亲自实现，导师指导 + 审查**）*
+*下次开始位置：①T2 收尾：提交 `deploy/README.md`（Nacos 启停/自启/控制台/排查）；②T3 — 单体注册进 Nacos（父 POM 加 Spring Cloud Alibaba BOM + bootstrap 加 discovery 依赖 + 测试侧关闭注册）；③图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
