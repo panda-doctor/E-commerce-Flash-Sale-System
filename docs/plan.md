@@ -893,7 +893,7 @@
 | Day 1 | `flash-sale-auth` 可启动骨架（新模块 + 启动类 + 独立配置 + 父 POM 登记），**零行为变更** | ✅ 2026-10-14 | `install` 通过；`:8082` health **UP**（`db` / `redis` / `nacosDiscovery` 全 UP）；Nacos 服务列表 **3 个**（新增 `flash-sale-auth`）；`POST /api/auth/login` 返回业务错误码 `40101`（域代码在新进程已生效）；单体/网关零影响（`gw_health=200`、`gw_products=200`） |
 | Day 2 | auth 域割接：把 `user` 的 controller / service / mapper / dto 迁入 `flash-sale-auth`，单体摘除该域；网关加 `/api/auth/**`、`/api/admin/users/**` → `lb://flash-sale-auth`（置于 catch-all 之前） | ✅ 2026-10-14 | Nacos **3 服务**；经网关注册/登录/`me` → `code=0`；`/api/admin/users` 带令牌 `code=0`（total=42）/无令牌 `40100`；**单体已摘除**（带有效会话/令牌直连 8081 均 **404**；未带凭证时被拦截器提前拒绝为 `40100`，非业务响应，属预期）；`/api/seckill/.../check` 仍 `40100`（单体自持鉴权）；`install` exit=0、core 单测 **13/13**、`ArchitectureTest` **16/16** |
 | Day 3 | ai 域割接：`flash-sale-ai` 变为可启动服务（含 `AiLlmProperties` / `LlmChatClient` / `AiChatServiceImpl`；过渡期目录数据仍直连 DB）；网关加 `/api/support/**` → `lb://flash-sale-ai` | ✅ 2026-10-14（导师实现） | Nacos **4 服务**（gateway / auth / ai / monolith）；经网关 `POST /api/support/chat` 空体 → `40001`（路由 + 参数校验生效，**未触发大模型调用**）；直连单体同路径 → **404**；Prometheus targets **5/5 UP**；全量回归 **115 用例 0 失败 BUILD SUCCESS** |
-| Day 4 | 网关统一鉴权（管理令牌 / 用户会话下沉网关过滤器）+ 全量回归 + 文档 + `git tag p2-done` | ⏳ | 直连服务被拒 / 经网关放行；113 用例绿线 |
+| Day 4 | 网关统一鉴权（管理令牌 / 用户会话下沉网关过滤器）+ 全量回归 + 文档 + `git tag p2-done` | ✅ 2026-10-14（导师实现） | 网关准入生效：admin 无令牌 / 令牌未配置 → 网关 `40100`（日志 `gw 准入拒绝`）、用户态无凭证 → 网关 `40100`；**服务侧纵深防御仍在**（直连单体 `/api/admin/products/1` → `40100`）；**CSRF 细校验仍由服务执行**（有效会话 execute 缺头 → `40301`）；经网关带令牌 → `code=0`；公开路径 `/api/products` → 200；`X-Trace-Id` 单值；网关单测 **9/9**；全量回归 **124 用例 0 失败 BUILD SUCCESS** |
 
 > P2 过渡期约定（Day 1 已生效）：① 数据库仍共用 `flash_sale` schema（P3 再做 schema 隔离与双写迁移）；② 新服务内暂缺鉴权拦截器，由 Day 4 的网关统一鉴权承接；③ **回退点**：停掉 `flash-sale-auth` 进程即回退到单体全量行为（网关路由未改）。
 
@@ -981,8 +981,40 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 - **Day 3 后演示拓扑**：`前端(5173) → 网关(8090) → { auth(8082)：/api/auth/**、/api/admin/users/**； ai(8083)：/api/support/**； 单体(8081)：其余 /api/**（自持鉴权）}`；Prometheus 抓取 5 个目标。
 - **经验沉淀**：① **架构规则要与它约束的类同模块**（否则类被抽走后规则会因"选不到类"而失效）；② 判定"接口是否还在"用 **POST**（GET 在无处理器路径上会被拦截器提前拒绝，返回 `200 + 40100`，无法区分"接口没了"与"没登录"）；③ 跨服务链路的断言不要塞进单模块的集成测试（本模块内测 HTTP 行为，跨服务走联调脚本）。
 
+### P2 Day 4 详细任务卡（网关统一鉴权 · P2 收口）
+
+> 执行方式：导师实现 + panda 审查；预估 2~3 小时。
+
+**目标**：把「**准入鉴权**」下沉到网关（管理令牌 + 用户态凭证），服务侧拦截器**保留为纵深防御**；P2 收口并打 `p2-done` 标签。
+
+**设计要点（分层鉴权，而非一步到位）**：
+
+- **网关做准入**：`/api/admin/**` 校验 `X-Admin-Token`；用户态路径要求携带会话 Cookie（兼容 `X-User-Token`）；不通过由**网关直接返回** `40100` 信封（**HTTP 200 + body code**，与项目既有约定一致，前端零改动）。
+- **服务侧做细校验**：会话有效性、CSRF、资源归属仍在服务（拦截器不撤）→ **直连服务依旧受保护**，避免"绕过网关即裸奔"。
+- **不做**：网关校验会话有效性需跨服务 introspection 或 JWT 无状态化 → 属 P3+ 演进（记入 `microservices-plan.md` 后续项）。
+
+| 步骤 | 内容 |
+|---|---|
+| Step 1 POM/配置 | 网关 POM 补 `flash-sale-common`（复用 `ResultCode` / `RequestIdUtil`）、`spring-dotenv`（读 .env 管理令牌）、`spring-boot-starter-test`；boot 插件补 `workingDirectory=聚合根`；yaml 增 `security.admin-token: ${ADMIN_TOKEN:}` 与 `gateway.auth.session-cookie-name` |
+| Step 2 准入过滤器 | 新增 `AuthGatewayFilter`（`GlobalFilter`，order = `HIGHEST_PRECEDENCE + 10`，紧随 traceId）：OPTIONS 放行 → `/api/admin/**` 全量校验管理令牌 → 用户态路径校验凭证存在性 → 否则 40100 JSON |
+| Step 3 单测 | `AuthGatewayFilterTest`（`MockServerWebExchange` 纯单测，8 例：预检放行 / admin 无令牌 / admin 令牌错 / admin 令牌对 / 令牌未配置 / 用户路径无凭证 / 用户路径带 Cookie / 公开路径） |
+| Step 4 联调验收 | 见下方判据表（含"直连服务仍被拒"的纵深防御验证与 traceId 贯通） |
+| Step 5 收口 | 全量回归绿线；`plan.md` Day 4 ✅；`microservices-plan.md` 补 P2 小结；`git tag p2-done` |
+
+**验收判据**：① 经网关 `/api/admin/seckill/activities` **无令牌** → `40100`（**由网关返回**，网关日志可辨）；② **直连单体 8081** 同路径无令牌 → `40100`（服务侧纵深防御仍在）；③ 经网关带 `X-Admin-Token` → 正常业务响应；④ 经网关 `POST /api/seckill/execute` 无会话无令牌 → `40100`（网关拒绝）；⑤ 带有效会话经网关 execute 但**缺 CSRF** → `40301`（服务侧细校验生效，证明网关只是准入）；⑥ 经网关 `/api/products`（公开路径）→ 200 不受影响；⑦ `X-Trace-Id` 仍**单值**贯通（拒绝响应也带）；⑧ 网关单测全绿 + 全量回归绿线。
+
+**坑**：① 网关读不到 `.env` → 管理令牌为空 → **所有 admin 请求被判 40100「未配置」**（必须给 boot 插件配 `workingDirectory`）；② 40100 响应体形态必须与单体一致（HTTP 200 + `code`），否则前端 `http.ts` 走错分支；③ **OPTIONS 预检必须放行**，否则浏览器 CORS 全挂；④ 过滤器顺序须在 traceId 之后，保证拒绝响应也带 traceId 便于排查；⑤ 服务侧拦截器**不要撤**（P3 起才考虑按服务逐步收敛）。
+
+**Day 4 实施记录（2026-10-14，导师实现）**：
+
+- **准入过滤器**：新增 `AuthGatewayFilter`（`GlobalFilter`，order = `HIGHEST_PRECEDENCE + 10`，紧随 traceId）：OPTIONS 放行 → `/api/admin/**` 全量校验管理令牌 → 用户态路径（`/api/seckill/execute`、`/api/seckill/activities/*/check`、`/api/seckill/users/*/orders`、`/api/seckill/orders/*`、`/api/auth/me|csrf|logout`）校验凭证存在性（会话 Cookie 或兼容 `X-User-Token`）→ 拒绝时由网关直接返回 **HTTP 200 + `code=40100` 信封**（形态与单体一致，前端零改动）。
+- **网关工程补齐**：POM 加 `flash-sale-common`（复用 `ResultCode` / `RequestIdUtil`）、`spring-dotenv`（读 `.env` 的管理令牌）、`spring-boot-starter-test`；boot 插件补 `workingDirectory=聚合根`（否则读不到 `.env` → admin 全被判「未配置」）；yaml 增 `security.admin-token` 与 `gateway.auth.session-cookie-name`。
+- **单测**：`AuthGatewayFilterTest` 9 例（预检放行 / admin 无令牌 / 错令牌 / 对令牌 / 未配置 / 用户路径无凭证 / 带 Cookie / 带 `X-User-Token` / 公开路径）全绿。
+- **联调**：见 Day 4 行；网关日志可见 `gw 准入拒绝 <method> <path> -> 40100 <msg>` 作为"确实由网关拦下"的证据。
+- **踩坑与教训（重要）**：① **不要在服务运行期间执行 `mvn install`** —— Maven 会重写 `~/.m2` 中**运行中 JVM 正在读取**的模块 jar，表现为"随机崩溃"（本轮实测：单体 `EOFException: Unexpected end of ZLIB input stream`、auth 服务 `ClassNotFoundException: IdGenerator`）；正确顺序是 **停服务 → 构建/安装 → 再启动**。② 验收脚本必须打在**真实存在**的端点上：`GET /api/admin/seckill/activities` 并不存在（该路径只有 POST 创建），用它验收会得到 `50000`；顺带发现可选优化项——访问不存在的 `/api/admin/**` 路径返回 `50000` 而非 `404`。
+
 ---
 
 *文档创建日期：2026-07-29*
 *上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16））*
-*下次开始位置：①**提交 Day 3 成果**（服务化/摘除/导流 + 用例归位 + 观测与文档，建议 3 个原子提交）；②**P2 Day 4 — 网关统一鉴权**（管理令牌 / 用户会话下沉网关过滤器；服务侧拦截器保留为纵深防御；`git tag p2-done`）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
+*下次开始位置：①**提交 Day 4 成果并打 `p2-done` 标签**（网关准入过滤器 + 网关单测 + 文档）；②**P3 商品与活动域独立**（product / activity 独立 schema + 缓存键所有权 + OSS 凭据；seckill 提供内部库存初始化/重置接口；双写开关与对账脚本，见 `docs/microservices-plan.md` 第 5.2 节 P3）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
