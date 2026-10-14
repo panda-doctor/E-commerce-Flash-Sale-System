@@ -891,7 +891,7 @@
 | 日 | 任务 | 状态 | 验证 / 提交 |
 |---|---|---|---|
 | Day 1 | `flash-sale-auth` 可启动骨架（新模块 + 启动类 + 独立配置 + 父 POM 登记），**零行为变更** | ✅ 2026-10-14 | `install` 通过；`:8082` health **UP**（`db` / `redis` / `nacosDiscovery` 全 UP）；Nacos 服务列表 **3 个**（新增 `flash-sale-auth`）；`POST /api/auth/login` 返回业务错误码 `40101`（域代码在新进程已生效）；单体/网关零影响（`gw_health=200`、`gw_products=200`） |
-| Day 2 | auth 域割接：把 `user` 的 controller / service / mapper / dto 迁入 `flash-sale-auth`，单体摘除该域；网关加 `/api/auth/**`、`/api/admin/users/**` → `lb://flash-sale-auth`（置于 catch-all 之前） | ⏳（**详细任务卡见本节末**） | 经网关登录/注册/我的信息/后台用户管理可用；单体侧同路径 404；用例按模块归位 |
+| Day 2 | auth 域割接：把 `user` 的 controller / service / mapper / dto 迁入 `flash-sale-auth`，单体摘除该域；网关加 `/api/auth/**`、`/api/admin/users/**` → `lb://flash-sale-auth`（置于 catch-all 之前） | ✅ 2026-10-14 | Nacos **3 服务**；经网关注册/登录/`me` → `code=0`；`/api/admin/users` 带令牌 `code=0`（total=42）/无令牌 `40100`；**单体已摘除**（带有效会话/令牌直连 8081 均 **404**；未带凭证时被拦截器提前拒绝为 `40100`，非业务响应，属预期）；`/api/seckill/.../check` 仍 `40100`（单体自持鉴权）；`install` exit=0、core 单测 **13/13**、`ArchitectureTest` **16/16** |
 | Day 3 | ai 域割接：`flash-sale-ai` 变为可启动服务（含 `AiLlmProperties` / `LlmChatClient` / `AiChatServiceImpl`；过渡期目录数据仍直连 DB）；网关加 `/api/support/**` → `lb://flash-sale-ai` | ⏳ | AI 对话经网关可用（未配置 Key 时 `50300` 语义不变） |
 | Day 4 | 网关统一鉴权（管理令牌 / 用户会话下沉网关过滤器）+ 全量回归 + 文档 + `git tag p2-done` | ⏳ | 直连服务被拒 / 经网关放行；113 用例绿线 |
 
@@ -927,7 +927,7 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 | Step 6 三进程联调 | `install` → 起 8081 / 8082 / 8090 → Nacos 3 服务；经网关注册 + 登录 + `/api/auth/me` 200；直连单体 `/api/auth/login` → 404；`/api/admin/users` 带 `X-Admin-Token` 200 / 无令牌 40100；`/api/seckill/.../check` → 40100 | 见下方验收判据 |
 | Step 7 回归收尾 | 停三进程 → `mvn clean test` 绿线；`plan.md` / `interface.md` 同步；4 个原子提交 | 提交信息见下 |
 
-**验收判据**：① Nacos 服务列表含 `flash-sale-auth`（3 服务）；② 经网关 `POST /api/auth/register` → `code=0`、`GET /api/auth/me` → `code=0`；③ 直连单体 `/api/auth/login` → **404**；④ `/api/admin/users` 带令牌 200 / 无令牌 **40100**；⑤ 单体受保护接口无会话 → **40100**（非 404/500）；⑥ 全量 `mvn clean test` 绿；⑦ 前端零改动（vite 代理已指向网关 8090）。
+**验收判据**：① Nacos 服务列表含 `flash-sale-auth`（3 服务）；② 经网关 `POST /api/auth/register` → `code=0`、`GET /api/auth/me` → `code=0`；③ **单体已摘除**：`POST /api/auth/login` 直连 8081 → **404**；带**有效会话/令牌**直连 `GET /api/auth/me`、`GET /api/admin/users` → **404**（未带凭证时会先被拦截器拒绝为 `40100`，属预期，不是业务响应）；④ `/api/admin/users` 经网关带令牌 `code=0` / 无令牌 **40100**；⑤ 单体受保护接口无会话 → **40100**（非 404/500）；⑥ 全量 `mvn clean test` 绿；⑦ 前端零改动（vite 代理已指向网关 8090）。
 
 **六个坑**：① 路由顺序（auth 必须排在 `/api/**` 之前）；② auth 服务必须扫到 `ApiAccessWebConfig`（漏了会导致 `/api/auth/me` **裸奔放行**，最危险的一种错）；③ `-pl` 运行前先 `install`（新模块 jar 不在本地仓库）；④ `ArchitectureTest` 白名单需移除已迁走的 2 个 config 类；⑤ `-Dtest=` 需带 `-Dsurefire.failIfNoSpecifiedTests=false`；⑥ 单体摘除后直连 8081 会 404（前端经网关无碍）。
 
@@ -937,8 +937,16 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 
 **提交计划（4 个原子提交）**：① `refactor(p2-day2): 抽取 flash-sale-auth-core（auth 域实现库）+ 删除 flash-sale-user`；② `feat(p2-day2): flash-sale-auth 承载 auth HTTP 接口；单体收窄为仅自持鉴权`；③ `feat(p2-day2): 网关精确路由 /api/auth/** 与 /api/admin/users/** → lb://flash-sale-auth`；④ `test(p2-day2): auth 用例按模块归位 + 单体 404 断言 + 文档同步`。
 
+**Day 2 实施记录（2026-10-14）**：
+
+- **结构（panda 实施）**：`flash-sale-auth-core` 库建成（main 16 类：config 3 / service 2 / mapper 2 / dto 7 / web 2）；2 个 controller 迁入 `flash-sale-auth`（包 `user.controller`）；`flash-sale-user` 模块删除；父 POM 与 auth/bootstrap 两个 POM 完成依赖切换。
+- **导师修正 5 处**：① 父 POM `flash-sale-auth-core` 条目重复（硬编码 `0.0.1-SNAPSHOT` vs `${project.version}`）→ 删重复；② auth/bootstrap POM 残留 `flash-sale-user` 依赖 → 改指 core；③ 2 个 controller 一度误置于 core（会导致单体仍暴露 auth 接口）→ 迁至 auth 应用；④ 3 个纯单测（`UserTokenRegistryTest` / `ApiAccessInterceptorTokenTest` / `UserAccountServiceTest`）归位 core 测试目录并修正 import；⑤ **`ApiAccessInterceptor` 被 IDE 误加 `import ...user.controller.ApiAccessWebConfig`**（移动 controller 时 Javadoc `{@link ApiAccessWebConfig}` 被解析到新包；同类同包本不需要该 import）——这是构建红根因，已删除。
+- **联调（Step 2）**：网关新增精确路由（置于 `/api/**` 之前）→ 三进程 8081 / 8082 / 8090 全部就绪 → 验收结果见 Day 2 行。
+- **Day 2 后演示拓扑**：`前端(5173) → 网关(8090) → { auth(8082)：/api/auth/**、/api/admin/users/** ； 单体(8081)：其余 /api/**（自持鉴权）}`。
+- **经验沉淀**：① 判定"接口是否摘除"不能只看 HTTP 状态码——无处理器路径若被拦截器命中会返回 `200 + 40100`（项目业务错误约定），需**带有效凭证**再验一次才能确认真的 404；② 用 IDE 移动类后必看 diff，自动生成的 import 会把 Javadoc 引用带偏。
+
 ---
 
 *文档创建日期：2026-07-29*
-*上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更））*
-*下次开始位置：①**P2 Day 2 — auth 域割接**（把 `user` 域 controller/service/mapper/dto 迁入 `flash-sale-auth`、单体摘除该域、网关加 `/api/auth/**` 与 `/api/admin/users/**` 精确路由至 `lb://flash-sale-auth`）；②可选 T6 — OTel/Zipkin 替换自研 traceId；③图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起；④本地领先 origin 若干提交，可按需 push*
+*上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16））*
+*下次开始位置：①**提交 Day 2 成果**（结构 + 网关路由 + 文档，建议 2 个原子提交）；②**P2 Day 3 — ai 域割接**（`flash-sale-ai` 变为可启动服务 + 网关 `/api/support/**` → `lb://flash-sale-ai`；过渡期目录数据仍直连 DB）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
