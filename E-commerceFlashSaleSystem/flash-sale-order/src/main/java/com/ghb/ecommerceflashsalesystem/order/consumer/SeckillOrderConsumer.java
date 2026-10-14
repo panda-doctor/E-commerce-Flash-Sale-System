@@ -2,6 +2,7 @@ package com.ghb.ecommerceflashsalesystem.order.consumer;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
+import com.ghb.ecommerceflashsalesystem.common.constant.TraceConstant;
 import com.ghb.ecommerceflashsalesystem.contracts.message.SeckillOrderMessage;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillMessageLog;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillOrder;
@@ -12,6 +13,7 @@ import com.ghb.ecommerceflashsalesystem.analytics.service.SeckillRankService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.RedisCallback;
@@ -142,9 +144,24 @@ public class SeckillOrderConsumer {
     }
 
     /**
-     * 单条消息处理：解析 → 消息日志 → 幂等落库 → XACK；失败按 retry 计数进 PEL/死信
+     * 单条消息处理入口（P1：从消息体续接 traceId，消费侧日志与生产侧同链路）。
      */
     private void handle(MapRecord<String, Object, Object> record) {
+        Object rawTraceId = record.getValue().get(TraceConstant.MESSAGE_FIELD);
+        if (rawTraceId != null && !rawTraceId.toString().isBlank()) {
+            MDC.put(TraceConstant.MDC_KEY, rawTraceId.toString());
+        }
+        try {
+            doHandle(record);
+        } finally {
+            MDC.remove(TraceConstant.MDC_KEY);
+        }
+    }
+
+    /**
+     * 单条消息处理：解析 → 消息日志 → 幂等落库 → XACK；失败按 retry 计数进 PEL/死信
+     */
+    private void doHandle(MapRecord<String, Object, Object> record) {
         String messageId = record.getId().getValue();
         log.info("开始处理消息, messageId={}", messageId);
         try {

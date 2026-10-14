@@ -1,0 +1,48 @@
+# =====================================================
+# API 网关（P1-1：静态路由 + traceId 注入 + CORS）
+# P1-2 接入 Nacos 后：路由改为 lb://flash-sale-monolith 服务发现
+# =====================================================
+server:
+  # 默认 8090：本机 8080 已被其它服务占用（uvicorn / WSL 端口转发），
+  # 可用环境变量 GATEWAY_PORT 覆盖（网关端口变更时记得同步前端 vite 代理）。
+  port: ${GATEWAY_PORT:8090}
+
+spring:
+  application:
+    name: flash-sale-gateway
+  cloud:
+    gateway:
+      routes:
+        # 单体（P0 模块化单体）作为「遗留服务」挂在网关之后；前端只需指向网关
+        - id: flash-sale-monolith
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/**
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowed-origin-patterns: "*"
+            allowed-methods: "*"
+            allowed-headers: "*"
+            allow-credentials: true
+
+# =====================================================
+# 健康与指标（P1-2：Prometheus 抓取 /actuator/prometheus）
+# =====================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    com.ghb.ecommerceflashsalesystem: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level %logger{36} - %msg%n"

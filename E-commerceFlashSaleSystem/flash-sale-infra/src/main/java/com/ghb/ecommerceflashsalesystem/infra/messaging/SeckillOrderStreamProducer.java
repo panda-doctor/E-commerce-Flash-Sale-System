@@ -1,9 +1,11 @@
 package com.ghb.ecommerceflashsalesystem.infra.messaging;
 
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
+import com.ghb.ecommerceflashsalesystem.common.constant.TraceConstant;
 import com.ghb.ecommerceflashsalesystem.contracts.message.SeckillOrderMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -37,6 +39,15 @@ public class SeckillOrderStreamProducer {
         body.put("orderNo", seckillOrderMessage.getOrderNo());
         body.put("seckillPrice", String.valueOf(seckillOrderMessage.getSeckillPrice()));
         body.put("requestTime", String.valueOf(seckillOrderMessage.getRequestTime()));
+
+        // P1：traceId 贯通（HTTP 过滤器写入 MDC → 消息体 → 消费端恢复 MDC）
+        String traceId = seckillOrderMessage.getTraceId();
+        if (traceId == null || traceId.isBlank()) {
+            traceId = MDC.get(TraceConstant.MDC_KEY);
+        }
+        if (traceId != null && !traceId.isBlank()) {
+            body.put(TraceConstant.MESSAGE_FIELD, traceId);
+        }
 
         RecordId recordId = redisTemplate.opsForStream().add(
                 StreamRecords.mapBacked(body).withStreamKey(CacheKeyConstant.SECKILL_ORDER_STREAM));

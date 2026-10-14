@@ -129,12 +129,29 @@ mybatis-plus:
       id-type: INPUT
 
 # =====================================================
+# P1 可观测：Actuator 健康与指标（Prometheus 抓取 /actuator/prometheus）
+# =====================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# =====================================================
 # 日志配置
 # =====================================================
 logging:
   level:
-    com.ghb.ecommerceflashsalesystem: ERROR
+    # P1：调回 INFO —— traceId 贯通与缓存命中观测需要业务日志可见（生产可再按需收紧）
+    com.ghb.ecommerceflashsalesystem: INFO
     org.springframework.data.redis: INFO
     org.mybatis: INFO
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    # 日志携带 traceId（网关生成 / 过滤器写入 MDC；消费端从消息体恢复）
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId:-}] %-5level %logger{36} - %msg%n"

@@ -36,6 +36,7 @@
         <module>flash-sale-order</module>
         <module>flash-sale-analytics</module>
         <module>flash-sale-ai</module>
+        <module>flash-sale-gateway</module>
         <module>flash-sale-bootstrap</module>
     </modules>
 
@@ -49,6 +50,8 @@
         <spring-dotenv.version>4.0.0</spring-dotenv.version>
         <mysql-connector.version>8.0.33</mysql-connector.version>
         <archunit.version>1.3.0</archunit.version>
+        <!-- P1 基础设施：Spring Cloud 与 Boot 3.3.x 对齐（2023.0.x 分支） -->
+        <spring-cloud.version>2023.0.3</spring-cloud.version>
     </properties>
 
     <dependencyManagement>
@@ -111,8 +114,22 @@
             </dependency>
             <dependency>
                 <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-gateway</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
                 <artifactId>flash-sale-bootstrap</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+
+            <!-- ========== Spring Cloud BOM（网关 / 后续注册发现） ========== -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
 
             <!-- ========== 三方依赖（锁定与现状一致的版本） ========== -->

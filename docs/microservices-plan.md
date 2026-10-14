@@ -730,3 +730,13 @@ E-commerceFlashSaleSystem/                     # 聚合根（mvnw / .env / uploa
 - ArchUnit 断言覆盖计划中的 12 类约束（部分约束拆分为多条表达，如 seckill/order 双向隔离）；
 - 运行形态与接口契约不变：bootstrap 仍是单进程 :8081，前端零改动；
 - 标签：`p0-done`；随后可进入 **P1 基础设施**（Nacos / Gateway / Compose / 可观测）。
+
+### 9.13 P1-1 实施记录（2026-10-13）
+
+| 项 | 方案与现状 |
+|---|---|
+| 网关端口 | 默认 **8090**（`GATEWAY_PORT` 可覆盖）：本机 8080 已被外部服务占用（uvicorn / 疑似 WSL 端口转发），非本项目冲突；前端 `vite.config.js` 代理同步指向 8090 |
+| 网关职责（P1-1） | `/api/**` 静态路由到单体 `http://localhost:8081`、CORS（`globalcors`）、traceId 注入与回填、请求耗时日志；`lb://` 动态路由留待 P1-2（Nacos） |
+| traceId 方案 | **自研轻量三处贯通**（不依赖 OTel/Zipkin）：网关生成/透传 `X-Trace-Id` → 单体 `infra.web.TraceIdFilter` 写 MDC + 回填响应头 → `SeckillOrderStreamProducer` 写入消息体 `traceId` → `SeckillOrderConsumer` 恢复 MDC。P1-2 引入 OTel 后，该 id 可保留为业务侧链路号，或由 OTel traceId 取代 |
+| 指标 | 单体与网关均暴露 `/actuator/health`、`/actuator/prometheus`；Prometheus 抓取与 Grafana 看板留待 P1-2 |
+| 验证证据 | 同一 `stream-trace-001` 出现在三处：网关日志（reactor）· 单体生产线程 `http-nio-8081-exec-5`（订单消息已发送到 Stream）· 消费线程 `scheduling-1`（开始处理消息 → 订单落库成功并 ACK）；响应头 `X-Trace-Id` 唯一；全量 113 用例 BUILD SUCCESS |
