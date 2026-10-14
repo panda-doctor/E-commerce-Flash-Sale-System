@@ -73,7 +73,19 @@ ai:
 
 spring:
   application:
-    name: E-commerceFlashSaleSystem
+    # P1-2：服务名改为 flash-sale-monolith —— T4 网关将以 lb://flash-sale-monolith 做服务发现路由
+    name: flash-sale-monolith
+
+  # =====================================================
+  # P1-2 服务注册（Nacos）
+  # 本机 Nacos 2.5.4 standalone、未开鉴权；端口 8848（HTTP）+ 9848（客户端 gRPC，必须通）
+  # 测试侧由 src/test/resources/application.properties 关闭注册（Nacos 未启动时不拖慢/报错）
+  # =====================================================
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+
   servlet:
     multipart:
       max-file-size: 6MB          # 上传图片大小上限（服务内校验 5MB，预留 multipart 余量）

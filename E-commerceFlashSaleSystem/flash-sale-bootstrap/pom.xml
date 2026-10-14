@@ -133,6 +133,12 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
+        <!-- ========== P1-2 服务注册：Nacos Discovery（注册到本机 Nacos 8848） ========== -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+
         <!-- ========== 架构约束测试（ArchUnit）：P0 模块边界的自动化守卫 ========== -->
         <dependency>
             <groupId>com.tngtech.archunit</groupId>
