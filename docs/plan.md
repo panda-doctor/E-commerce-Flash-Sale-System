@@ -892,7 +892,7 @@
 |---|---|---|---|
 | Day 1 | `flash-sale-auth` 可启动骨架（新模块 + 启动类 + 独立配置 + 父 POM 登记），**零行为变更** | ✅ 2026-10-14 | `install` 通过；`:8082` health **UP**（`db` / `redis` / `nacosDiscovery` 全 UP）；Nacos 服务列表 **3 个**（新增 `flash-sale-auth`）；`POST /api/auth/login` 返回业务错误码 `40101`（域代码在新进程已生效）；单体/网关零影响（`gw_health=200`、`gw_products=200`） |
 | Day 2 | auth 域割接：把 `user` 的 controller / service / mapper / dto 迁入 `flash-sale-auth`，单体摘除该域；网关加 `/api/auth/**`、`/api/admin/users/**` → `lb://flash-sale-auth`（置于 catch-all 之前） | ✅ 2026-10-14 | Nacos **3 服务**；经网关注册/登录/`me` → `code=0`；`/api/admin/users` 带令牌 `code=0`（total=42）/无令牌 `40100`；**单体已摘除**（带有效会话/令牌直连 8081 均 **404**；未带凭证时被拦截器提前拒绝为 `40100`，非业务响应，属预期）；`/api/seckill/.../check` 仍 `40100`（单体自持鉴权）；`install` exit=0、core 单测 **13/13**、`ArchitectureTest` **16/16** |
-| Day 3 | ai 域割接：`flash-sale-ai` 变为可启动服务（含 `AiLlmProperties` / `LlmChatClient` / `AiChatServiceImpl`；过渡期目录数据仍直连 DB）；网关加 `/api/support/**` → `lb://flash-sale-ai` | ⏳ | AI 对话经网关可用（未配置 Key 时 `50300` 语义不变） |
+| Day 3 | ai 域割接：`flash-sale-ai` 变为可启动服务（含 `AiLlmProperties` / `LlmChatClient` / `AiChatServiceImpl`；过渡期目录数据仍直连 DB）；网关加 `/api/support/**` → `lb://flash-sale-ai` | ✅ 2026-10-14（导师实现） | Nacos **4 服务**（gateway / auth / ai / monolith）；经网关 `POST /api/support/chat` 空体 → `40001`（路由 + 参数校验生效，**未触发大模型调用**）；直连单体同路径 → **404**；Prometheus targets **5/5 UP**；全量回归 **115 用例 0 失败 BUILD SUCCESS** |
 | Day 4 | 网关统一鉴权（管理令牌 / 用户会话下沉网关过滤器）+ 全量回归 + 文档 + `git tag p2-done` | ⏳ | 直连服务被拒 / 经网关放行；113 用例绿线 |
 
 > P2 过渡期约定（Day 1 已生效）：① 数据库仍共用 `flash_sale` schema（P3 再做 schema 隔离与双写迁移）；② 新服务内暂缺鉴权拦截器，由 Day 4 的网关统一鉴权承接；③ **回退点**：停掉 `flash-sale-auth` 进程即回退到单体全量行为（网关路由未改）。
@@ -945,8 +945,44 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 - **Day 2 后演示拓扑**：`前端(5173) → 网关(8090) → { auth(8082)：/api/auth/**、/api/admin/users/** ； 单体(8081)：其余 /api/**（自持鉴权）}`。
 - **经验沉淀**：① 判定"接口是否摘除"不能只看 HTTP 状态码——无处理器路径若被拦截器命中会返回 `200 + 40100`（项目业务错误约定），需**带有效凭证**再验一次才能确认真的 404；② 用 IDE 移动类后必看 diff，自动生成的 import 会把 Javadoc 引用带偏。
 
+### P2 Day 3 详细任务卡（ai 域割接：`flash-sale-ai` 服务化）
+
+> 执行方式：panda 实现 + 导师现场纠偏；预估 1.5~2 小时。
+
+**目标形态**：`flash-sale-ai` 由"库"升级为**可启动服务**（端口 **8083**，服务名 `flash-sale-ai`）；AI 接口从单体摘除；网关精确导流 `/api/support/**`。
+
+**与 Day 2 的设计差异（这次不拆"库 + 应用"）**：auth 域被单体复用（单体需要鉴权拦截器），所以拆成 `flash-sale-auth-core` 库 + `flash-sale-auth` 应用；ai 域**没有任何其它模块复用**（只是读商品/活动表拿目录数据），因此**单模块直接服务化**最省事。→ **判据：只有被多方复用的实现才需要抽库**。
+
+**Day 3 侦察结论**：① `flash-sale-ai` 依赖 common / domain-model / infra + **product / activity**（实时目录查询），**不含 seckill / order / analytics** → 服务化后不会带入 Stream 消费者（不会误建单）；② `AiLlmProperties` 为 `@Component + @ConfigurationProperties(prefix="ai.llm")` → 组件扫描即可生效；③ `/api/support/**` **不在** `ApiAccessWebConfig` 的保护路径内（匿名接口）→ ai 服务**无需依赖 auth-core**；④ 跨模块引用 `ai.*` 仅 bootstrap 的 2 个测试类（`AiClientUnconfiguredTest`、`AiSupportChatIntegrationTest`）→ 随依赖一同迁出。
+
+| 步骤 | 内容 | 要点 |
+|---|---|---|
+| Step 1 服务化改造 | `flash-sale-ai` 新增启动类 `AiServiceApplication`（根包 + `@MapperScan({product.mapper, activity.mapper})`）；新增 `src/main/resources/application.yaml`（**8083** / `flash-sale-ai` / Nacos / 过渡期共用 `flash_sale` 库 / `ai.llm.*` / actuator+prometheus）；POM 补 `web`、`validation`、`mybatis-plus-starter`、`mysql`、`redis`、`redisson`、`dotenv`、`actuator`、`micrometer-registry-prometheus`、`nacos-discovery`、`starter-test(test)`，并声明 `spring-boot-maven-plugin`（`workingDirectory=聚合根`） | 该模块从此是 **bootable**（不再是纯库） |
+| Step 2 单体摘除 | bootstrap POM **移除 `flash-sale-ai` 依赖** | 单体不再暴露 `/api/support/chat` |
+| Step 3 网关导流 | 新增精确路由（置于 `/api/**` 之前）：`Path=/api/support/**` → `lb://flash-sale-ai` | 与 Day 2 同规则（先匹配先赢） |
+| Step 4 测试归位 | `AiClientUnconfiguredTest`、`AiSupportChatIntegrationTest` 迁入 `flash-sale-ai/src/test`（包名不变）；新增 `src/test/resources/application.properties`（关闭 Nacos 注册） | 集成测试改在 ai 应用上下文中运行 |
+| Step 5 四进程联调 | `install` → 起 8081 / 8082 / 8083 / 8090 → Nacos **4 服务**；经网关 `POST /api/support/chat` **空体** → `40001`（路由与参数校验生效，且**不触发真实大模型调用**）；直连单体同路径 → **404**；单体 `/api/products` 仍 200 | 用"空体 40001"验证路由，避免为验证烧 token |
+| Step 6 观测栈补 job | `deploy/prometheus/prometheus.yml` 增 `flash-sale-auth`(:8082)、`flash-sale-ai`(:8083) 两个 job → `curl.exe -X POST http://127.0.0.1:9090/-/reload` | targets 应 **5/5 UP** |
+| Step 7 回归收尾 | 停进程 → `mvn clean test` 绿线；`plan.md` / `interface.md` 同步；提交 | 建议 2 条原子提交 |
+
+**验收判据**：① Nacos **4 服务**（gateway / auth / ai / monolith）；② 经网关 `/api/support/chat` 空体 → `40001`（配了 Key 时正常对话 `code=0`）；③ 直连单体 `/api/support/chat` → **404**；④ 单体其余接口（`/api/products`、`/api/seckill/...`）行为不变；⑤ 全量 `mvn clean test` 绿；⑥ Prometheus targets **5/5 UP**。
+
+**坑**：① ai 应用必须 `@MapperScan` **product + activity** 两个包，否则启动即报 Mapper 找不到；② **不要**照抄 bootstrap 的 5 包 `@MapperScan`（会扫不存在的 seckill/order mapper）；③ ai 服务若误依赖 seckill / order，会**自动消费 Stream 并建单**——只能用现有 ai 模块的依赖集；④ 测试迁移后记得加测试侧 `application.properties` 关闭注册；⑤ 真实调用大模型会消耗额度，路由验证优先用"空体 → 40001"。
+
+**提交计划**：① `feat(p2-day3): flash-sale-ai 服务化（:8083）+ 单体摘除 AI 域`；② `feat(p2-day3): 网关 /api/support/** → lb://flash-sale-ai + 观测栈补 2 个 job + 文档同步`。
+
+**Day 3 实施记录（2026-10-14，导师实现）**：
+
+- **服务化**：`flash-sale-ai` 新增根包启动类 `AiServiceApplication`（`@MapperScan(product.mapper, activity.mapper)`）+ `application.yaml`（8083 / `flash-sale-ai` / Nacos / 同库过渡 / `ai.llm.*` / actuator）+ POM 升级为 bootable（含 boot 插件 `workingDirectory=聚合根`）。
+- **单体摘除 + 网关导流**：bootstrap 移除 `flash-sale-ai` 依赖；网关新增 `Path=/api/support/**` → `lb://flash-sale-ai`（置于兜底前）。
+- **测试归位与边界守卫**：`AiClientUnconfiguredTest` / `AiSupportChatIntegrationTest` → ai 模块；**`AuthRegisterIntegrationTest` → auth 模块**（Day 2 遗留：它仍在 bootstrap 打单体 auth 接口 → 全红），并把原先依赖 `/api/seckill/execute` 的 CSRF 断言改写为 `POST /api/auth/logout`（缺 `X-CSRF-Token` → `40301`；带则 `code=0`；退出后 `me` → `40100`）；新增 bootstrap 守卫测试 `DomainEndpointsMovedTest`（POST `/api/auth/register|login` 与 `/api/support/chat` → **404**）；R9 架构规则随 ai 类迁入 ai 模块（`AiArchitectureTest`）。
+- **关键约束（本轮最大教训）**：**bootable 模块不能被其它模块依赖** —— 声明 boot 插件后 `install` 产出可执行 jar（类在 `BOOT-INF/classes`），bootstrap 编译期取不到 ai 的包而构建红。故「服务化」必须与「单体摘除 + 测试归位」**同批**（与 Day 2「摘除与导流同批」同源）。
+- **首轮回归 6 失败 → 三处修复**：① `ArchitectureTest.R9_ai只允许依赖商品与活动` 因 bootstrap 不再含 `..ai..` 类而报 "failed to check any classes" → 规则迁到 ai 模块；② `AuthRegisterIntegrationTest` 5/5（Day 2 遗留）→ 迁 auth 模块并改写断言；③ 新增守卫测试的 `POST /api/auth/logout` 断言口径错误（该路径被拦截器覆盖 → 200 + 非 0 业务码，而非 404）。
+- **Day 3 后演示拓扑**：`前端(5173) → 网关(8090) → { auth(8082)：/api/auth/**、/api/admin/users/**； ai(8083)：/api/support/**； 单体(8081)：其余 /api/**（自持鉴权）}`；Prometheus 抓取 5 个目标。
+- **经验沉淀**：① **架构规则要与它约束的类同模块**（否则类被抽走后规则会因"选不到类"而失效）；② 判定"接口是否还在"用 **POST**（GET 在无处理器路径上会被拦截器提前拒绝，返回 `200 + 40100`，无法区分"接口没了"与"没登录"）；③ 跨服务链路的断言不要塞进单模块的集成测试（本模块内测 HTTP 行为，跨服务走联调脚本）。
+
 ---
 
 *文档创建日期：2026-07-29*
 *上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16））*
-*下次开始位置：①**提交 Day 2 成果**（结构 + 网关路由 + 文档，建议 2 个原子提交）；②**P2 Day 3 — ai 域割接**（`flash-sale-ai` 变为可启动服务 + 网关 `/api/support/**` → `lb://flash-sale-ai`；过渡期目录数据仍直连 DB）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
+*下次开始位置：①**提交 Day 3 成果**（服务化/摘除/导流 + 用例归位 + 观测与文档，建议 3 个原子提交）；②**P2 Day 4 — 网关统一鉴权**（管理令牌 / 用户会话下沉网关过滤器；服务侧拦截器保留为纵深防御；`git tag p2-done`）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
