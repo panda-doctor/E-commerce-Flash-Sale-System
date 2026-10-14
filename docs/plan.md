@@ -1015,6 +1015,47 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 
 ---
 
+## 九、第 5 阶段 · P3：商品与活动域独立（逐日进度）
+
+**P3 逐日进度（商品与活动域独立）：**
+
+| 日 | 任务 | 状态 | 验证 / 提交 |
+|---|---|---|---|
+| Day 1 | product 域「**库 + 应用**」拆分：`flash-sale-product` 改名 `flash-sale-product-core`，新建 `flash-sale-product` 应用（:8084）并注册 Nacos；**零行为变更** | ⏳（**任务卡见下**） | :8084 health UP；Nacos 5 服务；单体/网关行为不变；全量回归绿线 |
+| Day 2 | product 域割接：controllers + FileStorageWebConfig 迁入应用；单体摘除；网关导流 `/api/products/**`、`/api/admin/products/**`、`/api/admin/files/**`、`/uploads/**` | ⏳ | 经网关商品/上传链路可用；直连单体同路径 404 |
+| Day 3 | 数据所有权：product / activity 独立 schema（DDL + 迁移脚本）+ 双写开关 + 对账脚本 | ⏳ | 两库行数/金额对账一致 |
+| Day 4 | activity 域服务化（:8085，同「库 + 应用」模式）+ 网关导流 + 预热锁归属 activity | ⏳ | 预热并发用例绿；经网关活动链路可用 |
+| Day 5 | seckill 提供内部「库存初始化/重置」接口（供 activity 编排）+ 全量回归 + 收口 | ⏳ | 接口收敛后回归绿线；文档同步 |
+
+### P3 Day 1 详细任务卡（product 域「库 + 应用」拆分，零行为变更）
+
+> 执行方式：导师实现 + panda 审查；预估 2~3 小时。
+
+**目标**：把 `flash-sale-product` 一分为二 —— `flash-sale-product-core`（库：mapper / service / cache / storage / dto / vo）+ `flash-sale-product`（**应用**：启动类 + 配置，:8084，注册 Nacos）。**Day 1 不动任何控制器、不改网关路由** → 单体与现网行为零变化。
+
+**为什么必须"库 + 应用"（复用 P2 的教训）**：`flash-sale-activity`（活动 VO 需要商品信息）与 `flash-sale-ai`（客服目录需要商品表）**都依赖 product 的实现**；一旦某模块声明 boot 插件，其产物是可执行 jar（类在 `BOOT-INF/classes`），**无法再被依赖**。因此必须保留一个 core 库给它们，应用只承载"对外接口 + 启动"。
+
+**Day 1 侦察结论**：
+
+- `flash-sale-product` 共 14 文件：controller 3（`ProductController` / `AdminProductController` / `AdminFileController`）、cache 1（`ProductCacheService`）、config 1（`FileStorageWebConfig`）、mapper 1 + `ProductMapper.xml`、service 2、storage 4（本地/OSS 双策略）、dto 1、vo 1。
+- 依赖 product 的模块：**bootstrap**、**flash-sale-activity**、**flash-sale-ai**（+ 父 POM dependencyManagement）。
+- 存储与缓存归属：`product:detail:*` 缓存键、`uploads/` 本地目录、OSS 凭据（`aliyun.oss.*`）均属 product 域 —— P3 的"缓存键所有权 + OSS 凭据"由本域收拢。
+- DB 脚本现状：`flash-sale-bootstrap/src/main/resources/db/schema.sql` + `db/migration/V20261010__user_accounts_and_sessions.sql`（Flyway 命名风格、当前手工执行）——Day 3 独立 schema 将沿用该目录约定。
+
+| 步骤 | 内容 | 要点 |
+|---|---|---|
+| Step 1 库改名 | `git mv flash-sale-product flash-sale-product-core`；改 `artifactId` / `name` / `description`；父 POM 的 `<module>` 与 `dependencyManagement` 同步；**bootstrap / activity / ai 三处依赖的 artifactId 改为 `flash-sale-product-core`** | 整模块改名，零文件级搬迁，风险最低 |
+| Step 2 新建应用 | 新建 `flash-sale-product`：POM（依赖 `flash-sale-product-core` + web/validation/mybatis-plus/mysql/redis/redisson/dotenv/actuator/micrometer/nacos-discovery + boot 插件 `workingDirectory=聚合根`）、根包启动类 `ProductServiceApplication`（`@MapperScan("com.ghb.ecommerceflashsalesystem.product.mapper")`）、`application.yaml`（**8084** / 服务名 `flash-sale-product` / Nacos / 过渡期共用 `flash_sale` 库 / `aliyun.oss.*` 与 `storage.local.dir` / actuator） | 与 `flash-sale-auth` / `flash-sale-ai` 同款形态 |
+| Step 3 编译与启动 | `mvnw -DskipTests install` → 起 8084（**期间不要重启其它服务**）→ `/actuator/health` UP、Nacos **5 服务** | 注意 Day 4 教训：**服务运行期间不要跑 `mvn install`**（会重写 `~/.m2` 中被 JVM 读取的 jar） |
+| Step 4 零行为变更验证 | 经网关 `/api/products` 与 `/api/admin/products/1`（带管理令牌）仍走单体、行为不变；单体 `/api/products` 仍 200 | 网关路由本日**不改** |
+| Step 5 回归与提交 | 停四/五服务 → `mvnw clean test` 绿线；提交 1 条原子提交；`plan.md` P3 Day 1 行 → ✅ | 回退点：停 8084 进程或 `git revert` |
+
+**验收判据**：① `install` exit=0；② 应用 `:8084/actuator/health` = UP；③ Nacos 服务数 **5**（gateway / monolith / auth / ai / product）；④ 经网关 `/api/products?page=1&pageSize=3` → 200 且**仍由单体服务**（行为不变）；⑤ 单体 `/api/products/1` → 200；⑥ 全量 `mvn clean test` 绿线（用例数应仍为 124）；⑦ 工作区可一条提交回退。
+
+**坑**：① 改名后**遗漏任何一处 artifactId 引用**都会编译失败（父 POM modules、dependencyManagement、bootstrap/activity/ai 三处依赖）；② 新应用 `@MapperScan` 必须包含 `product.mapper`（否则启动即报 Mapper 缺失）；③ 应用启动会占用 8084，且 `aliyun.oss.*` / `storage.local.dir` 配置必须与单体一致（否则上传路径不一致）；④ **不要**顺手把 controllers 移到应用里——那是 Day 2 的原子动作（与网关导流同批，避免破窗态）；⑤ 运行期不要执行 `mvn install`（Day 4 已踩过）。
+
+---
+
 *文档创建日期：2026-07-29*
-*上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16））*
-*下次开始位置：①**提交 Day 4 成果并打 `p2-done` 标签**（网关准入过滤器 + 网关单测 + 文档）；②**P3 商品与活动域独立**（product / activity 独立 schema + 缓存键所有权 + OSS 凭据；seckill 提供内部库存初始化/重置接口；双写开关与对账脚本，见 `docs/microservices-plan.md` 第 5.2 节 P3）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
+*上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16）；**P2 Day 3~4 完成并收口**（ai 服务化 :8083 + 网关准入鉴权 + 全量 **124 用例**绿线 + `p2-done` 标签；提交 `1014a8e`/`7db07eb`/`4275ba2`））*
+*下次开始位置：①**P3 Day 1 — product 域「库 + 应用」拆分**（`flash-sale-product` 改名 `flash-sale-product-core` + 新建 `flash-sale-product` 应用 :8084 并注册 Nacos，**零行为变更**；任务卡见第 9 章）；②P3 Day 2 — product 域割接（controllers + FileStorageWebConfig 迁入应用、单体摘除、网关导流 `/api/products/**`、`/api/admin/products/**`、`/api/admin/files/**`、`/uploads/**`）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
