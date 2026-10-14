@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>com.ghb</groupId>
+		<artifactId>flash-sale-parent</artifactId>
+		<version>0.0.1-SNAPSHOT</version>
+	</parent>
+
+	<artifactId>flash-sale-auth-core</artifactId>
+	<name>flash-sale-auth-core</name>
+	<description>认证域实现库（P2）：安全配置 / 令牌 / 账号与会话服务 / Mapper / DTO / MVC 访问控制；被 flash-sale-auth 与 flash-sale-bootstrap 共同依赖（Day 4 网关统一鉴权后收窄）</description>
+
+	<dependencies>
+		<!-- P2 Day 2 过渡：auth 域实现已迁至 flash-sale-auth-core；
+     本模块仅暂留 controller，Step 2 迁出后整个模块删除 -->
+		<dependency>
+			<groupId>com.ghb</groupId>
+			<artifactId>flash-sale-common</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.ghb</groupId>
+			<artifactId>flash-sale-domain-model</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.ghb</groupId>
+			<artifactId>flash-sale-infra</artifactId>
+		</dependency>
+		<!-- 密码单向哈希（BCrypt），仅编码器，不启用 Security 过滤链 -->
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-crypto</artifactId>
+		</dependency>
+		<!-- Step 5 将从 bootstrap 迁入 3 个单元测试类 -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+</project>

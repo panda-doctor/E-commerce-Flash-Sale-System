@@ -17,6 +17,12 @@ spring:
         server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
     gateway:
       routes:
+        # P2 Day 2：auth 域已拆为独立服务 flash-sale-auth（:8082）；
+        # 精确路由必须排在 /api/** 兜底之前 —— Gateway 按 routes 列表顺序匹配，先匹配先赢。
+        - id: flash-sale-auth
+          uri: lb://flash-sale-auth
+          predicates:
+            - Path=/api/auth/**,/api/admin/users/**
         # 单体（P0 模块化单体）已注册为 flash-sale-monolith；
         # lb:// 走服务发现 + 客户端负载均衡（多实例时自动轮询），不再写死 IP:端口
         - id: flash-sale-monolith

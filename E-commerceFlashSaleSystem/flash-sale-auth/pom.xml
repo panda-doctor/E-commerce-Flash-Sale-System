@@ -35,7 +35,7 @@
         <!-- Day 1 过渡：直接用 user 库（含 controller/service/mapper），Day 2 域代码迁入本模块 -->
         <dependency>
             <groupId>com.ghb</groupId>
-            <artifactId>flash-sale-user</artifactId>
+            <artifactId>flash-sale-auth-core</artifactId>
         </dependency>
 
         <!-- ========== Web 层 ========== -->

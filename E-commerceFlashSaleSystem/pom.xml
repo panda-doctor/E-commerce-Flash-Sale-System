@@ -29,7 +29,7 @@
         <module>flash-sale-contracts</module>
         <module>flash-sale-domain-model</module>
         <module>flash-sale-infra</module>
-        <module>flash-sale-user</module>
+        <module>flash-sale-auth-core</module>
         <module>flash-sale-product</module>
         <module>flash-sale-activity</module>
         <module>flash-sale-seckill</module>
@@ -77,11 +77,6 @@
             <dependency>
                 <groupId>com.ghb</groupId>
                 <artifactId>flash-sale-infra</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.ghb</groupId>
-                <artifactId>flash-sale-user</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -189,6 +184,13 @@
                 <version>${archunit.version}</version>
                 <scope>test</scope>
             </dependency>
+
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-auth-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
         </dependencies>
     </dependencyManagement>
 

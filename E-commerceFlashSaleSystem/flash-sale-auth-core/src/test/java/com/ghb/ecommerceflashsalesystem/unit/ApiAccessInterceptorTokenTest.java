@@ -2,7 +2,7 @@ package com.ghb.ecommerceflashsalesystem.unit;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
-import com.ghb.ecommerceflashsalesystem.config.ApiAccessInterceptor;
+import com.ghb.ecommerceflashsalesystem.user.web.ApiAccessInterceptor;
 import com.ghb.ecommerceflashsalesystem.user.config.SecurityProperties;
 import com.ghb.ecommerceflashsalesystem.user.config.UserTokenRegistry;
 import com.ghb.ecommerceflashsalesystem.user.service.UserSessionService;

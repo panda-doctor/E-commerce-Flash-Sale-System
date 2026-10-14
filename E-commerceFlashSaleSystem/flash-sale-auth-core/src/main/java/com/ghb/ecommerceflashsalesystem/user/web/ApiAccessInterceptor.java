@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.config;
+package com.ghb.ecommerceflashsalesystem.user.web;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.constant.AuthAttributeConstant;

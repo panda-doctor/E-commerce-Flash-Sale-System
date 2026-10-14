@@ -1,5 +1,6 @@
 package com.ghb.ecommerceflashsalesystem.user.controller;
 
+
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
