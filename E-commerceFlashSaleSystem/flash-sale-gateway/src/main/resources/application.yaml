@@ -11,11 +11,16 @@ spring:
   application:
     name: flash-sale-gateway
   cloud:
+    # P1-2：服务发现（网关自身也注册进 Nacos，便于控制台统一查看）
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
     gateway:
       routes:
-        # 单体（P0 模块化单体）作为「遗留服务」挂在网关之后；前端只需指向网关
+        # 单体（P0 模块化单体）已注册为 flash-sale-monolith；
+        # lb:// 走服务发现 + 客户端负载均衡（多实例时自动轮询），不再写死 IP:端口
         - id: flash-sale-monolith
-          uri: http://localhost:8081
+          uri: lb://flash-sale-monolith
           predicates:
             - Path=/api/**
       globalcors:

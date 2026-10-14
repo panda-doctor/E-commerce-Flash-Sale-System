@@ -21,6 +21,17 @@
             <artifactId>spring-cloud-starter-gateway</artifactId>
         </dependency>
 
+        <!-- P1-2 服务发现：Nacos 客户端（网关自身也注册进 Nacos，便于控制台统一查看） -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+        <!-- lb:// 路由必需的客户端负载均衡器（Gateway 不会自动带入） -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+
         <!-- 自身健康与指标（P1-2 交由 Prometheus 抓取） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
