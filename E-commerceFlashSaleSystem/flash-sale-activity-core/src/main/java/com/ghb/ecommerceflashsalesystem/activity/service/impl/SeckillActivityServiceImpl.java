@@ -13,7 +13,7 @@ import com.ghb.ecommerceflashsalesystem.domain.enums.ActivityStatusEnum;
 import com.ghb.ecommerceflashsalesystem.activity.vo.ActivityItemVO;
 import com.ghb.ecommerceflashsalesystem.activity.vo.SeckillActivityVO;
 import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteMirror;
-import com.ghb.ecommerceflashsalesystem.product.mapper.ProductMapper;
+import com.ghb.ecommerceflashsalesystem.activity.port.ProductCatalogPort;
 import com.ghb.ecommerceflashsalesystem.activity.mapper.SeckillActivityMapper;
 import com.ghb.ecommerceflashsalesystem.activity.cache.SeckillCacheService;
 import com.ghb.ecommerceflashsalesystem.activity.service.SeckillActivityService;
@@ -37,7 +37,8 @@ import java.util.stream.Collectors;
 public class SeckillActivityServiceImpl implements SeckillActivityService {
     private final SeckillActivityMapper seckillActivityMapper;
     private final SeckillCacheService seckillCacheService;
-    private final ProductMapper productMapper;
+    /** P3 Day 5：商品目录端口（跨域读出口；实现由装配层提供，activity 不再直读 product 表） */
+    private final ProductCatalogPort productCatalogPort;
     /** P3 Day 3：过渡期双写镜像（默认关；失败只记日志，不影响活动创建/更新） */
     private final DualWriteMirror dualWriteMirror;
 
@@ -57,10 +58,7 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
                 .map(SeckillActivity::getProductId)
                 .distinct()
                 .collect(Collectors.toList());
-        Map<Long, Product> productMap = productIds.isEmpty()
-                ? Collections.emptyMap()
-                : productMapper.selectBatchIds(productIds).stream()
-                        .collect(Collectors.toMap(Product::getId, p -> p));
+        Map<Long, ProductCatalogPort.ProductBrief> productMap = productCatalogPort.findBriefs(productIds);
 
         return activities.stream().map(activity -> {
             ActivityItemVO vo = new ActivityItemVO();
@@ -72,11 +70,11 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
             vo.setSeckillPrice(activity.getSeckillPrice());
             vo.setStatus(ActivityStatusEnum.fromValue(activity.getStatus()));
 
-            Product product = productMap.get(activity.getProductId());
+            ProductCatalogPort.ProductBrief product = productMap.get(activity.getProductId());
             if (product != null) {
-                vo.setProductName(product.getName());
-                vo.setProductImage(product.getImageUrl());
-                vo.setOriginalPrice(product.getOriginalPrice());
+                vo.setProductName(product.name());
+                vo.setProductImage(product.imageUrl());
+                vo.setOriginalPrice(product.originalPrice());
             }
             // 实时库存：预热后取 Redis；未预热回退 DB 配置库存
             boolean cacheReady = seckillCacheService.isActivityCacheReady(activity.getId());
@@ -318,7 +316,8 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
             // E2：秒杀"一人一单"由订单唯一键（user+activity）硬约束，limitPerUser 不支持 >1，避免"配了不生效"的误导
             throw new BusinessException(ResultCode.PARAM_ERROR, "每人限购固定为 1 件/人（一人一单，订单唯一键约束，暂不支持每人多件）");
         }
-        if (request.getProductId() != null && productMapper.selectById(request.getProductId()) == null) {
+        // P3 Day 5：商品存在性校验改走商品服务接口（端口）——调用失败会抛异常，不会误判成"商品不存在"
+        if (request.getProductId() != null && !productCatalogPort.exists(request.getProductId())) {
             throw new BusinessException(ResultCode.NOT_FOUND, "关联商品不存在，productId=" + request.getProductId());
         }
     }

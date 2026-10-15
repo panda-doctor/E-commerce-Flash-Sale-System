@@ -27,10 +27,9 @@
             <groupId>com.ghb</groupId>
             <artifactId>flash-sale-infra</artifactId>
         </dependency>
-        <!-- 活动创建需校验关联商品存在（activity → product，允许的依赖边） -->
-        <dependency>
-            <groupId>com.ghb</groupId>
-            <artifactId>flash-sale-product-core</artifactId>
-        </dependency>
+        <!-- P3 Day 5：本库**不再**依赖 product-core —— 商品访问已端口化
+             （activity.port.ProductCatalogPort，实现由装配层注入：activity 应用走 HTTP、
+             单体走本地 mapper）。这也是 P4 首日「读切换到新库」的前置条件：
+             本库/本应用不再有任何 product 表的代码路径。 -->
     </dependencies>
 </project>

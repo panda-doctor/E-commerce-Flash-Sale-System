@@ -20,12 +20,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * {@code flash_sale}</b>，写路径经 {@code DualWriteMirror} 镜像到 {@code flash_sale_activity}
  * （Day 3 已有的双写开关，默认关闭）。</p>
  */
-// 必须同时扫 product.mapper：activity 域的 SeckillActivityServiceImpl 在创建活动时要校验
-// "商品是否存在"（构造参数依赖 product-core 的 ProductMapper）。这是当前架构表允许的依赖
-// （activity = common + domain-model + infra + product-core），只需读商品、不写商品表。
-// 后续若把该校验换成调用 product 服务的接口，本行可收敛回单一包。
-@MapperScan({"com.ghb.ecommerceflashsalesystem.activity.mapper",
-        "com.ghb.ecommerceflashsalesystem.product.mapper"})
+// P3 Day 5：只扫活动域自己的 mapper —— 商品存在性校验已改为调用 product 服务的内部接口
+// （ProductCatalogPort + HttpProductCatalogAdapter），应用不再直读 product 表
+// （这也是 P4 首日"读切换到新 schema"的前置条件：新库里没有 product 表）。
+@MapperScan("com.ghb.ecommerceflashsalesystem.activity.mapper")
 @SpringBootApplication
 public class ActivityServiceApplication {
 
