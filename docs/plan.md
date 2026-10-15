@@ -1022,7 +1022,7 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 | 日 | 任务 | 状态 | 验证 / 提交 |
 |---|---|---|---|
 | Day 1 | product 域「**库 + 应用**」拆分：`flash-sale-product` 改名 `flash-sale-product-core`，新建 `flash-sale-product` 应用（:8084）并注册 Nacos；**零行为变更** | ✅ 2026-10-15 | `install` exit=0（16 模块）；`:8084` health **UP**（db/redis/nacosDiscovery 全 UP）；Nacos **5 服务**（新增 `flash-sale-product`）；**零行为变更**：网关路由表本日无 product 路由、经网关 `/api/products` 200、`/api/admin/products/1` 带令牌 `code=0` / 无令牌 `40100`（网关准入）、`X-Trace-Id` 单值、**停 8084 后经网关 `/api/products` 仍 200**（证明仍由单体服务）；全量回归 **124 用例 0 失败 BUILD SUCCESS**（1.6 分钟，16 模块全 SUCCESS）；观测栈补 `flash-sale-product` job（Prometheus targets **6/6 UP**）；改名提交 `3afc88b`、应用与登记提交 `fa00c89` |
-| Day 2 | product 域割接：controllers + FileStorageWebConfig 迁入应用；单体摘除；网关导流 `/api/products/**`、`/api/admin/products/**`、`/api/admin/files/**`、`/uploads/**` | ⏳ | 经网关商品/上传链路可用；直连单体同路径 404 |
+| Day 2 | product 域割接：controllers + FileStorageWebConfig 迁入应用；单体摘除；网关导流 `/api/products/**`、`/api/admin/products/**`、`/api/admin/files/**`、`/uploads/**` | ⏳（**任务卡见下**） | 经网关商品/上传链路可用；直连单体同路径 404；**停 8084 后经网关 503**（证明已切换到新服务） |
 | Day 3 | 数据所有权：product / activity 独立 schema（DDL + 迁移脚本）+ 双写开关 + 对账脚本 | ⏳ | 两库行数/金额对账一致 |
 | Day 4 | activity 域服务化（:8085，同「库 + 应用」模式）+ 网关导流 + 预热锁归属 activity | ⏳ | 预热并发用例绿；经网关活动链路可用 |
 | Day 5 | seckill 提供内部「库存初始化/重置」接口（供 activity 编排）+ 全量回归 + 收口 | ⏳ | 接口收敛后回归绿线；文档同步 |
@@ -1054,8 +1054,37 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 
 **坑**：① 改名后**遗漏任何一处 artifactId 引用**都会编译失败（父 POM modules、dependencyManagement、bootstrap/activity/ai 三处依赖）；② 新应用 `@MapperScan` 必须包含 `product.mapper`（否则启动即报 Mapper 缺失）；③ 应用启动会占用 8084，且 `aliyun.oss.*` / `storage.local.dir` 配置必须与单体一致（否则上传路径不一致）；④ **不要**顺手把 controllers 移到应用里——那是 Day 2 的原子动作（与网关导流同批，避免破窗态）；⑤ 运行期不要执行 `mvn install`（Day 4 已踩过）。
 
+### P3 Day 2 详细任务卡（product 域割接：接口迁出 + 网关导流）
+
+> 执行方式：panda 实现 + 导师现场纠偏；预估 1.5~2 小时。
+
+**目标**：3 个 controller + `FileStorageWebConfig` 迁入 `flash-sale-product` 应用（:8084）；单体不再暴露商品/上传接口；网关把 4 组路径导流到 `lb://flash-sale-product`。**摘除与导流同批提交**（避免"接口已摘除但未导流"的破窗态）。
+
+**Day 2 侦察结论（决定动作面）**：
+
+- **待迁文件 4 个**：`ProductController`（`GET /api/products`、`GET /api/products/{productId}`）、`AdminProductController`（`GET /api/admin/products/{productId}`、`POST /api/admin/products`）、`AdminFileController`（`POST /api/admin/files/image`，multipart 字段名 `file`）、`FileStorageWebConfig`（`/uploads/**` → `{storage.local.dir}` 静态映射）。包名 `product.controller` / `product.config` **不变** → **无需改任何 import**。
+- **单体摘除不需要改 POM**：接口类本就在 `flash-sale-product-core` 里，迁出后单体（依赖 core）自动不再暴露接口。`activity` / `ai` 依赖的是 core 的 **service / mapper / VO**，**不受影响 —— 这些绝不要搬**。
+- **存储 Bean 的选择方式**：`@ConditionalOnProperty(name="aliyun.oss.enabled")` → `false`/缺省用 `LocalImageStorageService`，`true` 用 `OssImageStorageService`，**同一时刻仅一个 Bean**（应用 yaml 已有该配置）。
+- **没有测试用 MockMvc 打商品/上传 HTTP 接口**（6 个测试引用商品域类，但都是直接注入 service/storage Bean）→ 迁接口不会打断现有测试；只需**新增"单体侧接口归属"守卫断言**。
+- `/uploads/**` **不在** `/api/**` 下 → 必须单独写进路由的 path 列表；它是公开静态资源（网关 `AuthGatewayFilter` 只拦 `/api/admin/**` 与用户态路径，行为与现状一致）。
+
+| 步骤 | 内容 | 要点 |
+|---|---|---|
+| Step 0 前置 | 停 5 服务（8081/8082/8083/8084/8090）；工作区 clean | **停服务再构建**（Day 4 教训：运行期 `install` 会重写 `~/.m2` 中被运行中 JVM 读取的 jar） |
+| Step 1 迁接口 | `git mv` 4 文件：`flash-sale-product-core/.../product/controller/{ProductController,AdminProductController,AdminFileController}.java` → `flash-sale-product/src/main/java/com/ghb/ecommerceflashsalesystem/product/controller/`；`.../product/config/FileStorageWebConfig.java` → `.../product/config/` | 包名不变；**不要**搬 service / mapper / cache / storage / dto / vo |
+| Step 2 网关导流 | 在 auth / ai 路由之后、单体兜底之前插入：`- id: flash-sale-product` / `uri: lb://flash-sale-product` / `predicates: - Path=/api/products/**,/api/admin/products/**,/api/admin/files/**,/uploads/**` | **`/uploads/**` 必写**（图片是独立前缀，最容易漏）；先匹配先赢 |
+| Step 3 守卫测试 | 扩展 `flash-sale-bootstrap/src/test/.../integration/DomainEndpointsMovedTest.java`：新增 `GET /api/products`、`GET /api/products/1` → **404**；`GET /uploads/probe.jpg` → **404** | 不要用 `/api/admin/**` 断言 404（admin 路径先被拦截器覆盖 → 返回 `200 + 40100`） |
+| Step 4 构建与联调 | 停服务状态下 `mvnw -DskipTests install` → 起 5 服务 → 按下方判据表验收 | 起服务前确认 Nacos 在线（否则 `NacosException: Client not connected` 秒退） |
+| Step 5 回归收尾 | 停 5 服务 → `mvnw clean test` 绿线 → `plan.md` Day 2 → ✅ → 提交（建议 2 条原子提交） | 回退点：`git revert`，或把网关路由回退 + 还原 4 个文件 |
+
+**验收判据**：① `install` exit=0；② Nacos 仍 **5 服务**；③ 经网关 `GET /api/products?page=1&size=3` → 200，**且停掉 8084 后经网关变为 503**（证明路由已真正切到新服务 —— 与 Day 1 的"停 8084 仍 200"正好相反）；④ **直连单体** `GET /api/products` → **404**（接口已摘除）；⑤ 直连 8084 同路径 → 200；⑥ 经网关 `GET /api/admin/products/1`：带 `X-Admin-Token` → `code=0`、无令牌 → `40100`（网关准入）；⑦ **上传链路**：经网关 `POST /api/admin/files/image`（带令牌 + multipart `file`）→ `code=0` 且 `data.url` 有值，再 `GET {url}` 经网关 → 200（本地策略下 url 形如 `/uploads/yyyyMM/uuid.ext`）；⑧ 其它域不受影响：`/api/seckill/activities` 正常、`/api/support/chat` 空体 `40001`、`/api/auth/me` 无会话 `40100`；⑨ `X-Trace-Id` 单值；⑩ 全量回归绿线（**124 + 新增守卫断言**，用例数可能略增）。
+
+**坑**：① 路由顺序（product 必须在 `/api/**` 兜底之前）；② **漏写 `/uploads/**`** → 图片在网关侧 404（本地存储策略下最易漏）；③ `FileStorageWebConfig` 的路径基于**应用运行目录** → 必须确保应用 boot 插件 `workingDirectory=聚合根`（Day 1 已配），否则 `uploads/` 解析到别处导致图片 404；④ 别顺手搬 storage / service（activity、ai 依赖 core）；⑤ `GET /api/admin/**` 不能用 404 做判据（拦截器先拒）；⑥ 停服务再构建。
+
+**提交计划**：① `refactor(p3-day2): product 接口（3 controller + FileStorageWebConfig）迁入 flash-sale-product 应用 + 网关导流（摘除与导流同批）`；② `test(p3-day2)+docs: 单体商品接口归属守卫断言 + plan.md Day 2 记录`。
+
 ---
 
 *文档创建日期：2026-07-29*
 *上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16）；**P2 Day 3~4 完成并收口**（ai 服务化 :8083 + 网关准入鉴权 + 全量 **124 用例**绿线 + `p2-done` 标签；提交 `1014a8e`/`7db07eb`/`4275ba2`）；**P3 Day 1 完成**（product 域拆为 `flash-sale-product-core` 库 + `flash-sale-product` 应用 :8084；零行为变更 —— 网关路由未改、停 8084 后经网关商品接口仍 200；Nacos 5 服务；全量 124 用例绿线；改名提交 `3afc88b`））*
-*下次开始位置：①**P3 Day 2 — product 域割接**（controllers 3 个 + `FileStorageWebConfig` + 上传/存储适配迁入 `flash-sale-product` 应用、单体摘除该域、网关新增精确路由 `/api/products/**`、`/api/admin/products/**`、`/api/admin/files/**`、`/uploads/**`（置于兜底前）；**摘除与导流必须同批**，避免"接口已摘除但未导流"的破窗态）；②P3 Day 3 — 数据所有权（product / activity 独立 schema + 双写开关 + 对账脚本）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
+*下次开始位置：①**P3 Day 2 — product 域割接（任务卡已写入第九章，待实施）**：3 个 controller + `FileStorageWebConfig` 迁入 `flash-sale-product` 应用、单体自动摘除（接口在 core 里，**无需改 POM**）、网关新增 `Path=/api/products/**,/api/admin/products/**,/api/admin/files/**,/uploads/**` → `lb://flash-sale-product`（置于兜底前）；**摘除与导流同批**，避免"接口已摘除但未导流"的破窗态；②P3 Day 3 — 数据所有权（product / activity 独立 schema + 双写开关 + 对账脚本）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
