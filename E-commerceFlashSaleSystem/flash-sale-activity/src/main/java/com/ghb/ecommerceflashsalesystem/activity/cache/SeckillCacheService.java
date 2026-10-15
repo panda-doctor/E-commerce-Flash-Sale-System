@@ -21,6 +21,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteMirror;
+
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -38,6 +40,8 @@ public class SeckillCacheService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final SeckillActivityMapper seckillActivityMapper;
     private final RedissonClient redissonClient;
+    /** P3 Day 3：过渡期双写镜像（默认关；失败只记日志，不影响预热/回置主流程） */
+    private final DualWriteMirror dualWriteMirror;
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -114,12 +118,14 @@ public class SeckillCacheService {
             UpdateWrapper<SeckillActivity> updateWrapper = new UpdateWrapper<>();
             updateWrapper.eq("id", activityId).set("preheat_status", PreheatStatusEnum.PREHEATED.getCode());
             seckillActivityMapper.update(null, updateWrapper);
+            mirrorPreheatStatus(activityId, PreheatStatusEnum.PREHEATED.getCode());
             log.info("活动预热成功，activityId={}, ttl={}秒", activityId, ttlSeconds);
         } catch (Exception e) {
             // 预热失败，更新数据库状态为"预热失败"
             UpdateWrapper<SeckillActivity> failWrapper = new UpdateWrapper<>();
             failWrapper.eq("id", activityId).set("preheat_status", PreheatStatusEnum.PREHEAT_FAILED.getCode());
             seckillActivityMapper.update(null, failWrapper);
+            mirrorPreheatStatus(activityId, PreheatStatusEnum.PREHEAT_FAILED.getCode());
             log.error("活动预热失败，activityId={}", activityId, e);
             throw new BusinessException(ResultCode.SYSTEM_ERROR, "活动预热失败，请稍后重试");
         }
@@ -218,7 +224,22 @@ public class SeckillCacheService {
         wrapper.eq("id", activityId)
                 .set("preheat_status", PreheatStatusEnum.NOT_PREHEATED.getCode());
         seckillActivityMapper.update(null, wrapper);
+        mirrorPreheatStatus(activityId, PreheatStatusEnum.NOT_PREHEATED.getCode());
         log.info("活动预热状态已回置为未预热，activityId={}", activityId);
+    }
+
+    /**
+     * P3 Day 3：把"预热状态"这一**列级变更**镜像到 {@code flash_sale_activity}。
+     *
+     * <p>只镜像被改动的列（而不是整行）：预热状态是高频小更新，
+     * 整行覆盖可能把并发下的其它字段（version / 秒杀库存）写成旧值。</p>
+     *
+     * @param activityId    活动编号
+     * @param preheatStatus 预热状态码（PreheatStatusEnum）
+     */
+    private void mirrorPreheatStatus(Long activityId, int preheatStatus) {
+        dualWriteMirror.mirrorActivity(
+                "UPDATE seckill_activity SET preheat_status = ? WHERE id = ?", preheatStatus, activityId);
     }
 
     public SeckillActivityVO getActivityFromCache(Long activityId) {

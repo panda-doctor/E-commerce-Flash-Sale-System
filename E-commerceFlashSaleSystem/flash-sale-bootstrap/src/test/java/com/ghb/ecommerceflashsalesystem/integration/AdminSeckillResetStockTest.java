@@ -1,6 +1,8 @@
 package com.ghb.ecommerceflashsalesystem.integration;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
+import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteMirror;
+import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteProperties;
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;
@@ -62,7 +64,9 @@ public class AdminSeckillResetStockTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        seckillCacheService = new SeckillCacheService(redisTemplate, seckillActivityMapper, redissonClient);
+        // P3 Day 3：双写镜像关闭态注入（单测聚焦主库写回语义）
+        seckillCacheService = new SeckillCacheService(redisTemplate, seckillActivityMapper, redissonClient,
+                new DualWriteMirror(new DualWriteProperties()));
         // 重置方法内部先获取分布式锁；单测里直接放行，聚焦守卫与写回语义
         when(redissonClient.getLock(anyString())).thenReturn(lock);
         when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);

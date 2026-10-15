@@ -46,6 +46,17 @@ storage:
     dir: uploads
 # ===== 以上两段从单体 application.yaml 原样拷贝 =====
 
+# P3 Day 3：双写镜像（**过渡期，默认关闭**）。开启后商品写操作在主库提交后镜像到 flash_sale_product。
+# 读路径本日不动 → 关闭时行为与 Day 2 完全一致。
+module:
+  db:
+    dual-write:
+      enabled: ${DUAL_WRITE_ENABLED:false}
+      product-url: jdbc:mysql://localhost:3306/flash_sale_product?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      activity-url: jdbc:mysql://localhost:3306/flash_sale_activity?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      username: root
+      password: ${MYSQL_PASSWORD:123456}
+
 mybatis-plus:
   mapper-locations: classpath*:mapper/*.xml      # XML 在 core jar 里，必须 classpath*
   type-aliases-package: com.ghb.ecommerceflashsalesystem.domain.entity

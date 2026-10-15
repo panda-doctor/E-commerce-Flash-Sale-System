@@ -8,6 +8,7 @@ import com.ghb.ecommerceflashsalesystem.product.dto.request.ProductRequest;
 import com.ghb.ecommerceflashsalesystem.domain.entity.Product;
 import com.ghb.ecommerceflashsalesystem.domain.enums.ProductStatusEnum;
 import com.ghb.ecommerceflashsalesystem.product.vo.ProductVO;
+import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteMirror;
 import com.ghb.ecommerceflashsalesystem.product.mapper.ProductMapper;
 import com.ghb.ecommerceflashsalesystem.product.cache.ProductCacheService;
 import com.ghb.ecommerceflashsalesystem.product.service.ProductService;
@@ -35,6 +36,8 @@ public class ProductServiceImpl implements ProductService {
     private final ProductMapper productMapper;
     private final ProductCacheService productCacheService;
     private final RedissonClient redissonClient;
+    /** P3 Day 3：过渡期双写镜像（module.db.dual-write.enabled 默认关；失败只记日志，不影响主流程） */
+    private final DualWriteMirror dualWriteMirror;
 
     //锁参数
     private static final long LOCK_WAIT_TIME = 2;      // 最多等待2秒
@@ -189,6 +192,7 @@ public class ProductServiceImpl implements ProductService {
             // 创建生成ID
             product.setId(IdGenerator.nextId());
             productMapper.insert(product);
+            mirrorProductUpsert(product);
             log.info("创建商品成功，productId={}", product.getId());
             return product.getId();
         }else{
@@ -202,6 +206,7 @@ public class ProductServiceImpl implements ProductService {
                 log.warn("商品不存在，无法更新，productId={}", productId);
                 throw new BusinessException(ResultCode.NOT_FOUND, "商品不存在，无法更新，productId=" + productId);
             }
+            mirrorProductUpsert(product);
             // R4：商品更新后清商品详情缓存（含穿透空值标记），避免详情页继续命中旧数据
             try {
                 productCacheService.deleteProductFromCache(productId);
@@ -211,6 +216,25 @@ public class ProductServiceImpl implements ProductService {
             log.info("更新商品成功并清缓存，productId={}", productId);
             return productId;
         }
+    }
+
+    /**
+     * P3 Day 3：把商品写操作镜像到 {@code flash_sale_product}（双写开关默认关；镜像失败不影响主流程）。
+     *
+     * <p>用整行 UPSERT：商品写入本就是"全字段覆盖"语义（saveProduct 每次都设置全部字段），
+     * 与主库 {@code insert / updateById} 行为一致。</p>
+     *
+     * @param product 已写入主库的商品实体
+     */
+    private void mirrorProductUpsert(Product product) {
+        dualWriteMirror.mirrorProduct(
+                "INSERT INTO product (id, name, description, image_url, original_price, total_stock, available_stock, status) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                        + "ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), image_url=VALUES(image_url), "
+                        + "original_price=VALUES(original_price), total_stock=VALUES(total_stock), "
+                        + "available_stock=VALUES(available_stock), status=VALUES(status)",
+                product.getId(), product.getName(), product.getDescription(), product.getImageUrl(),
+                product.getOriginalPrice(), product.getTotalStock(), product.getAvailableStock(), product.getStatus());
     }
 
     /**

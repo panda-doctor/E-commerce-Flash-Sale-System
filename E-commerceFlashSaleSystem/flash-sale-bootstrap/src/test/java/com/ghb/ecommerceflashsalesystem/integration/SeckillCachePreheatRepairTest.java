@@ -1,6 +1,8 @@
 package com.ghb.ecommerceflashsalesystem.integration;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
+import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteMirror;
+import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteProperties;
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;
@@ -47,7 +49,9 @@ class SeckillCachePreheatRepairTest {
 
     @BeforeEach
     void setUp() throws InterruptedException {
-        cacheService = new SeckillCacheService(redisTemplate, activityMapper, redissonClient);
+        // P3 Day 3：双写镜像关闭态注入（单测聚焦预热修复语义）
+        cacheService = new SeckillCacheService(redisTemplate, activityMapper, redissonClient,
+                new DualWriteMirror(new DualWriteProperties()));
         when(redissonClient.getLock(anyString())).thenReturn(lock);
         when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(lock.isHeldByCurrentThread()).thenReturn(true);

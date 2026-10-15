@@ -1,6 +1,8 @@
 package com.ghb.ecommerceflashsalesystem.integration;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
+import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteMirror;
+import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteProperties;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.activity.dto.request.ActivityRequest;
 import com.ghb.ecommerceflashsalesystem.product.dto.request.ProductRequest;
@@ -65,8 +67,10 @@ public class CreateBusinessValidationTest {
 
     @BeforeEach
     void setUp() {
-        productService = new ProductServiceImpl(productMapper, productCacheService, redissonClient);
-        seckillActivityService = new SeckillActivityServiceImpl(seckillActivityMapper, seckillCacheService, productMapper);
+        // P3 Day 3：双写镜像以"关闭"状态注入 —— 单测聚焦主库行为，镜像不参与断言
+        DualWriteMirror dualWriteMirror = new DualWriteMirror(new DualWriteProperties());
+        productService = new ProductServiceImpl(productMapper, productCacheService, redissonClient, dualWriteMirror);
+        seckillActivityService = new SeckillActivityServiceImpl(seckillActivityMapper, seckillCacheService, productMapper, dualWriteMirror);
     }
 
     /** 活动"productId 存在性"通过：mock selectById 返回非 null 商品；成功路径 insert 返回 1 */

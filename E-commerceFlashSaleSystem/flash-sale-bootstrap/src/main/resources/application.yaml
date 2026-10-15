@@ -55,6 +55,17 @@ storage:
   local:
     dir: uploads
 
+# P3 Day 3：双写镜像（**过渡期，默认关闭**）。开启后活动写操作（创建/更新/预热状态）在主库提交后镜像到 flash_sale_activity。
+# 商品写操作已随 Day 2 割接迁到 flash-sale-product 服务（那边单独配置）。
+module:
+  db:
+    dual-write:
+      enabled: ${DUAL_WRITE_ENABLED:false}
+      product-url: jdbc:mysql://localhost:3306/flash_sale_product?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      activity-url: jdbc:mysql://localhost:3306/flash_sale_activity?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      username: root
+      password: ${MYSQL_PASSWORD:123456}
+
 # =====================================================
 # AI 客服大模型（OpenAI Chat Completions 兼容协议，默认 DeepSeek）
 # ⚠ 密钥为本地演示默认值：切勿随 application.yaml 提交进 Git；上线前改为环境变量
