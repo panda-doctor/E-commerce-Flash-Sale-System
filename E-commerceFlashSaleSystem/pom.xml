@@ -34,7 +34,7 @@
         <module>flash-sale-product</module>
         <module>flash-sale-activity-core</module>
         <module>flash-sale-activity</module>
-        <module>flash-sale-seckill</module>
+        <module>flash-sale-seckill-core</module>
         <module>flash-sale-order</module>
         <module>flash-sale-analytics</module>
         <module>flash-sale-ai</module>
@@ -103,7 +103,7 @@
             </dependency>
             <dependency>
                 <groupId>com.ghb</groupId>
-                <artifactId>flash-sale-seckill</artifactId>
+                <artifactId>flash-sale-seckill-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

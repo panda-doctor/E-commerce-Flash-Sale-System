@@ -10,9 +10,9 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>flash-sale-seckill</artifactId>
-    <name>flash-sale-seckill</name>
-    <description>秒杀执行域：滑动窗口限流 / Lua 原子扣减 / Stream 削峰投递</description>
+    <artifactId>flash-sale-seckill-core</artifactId>
+    <name>flash-sale-seckill-core</name>
+    <description>秒杀执行域库：滑动窗口限流 / Lua 原子扣减 / Stream 削峰投递 / 库存写服务；HTTP 入口由 flash-sale-seckill 应用承载（P4 Day 2）</description>
 
     <dependencies>
         <dependency>
@@ -36,12 +36,5 @@
             <groupId>com.ghb</groupId>
             <artifactId>flash-sale-activity-core</artifactId>
         </dependency>
-        <!-- P3 Day 5：显式声明 product-core —— 过去是靠 activity-core 的传递依赖拿到 ProductMapper；
-             activity 把商品访问端口化（不再依赖 product-core）后，seckill 自己的商品读取
-             （SeckillServiceImpl 的校验/价格）必须自己声明依赖，否则编译期就会暴露缺依赖 -->
-        <dependency>
-            <groupId>com.ghb</groupId>
-            <artifactId>flash-sale-product-core</artifactId>
-        </dependency>
-    </dependencies>
-</project>
+        </dependencies>
+        </project>

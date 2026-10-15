@@ -46,7 +46,7 @@
         </dependency>
         <dependency>
             <groupId>com.ghb</groupId>
-            <artifactId>flash-sale-seckill</artifactId>
+            <artifactId>flash-sale-seckill-core</artifactId>
         </dependency>
         <dependency>
             <groupId>com.ghb</groupId>
