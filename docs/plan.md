@@ -1023,7 +1023,7 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 |---|---|---|---|
 | Day 1 | product 域「**库 + 应用**」拆分：`flash-sale-product` 改名 `flash-sale-product-core`，新建 `flash-sale-product` 应用（:8084）并注册 Nacos；**零行为变更** | ✅ 2026-10-15 | `install` exit=0（16 模块）；`:8084` health **UP**（db/redis/nacosDiscovery 全 UP）；Nacos **5 服务**（新增 `flash-sale-product`）；**零行为变更**：网关路由表本日无 product 路由、经网关 `/api/products` 200、`/api/admin/products/1` 带令牌 `code=0` / 无令牌 `40100`（网关准入）、`X-Trace-Id` 单值、**停 8084 后经网关 `/api/products` 仍 200**（证明仍由单体服务）；全量回归 **124 用例 0 失败 BUILD SUCCESS**（1.6 分钟，16 模块全 SUCCESS）；观测栈补 `flash-sale-product` job（Prometheus targets **6/6 UP**）；改名提交 `3afc88b`、应用与登记提交 `fa00c89` |
 | Day 2 | product 域割接：controllers + FileStorageWebConfig 迁入应用；单体摘除；网关导流 `/api/products/**`、`/api/admin/products/**`、`/api/admin/files/**`、`/uploads/**` | ✅ 2026-10-15 | 接口迁出：3 controller + `FileStorageWebConfig` 迁入应用（git 识别 **4 个 rename**），core jar 内已无 `product/controller|config` → 单体自动摘除（**未改任何 POM**）；网关导流（**含 `/uploads/**`**，置于 `/api/**` 兜底前）：经网关 `/api/products` **200**、`/api/products/1` 200、**直连单体 404**、直连 8084 200；admin 带令牌 `code=0` / 无令牌 `40100`（网关准入）；**上传→回读**：`POST /api/admin/files/image` `code=0`（storageType=local）→ 经网关 `GET /uploads/...` **200**、直连单体 **404**；**反证：停 8084 后经网关 503**（网关日志 `No servers available for service: flash-sale-product`；Day 1 同测为 200）；其它域不变（`/api/health` 200、`auth/me` 40100、`support/chat` 40001）、`X-Trace-Id` 单值；全量回归 **125 用例 0 失败 BUILD SUCCESS**（2.2 分钟，16 模块） |
-| Day 3 | 数据所有权：product / activity 独立 schema（DDL + 迁移脚本）+ 双写开关 + 对账脚本 | ⏳ | 两库行数/金额对账一致 |
+| Day 3 | 数据所有权：product / activity 独立 schema（DDL + 迁移脚本）+ 双写开关 + 对账脚本 | ⏳（**任务卡见下**） | 两库行数/关键聚合对账一致；双写开关开/关行为可辨；**读路径不变**（零行为变更） |
 | Day 4 | activity 域服务化（:8085，同「库 + 应用」模式）+ 网关导流 + 预热锁归属 activity | ⏳ | 预热并发用例绿；经网关活动链路可用 |
 | Day 5 | seckill 提供内部「库存初始化/重置」接口（供 activity 编排）+ 全量回归 + 收口 | ⏳ | 接口收敛后回归绿线；文档同步 |
 
@@ -1091,8 +1091,55 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 - **守卫测试判据依据**：`/api/products/**` 属**公开路径**（不在 `ApiAccessWebConfig` 保护列表内）→ 无处理器时 GET/POST 都为 404，判据干净；而 `/api/admin/**` 会被拦截器**先拒**（`200 + 40100`），**不能**用于判"接口是否搬走"。
 - **踩坑与观察**：① 验收脚本把上传接口返回的**绝对 URL** 直接拼在网关地址后 → `curl` 得 `000`（URL 非法）；回读应使用"**相对路径 + 网关**"或"直接用返回的绝对 URL"；② 停掉 8084 后**第一次**请求网关返回 **500**（LB 缓存里仍有死实例、连接被拒），约 35s 后（Nacos 摘除实例 + LB 缓存过期）变为 **503** 且日志出现 `No servers available for service: flash-sale-product` → 判据以"**5xx 且网关日志指向该服务**"为准更稳；③ `LocalImageStorageService` 的 URL 由**当前请求**的 scheme/host/port 拼接，网关路由会改写 Host → 上传返回 `http://<host>:8084/uploads/...`（与割接前 `:8081` 同构，**非回归**；后续可考虑改为相对路径或可配置公开域名）；④ `uploads/` 目录基于**应用运行目录** → 依赖 boot 插件 `workingDirectory=聚合根`（Day 1 已配），因此单体与应用共用同一个图片目录，**无需迁移历史文件**；⑤ 服务列表 API（`/v1/ns/service/list`）列出的是**服务名**而非**实例**：8084 停掉后仍显示 `flash-sale-product`（count=5），但实例已摘除（LB 报 no servers）——查实例要用 `/v1/ns/instance/list?serviceName=...`。
 
+### P3 Day 3 详细任务卡（数据所有权：product / activity 独立 schema + 双写开关 + 对账脚本）
+
+> 执行方式：panda 实现 + 导师现场纠偏；预估 2~3 小时。
+
+**目标**：为 product 与 activity 两个域建立**独立 schema**（DDL + **幂等**迁移脚本），写路径加**双写开关**（默认关），并提供**对账脚本**。**本日不切换读路径**（读仍走 `flash_sale`）→ 行为零变化。
+
+**Day 3 侦察结论**：
+
+- 现状：单库 `flash_sale`（utf8mb4/unicode_ci）、**8 张表**；monolith / auth / ai / product 四个应用**全部连同一个 URL** `jdbc:mysql://localhost:3306/flash_sale`。
+- 表 → 域归属：`product` → product；`seckill_activity`、`seckill_activity_snapshot` → activity / analytics；`seckill_order`、`seckill_message_log` → seckill/order；`user_account`、`user_session` → auth。
+- **存在跨域外键（本日最关键的约束）**：`seckill_activity.fk_activity_product → product(id)`、`seckill_order.fk_order_product → product(id)`、`seckill_order.fk_order_activity → seckill_activity(id)`、`seckill_activity_snapshot.fk_snapshot_activity → seckill_activity(id)`。
+- mapper 现状：`ProductMapper`(+XML)、`SeckillActivityMapper`(+XML)、`SeckillOrderMapper`(+XML)、`UserAccountMapper`/`UserSessionMapper`、`SeckillActivitySnapshotMapper`。
+- 脚本约定：`flash-sale-bootstrap/src/main/resources/db/{schema.sql, migration/V*__*.sql}`，**手工执行**（未接 Flyway）；本机 `mysql.exe` 在 `D:\MySQL\mysql-8.0.34-winx64\bin`。
+- 缓存/锁键归属：`product:detail:{id}`（product）、`seckill:stock:{activityId}`（activity 实时库存）、`preheat_status` 列（activity）。
+
+**表归属裁定（本日决策）**：
+
+| 表 | 归属域 | 本日动作 |
+|---|---|---|
+| `product` | product | → 新库 `flash_sale_product` |
+| `seckill_activity` | activity | → 新库 `flash_sale_activity` |
+| `seckill_activity_snapshot` | analytics（读模型） | **暂留** `flash_sale`（收口日再定） |
+| `seckill_order` / `seckill_message_log` | seckill / order | 暂留（P4 拆） |
+| `user_account` / `user_session` | auth | 暂留（auth schema 迁移列为后续项） |
+
+**关键设计取舍（先想清楚再动手）**：
+
+- **跨域外键必须去掉**：MySQL 的外键约束只在**同一个 schema 内**维护，域拆分后"活动→商品""订单→商品/活动"的约束自然消失 → 完整性改由**应用层校验**保证（创建活动时校验商品存在，项目里已经在做）。
+- **用 `CREATE TABLE ... LIKE` 复制结构**：它复制列/索引/自增但**不复制外键** —— 正好符合"拆域去 FK"的目的，且避免手抄 DDL 产生结构漂移。
+- **双写是过渡期方案**：主库写入成功后，把同一条变更**镜像**到新 schema；镜像失败**不影响主流程**（try/catch + 日志 + Micrometer 计数）。
+- **本日不切读**：切换读路径（改 datasource / 用视图兼容）留到收口日，保证零行为变更。
+
+| 步骤 | 内容 | 要点 |
+|---|---|---|
+| Step 0 前置 | 停 5 服务；记录基线（`COUNT(*)`、`SUM(total_stock)`、`SUM(seckill_stock)`）；确认 `mysql.exe` 可用 | **停服务再做 DDL/迁移**（连接池/缓存会不一致） |
+| Step 1 新 schema DDL | 新增 `db/schema-product.sql`、`db/schema-activity.sql`：`CREATE DATABASE IF NOT EXISTS flash_sale_product \| flash_sale_activity`（utf8mb4/utf8mb4_unicode_ci）+ `CREATE TABLE ... LIKE flash_sale.product \| seckill_activity` | 字符集/排序规则与旧库一致；**不复制外键**（正是目的） |
+| Step 2 幂等迁移脚本 | 新增 `db/migration/V20261015__split_product_activity_schema.sql`：建库建表 + `INSERT ... SELECT ... ON DUPLICATE KEY UPDATE`（或 `REPLACE INTO`）+ 行数校验查询 | **可重跑**（幂等）；脚本尾部写回滚说明 |
+| Step 3 双写开关（默认关） | `flash-sale-infra` 新增 `DualWriteMirror`（第二数据源 `module.db.dual-write.*`，Hikari 小连接池）+ 属性类；接入写路径：`ProductServiceImpl.saveProduct`、`SeckillActivityServiceImpl` 创建/更新、`SeckillCacheService` 的 `preheat_status` 更新 | **主库提交后**再镜像；异常只记日志 + `dual_write_failures_total` 指标；开关默认 `false` |
+| Step 4 对账脚本 | 新增 `scripts/reconcile-product-activity.ps1`：读 `.env` 的 `MYSQL_PASSWORD`，用 `mysql.exe` 比对**行数 / MAX(updated_at) / 关键聚合**（`SUM(total_stock)`、`SUM(seckill_stock)`），输出差异明细并给退出码 | 有差异 → 退出码非 0（可作为切换前置门禁） |
+| Step 5 验证 + 回归 + 文档 + 提交 | 双写开→建商品/改活动→新库可见；双写关→新库不动；对账 `OK`；全量回归绿线；plan.md Day 3 → ✅；1~2 条原子提交 | 读路径未变 → 行为零变化 |
+
+**验收判据**：① 两个新库存在，`SHOW CREATE TABLE` 与旧库**仅差外键部分**；② 迁移后行数一致（`product`、`seckill_activity` 与迁移前相同）；③ **双写开**：经网关 `POST /api/admin/products` 建商品 → `flash_sale_product.product` 可见新行；活动更新/预热 → `flash_sale_activity.seckill_activity.preheat_status` 同步变化；④ **双写关**：新库无新行（旧库照常）；⑤ 对账脚本输出 `OK`（退出码 0），人为改一行后输出 diff（退出码 1）——证明脚本真能发现问题；⑥ 全量回归绿线（**读路径未变** → 行为零变化）；⑦ 代码/脚本/文档可一条提交回退。
+
+**坑**：① **跨域外键在拆分后不复存在** —— 不要在新 schema 里重建 `fk_activity_product`（MySQL 外键不能跨库维护），完整性交应用层；② `CREATE TABLE ... LIKE` 复制索引但**不带外键**（符合预期，须在文档写明）；③ 迁移脚本必须**幂等**，否则重跑报主键冲突；④ 双写要"**先主库提交、后镜像**"，镜像失败不回滚主库，且**不要放进主库事务**；⑤ **别在服务运行期做 DDL/迁移**；⑥ 双写开关默认 **false**，避免准备不足就写脏数据；⑦ 本日**不动读路径**，切换留到收口日。
+
+**提交计划**：① `feat(p3-day3): product/activity 独立 schema DDL + 幂等迁移脚本 + 对账脚本`；② `feat(p3-day3): 双写开关（默认关）+ infra 镜像组件 + 写路径接入 + 文档`。
+
 ---
 
 *文档创建日期：2026-07-29*
 *上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16）；**P2 Day 3~4 完成并收口**（ai 服务化 :8083 + 网关准入鉴权 + 全量 **124 用例**绿线 + `p2-done` 标签；提交 `1014a8e`/`7db07eb`/`4275ba2`）；**P3 Day 1 完成**（product 域拆为 `flash-sale-product-core` 库 + `flash-sale-product` 应用 :8084；零行为变更 —— 网关路由未改、停 8084 后经网关商品接口仍 200；Nacos 5 服务；全量 124 用例绿线；改名提交 `3afc88b`）；**P3 Day 2 完成**（product 接口迁入应用 + 网关导流含 `/uploads/**`；单体 404 / 新服务 200 / **停 8084 经网关 503**；上传→回读 200；全量 **125 用例**绿线））*
-*下次开始位置：①**P3 Day 3 — 数据所有权**：product / activity 独立 schema（DDL + 迁移脚本沿用 `flash-sale-bootstrap/src/main/resources/db/` 约定）+ 双写开关 + 对账脚本（要点见 `docs/microservices-plan.md` §5.2 之 P3）；②P3 Day 4 — activity 域服务化（:8085，同「库 + 应用」模式）+ 网关导流 + 预热锁归属 activity；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
+*下次开始位置：①**P3 Day 3 — 数据所有权（任务卡已写入第九章，待实施）**：product / activity 独立 schema（`flash_sale_product` / `flash_sale_activity`）+ 幂等迁移脚本 + 双写开关（默认关）+ 对账脚本；**跨域外键随拆域消失**（完整性交应用层校验）；本日**不切读路径**（零行为变更）；②P3 Day 4 — activity 域服务化（:8085，同「库 + 应用」模式）+ 网关导流 + 预热锁归属 activity；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
