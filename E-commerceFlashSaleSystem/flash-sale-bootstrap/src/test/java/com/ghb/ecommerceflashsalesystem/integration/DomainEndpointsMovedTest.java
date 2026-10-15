@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -43,6 +44,21 @@ class DomainEndpointsMovedTest {
     @Test
     void aiEndpointBelongsToAiService() throws Exception {
         mockMvc.perform(post("/api/support/chat").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void productEndpointsBelongToProductService() throws Exception {
+        // ProductController 已迁至 flash-sale-product：POST /api/products 在单体已无处理器 → 404。
+        // ⚠️ 不要用 /api/admin/** 做探针：那些路径被 ApiAccessWebConfig 管理端拦截器先拒绝，
+        //    永远返回 200 + 40100，无法区分「接口是否搬走」。
+        mockMvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isNotFound());
+        // 静态资源出口 /uploads/** 随 FileStorageWebConfig 一并迁出 → 404（公开路径，不受拦截器影响）
+        mockMvc.perform(get("/uploads/probe.jpg"))
+                .andExpect(status().isNotFound());
+        // GET /api/products/{id} 同属公开路径：无处理器 → 404（比 POST 更贴近真实调用形态）
+        mockMvc.perform(get("/api/products/1"))
                 .andExpect(status().isNotFound());
     }
 }
