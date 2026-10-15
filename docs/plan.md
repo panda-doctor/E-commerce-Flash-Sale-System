@@ -827,7 +827,7 @@
 | P1 | 基础设施（Nacos / Gateway / Compose / 追踪 / 监控） | 3 天 | M2 基建就绪 | 🔄 P1-1 ✅ / P1-2 进行中（T1 ✅） |
 | P2 | 边缘抽取（auth-service / ai-service / 网关统一鉴权） | 4 天 | M3 首个服务上线 | ⏳ |
 | P3 | 商品与活动（product / activity 独立库与缓存所有权） | 5 天 | M4 主数据域独立 | ⏳ |
-| P4 | 核心交易（seckill / order / `order.created` 事件 / 数据迁移） | 6 天 | M5 跨服务交易闭环 | ⏳ |
+| P4 | 核心交易（seckill / order / `order.created` 事件 / 数据迁移） | 6 天 | M5 跨服务交易闭环 | ⏳（**Day 1「切读」任务卡见第九章末**） |
 | P5 | 读模型收口（analytics 事件驱动，CQRS 完成） | 3 天 | M6 读模型分离 | ⏳ |
 | P6 | 质量运维（CI/CD / 告警 / 混沌演练 / Runbook） | 4 天 | M7 可运维交付 | ⏳ |
 
@@ -1265,6 +1265,39 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 
 ---
 
+### P4 Day 1 详细任务卡（切读：翻转权威源，三阶段迁移的第 2 步）
+
+> 执行方式：panda 实现 + 导师现场纠偏；预估 2~3 小时。对应 `microservices-plan.md` 的「数据迁移三阶段：双写 → **切读** → 下线旧表」。
+
+**目标**：把 product / activity 两个应用的**权威数据源切到独立 schema**（读 + 写都走新库），旧库 `flash_sale` 降级为「未拆模块（seckill / ai / analytics 仍在单体）的只读副本」，由**反向镜像**保持新鲜；对账脚本升级为**切换门禁**。P4 首日只动**配置与镜像语义**，不改业务代码。
+
+**P4 Day 1 侦察结论（决定可行性）**：
+
+- **未拆模块对 `product` / `seckill_activity` 两表零写**（复核 seckill / order / analytics / ai：无 `insert/update/delete`、无 `new Product()/new SeckillActivity()`）。单体里的 `SeckillServiceImpl` 只用 `SeckillCacheService.getActivityFromCache`（读 Redis）；analytics 只写自己的 `seckill_activity_snapshot` 表。
+  → **切读后不存在"两个写者互相覆盖"**，这是切读能做的**硬前提**（P3 Day 5 已经把它做成事实）。
+- 两个应用当前 `spring.datasource.url` 都指旧库 `flash_sale`，而 `DualWriteProperties.productUrl/activityUrl` 指新库 → **切读 = 两边对调**：datasource → 新库、镜像目标 → 旧库。
+- 镜像的**默认值必须反过来**：Day 3~P3 末它是"影子副本"（默认关，关了没影响）；切读后它是**未拆模块的数据来源**（默认必须开，关了 = 未拆模块读到凝固的旧副本）。
+- 两应用需要的表在新库中已存在（`flash_sale_product.product` / `flash_sale_activity.seckill_activity`），且应用侧已**没有** product 表代码路径（P3 Day 5 端口化）✓。
+- **单体 / ai / gateway 零改动**：它们继续读旧库，由反向镜像喂数据。
+- 幂等迁移脚本（全量重同步）+ 对账脚本（8 项：行数/聚合/指纹）都已就绪 → 对账脚本正好当**切换门禁**。
+
+| 步骤 | 内容 | 要点 |
+|---|---|---|
+| Step 0 门禁 | 停 6 服务；**先跑一次对账**，必须 `8/8 consistent` 才能往下；工作区 clean | 差异非 0 → **不许切**（先重同步） |
+| Step 1 语义改名 | `DualWriteProperties`：`productUrl/activityUrl` → `legacyProductUrl/legacyActivityUrl`（yaml 键 `legacy-product-url` / `legacy-activity-url`）；镜像日志带上**目标库名**（`target=product(db=flash_sale)`）→ 切换期一眼看出方向 | 三个 yaml 同步（product / activity / 单体）；单体侧镜像从此**惰性**（可达到的跨域写 = 0），加注释说明 |
+| Step 2 翻转配置 | 两个应用 yaml：`spring.datasource.url` → 各自新库；`module.db.dual-write.enabled` 默认改 `${DUAL_WRITE_ENABLED:true}`，镜像目标 = 旧库 | 单体 yaml 的 dual-write 段标注"已惰性" |
+| Step 3 构建 + 起服务 | `install`（17 模块）→ 起 6 服务 → Nacos 6 + health UP | 停服务再构建 |
+| Step 4 验证 | 见判据表（含"未拆模块读到新数据"的**端到端**证据） | 关键判据 ④ |
+| Step 5 回归 + 文档 + 提交 | 全量回归绿线 → plan.md P4 Day 1 ✅ + 三阶段进度 → 2 条原子提交 | **回滚 = 改配置**（datasource 换回旧库 + 镜像关），1 分钟 |
+
+**验收判据**：① 构建 17 模块绿线；② Nacos 6 服务 + `:8084`/`:8085` health UP（db 组件连的是新库）；③ **权威在新库**：经网关建商品/活动 → 新库有（权威）+ **旧库也有**（反向镜像，日志 `target=product(db=flash_sale)`）；④ **未拆模块读到新数据（本日最关键的证据）**：`GET :8090/api/seckill/activities`（单体 seckill 域，**读旧库**）能看到刚建/刚改的活动与最新字段；⑤ 活动预热链路不受影响：经网关 preheat `code=0`（库存仍走 seckill 内部接口 + Redis）；⑥ **读己之写**：`GET :8084/api/products/{id}` 返回刚写入的值；⑦ **切换后对账**仍 `8/8 consistent` + 行数一致（切换前门禁记录留底）；⑧ 其它域不变：rank / support / metrics / dead-letters；⑨ 全量回归 **129 用例**绿线；⑩ 文档：plan.md P4 Day 1 ✅ + 三阶段进度（双写 ✅ → **切读 ✅** → 下线旧表 ⏳）+ 回滚说明。
+
+**坑**：① 切读后镜像**默认必须开**（与 P3 相反）；② 验证时**别再设** `DUAL_WRITE_ENABLED=false`（历史演示脚本设过，环境变量会覆盖默认）；③ 旧库里若有人手工改过数据，会被视为"过期副本"（以新库为准 —— 这正是切读的本义）；④ 切换用"停服务 → 改配置 → 起服务"避免半程写入；⑤ 主键是雪花 id（无自增依赖）✓ 两库 id 语义一致；⑥ 对账脚本要在**切换前**跑一次留底；⑦ 回滚无数据代价（双写仍在，两库一致）。
+
+**提交计划**：① `feat(p4-day1): 切读 —— 两应用数据源切新库 + 反向镜像（旧库降级为副本）`；② `docs(p4-day1): plan.md P4 Day 1 完成 + 三阶段迁移进度`。
+
+---
+
 *文档创建日期：2026-07-29*
 *上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16）；**P2 Day 3~4 完成并收口**（ai 服务化 :8083 + 网关准入鉴权 + 全量 **124 用例**绿线 + `p2-done` 标签；提交 `1014a8e`/`7db07eb`/`4275ba2`）；**P3 Day 1 完成**（product 域拆为 `flash-sale-product-core` 库 + `flash-sale-product` 应用 :8084；零行为变更 —— 网关路由未改、停 8084 后经网关商品接口仍 200；Nacos 5 服务；全量 124 用例绿线；改名提交 `3afc88b`）；**P3 Day 2 完成**（product 接口迁入应用 + 网关导流含 `/uploads/**`；单体 404 / 新服务 200 / **停 8084 经网关 503**；上传→回读 200；全量 **125 用例**绿线）；**P3 Day 3 完成**（product / activity 独立 schema + 幂等迁移 + 双写镜像（默认关）+ 对账脚本；新库外键归零、列/索引逐项一致；双写开 8/8 一致、关时新库不动；脚本正/负向双向验证；全量 125 用例绿线）；**P3 Day 4 完成**（activity 库改名 `flash-sale-activity-core` + 新应用 `:8085` + 控制器一分为二（路径不变）+ 网关精确三条 Path；停 :8085 → 三条 activity 路径 **503** 而 metrics 仍 200；双写 22/22 + 对账 8/8；全量 **126 用例**绿线）；**P3 Day 5 完成（P3 收口）**（库存权属收口：seckill 内部接口 + 端口化委托，activity 不再写 `seckill:stock:*`；`/internal/**` 与 `/api/admin/**` 双护栏 fail-closed（直连两应用无令牌 → 40100）；去跨域直读：activity 不再依赖 product-core，商品校验改调商品服务接口（停 :8084 → `50000` 且零写入）；双写 22/22 + 对账 8/8；全量 **129 用例**绿线））*
-*下次开始位置：①**P4 首日 — 读切换（翻转权威源）**：activity / product 应用的 datasource 切到新库 + `DualWriteMirror` 反向（镜像目标改指旧库，给未拆模块 seckill / ai / analytics 读）+ 对账脚本作切换门禁（差异非 0 阻断）；前置条件已在 P3 Day 5 全部满足（无单体跨域 DB 写、activity 不再直读 product 表）；②**P4 主体 — 下一批域拆分**（seckill / order / analytics：表归属 + 服务化 + 网关导流，沿用「库 + 应用 → 接口割接 → 精确导流」三步法；ai 的目录数据从"直读 DB"改为调 product/activity 服务接口）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
+*下次开始位置：①**P4 Day 1 — 切读（翻转权威源，任务卡已写入第九章末，待实施）**：两应用 datasource 切新库 + 镜像语义反转为"反向镜像到旧库"（默认开，旧库降级为未拆模块的只读副本）+ 对账脚本作切换门禁；**只动配置与镜像语义，不改业务代码**，回滚 = 改配置；前置条件已在 P3 Day 5 全部满足（未拆模块对两表零写、activity 不再直读 product 表）；②**P4 主体 — 下一批域拆分**（seckill / order：服务化 + 网关精确导流 + `order.created` 事件契约与版本化 + 死信回放跨服务改造；ai 的目录数据从"直读 DB"改为调 product/activity 服务接口；旧库表在消费者全部迁走后下线）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
