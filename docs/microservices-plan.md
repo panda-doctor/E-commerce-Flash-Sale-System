@@ -208,6 +208,12 @@ flash-sale-parent
   - **P2 未做（明确留待后续）**：网关侧的**会话有效性核验**（introspection 或 JWT 无状态化）、auth 域 schema 独立与双写迁移（P3）、`/api/seckill/**` 与 `/api/admin/{seckill,products,files,metrics}` 仍在单体（P3/P4 拆出）。
 - **P3**：product 独立 schema + 缓存键所有权 + OSS 凭据；activity 独立 schema + 预热锁；seckill-service 提供内部"库存初始化/重置"接口；双写开关 + 对账脚本。
 - **P4**：seckill 独立 + order 独立；`order.created` 事件契约与版本化；死信回放跨服务改造；数据迁移三阶段（**双写 ✅ P3 Day 3 → 切读 ✅ P4 Day 1 → 下线旧表 ⏳**）；JMeter 全链路复测。
+- **P4 实施小结（进行中，进度与提交见 `docs/plan.md`）**：
+  - **Day 1 切读**：product / activity 应用数据源切到独立 schema（**权威**），旧库降级为**未拆模块的只读副本**，由 `DualWriteMirror` 反向镜像维护（应用侧默认开启）；对账脚本升级为切换门禁（切换前后均 8/8）。
+  - **Day 2 seckill 服务化**：库改名 `flash-sale-seckill-core` → 新建应用 `flash-sale-seckill`（:8086）。**依赖面有意扩张**：带 `flash-sale-auth-core` —— execute/check 要的"当前用户"（`AUTHENTICATED_USER_ID`）是 `ApiAccessInterceptor.requireUser` 校验令牌后写入的 request attribute，与单体同一机制；后续收口可抽"瘦用户会话守卫"下沉 infra。
+  - **HTTP 入口归属用文件位置表达**：4 个 seckill 入口随**控制器文件**迁入应用（被多个运行时共用的库，入口留在库里 = 单体也会暴露一份；实测直连单体原本返回 200，搬迁后 404）。网关仍是**四条精确 Path**（同前缀下 order 域的 `/api/seckill/orders/*`、`/api/seckill/users/*/orders` 仍归单体）。
+  - **新增共享模块 `flash-sale-remote`**：跨进程适配器（端口的 HTTP 装配：`HttpProductCatalogAdapter` + `LoadBalancedClientConfig`）。**只有需要跨进程调用的应用才依赖它**；"仅某个应用需要"的适配器（如 `HttpSeckillStockAdapter`）留在该应用内，避免与本地实现同类型 Bean 冲突。reactor 现为 **19 模块 / Nacos 7 服务**。
+  - **Day 2 遗留**：seckill 应用数据源暂指**旧库**（auth 的用户表只在那里）→ 待 auth 域服务化后切回权威库；旧库有 5 条 FK、新 schema 零 FK（反向镜像写旧库受 FK 顺序约束）。
 - **P5**：analytics 消费 `order.created` 建读模型（ZSet NX 幂等）；指标埋点从 execute 侧改为事件 + 本地计数；单体退化为后台只读聚合或下线。
 - **P6**：CI/CD 流水线（构建→测试→镜像→部署→灰度）；Prometheus 告警规则；混沌演练（kill order / 停 Redis / 注入延迟）；Runbook（回滚、对账、死信处理）。
 
