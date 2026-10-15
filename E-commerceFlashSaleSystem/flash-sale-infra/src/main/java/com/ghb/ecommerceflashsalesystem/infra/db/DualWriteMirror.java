@@ -10,19 +10,28 @@ import java.sql.PreparedStatement;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * P3 Day 3：过渡期「双写镜像」组件 —— 主库写成功后，把同一变更镜像到域独立 schema。
+ * 过渡期「域库镜像」组件 —— 权威库写成功后，把同一变更镜像到**副本库**。
+ *
+ * <p><b>方向已随 P4 Day 1「切读」反转</b>（Day 3 写这份类时是"旧库 → 新库"，现在相反）：</p>
+ * <ul>
+ *   <li>权威库 = 新 schema（{@code flash_sale_product} / {@code flash_sale_activity}），
+ *       两个已拆应用读写都在这里；</li>
+ *   <li>副本库 = 旧库 {@code flash_sale}，供**未拆模块**（seckill / ai / analytics，仍在单体）读 ——
+ *       它们的数据新鲜度完全依赖本镜像。</li>
+ * </ul>
  *
  * <p><b>设计约束（四条，缺一不可）</b>：</p>
  * <ol>
- *   <li><b>默认关闭</b>：{@code module.db.dual-write.enabled=false}；未开启时本类所有方法**直接返回**（零开销）。</li>
- *   <li><b>只镜像写、不动读</b>：读路径仍指旧库 → 本日行为零变化。</li>
- *   <li><b>失败绝不影响主流程</b>：镜像异常只记 ERROR 日志 + 计数，主库已提交、不回滚；
- *       差量由对账脚本 {@code scripts/reconcile-product-activity.ps1} 兜底。</li>
- *   <li><b>调用点必须在主库事务提交之后</b>：避免"主库回滚但镜像已落"的不一致。</li>
+ *   <li><b>类内默认关闭</b>：{@code module.db.dual-write.enabled} 默认 false（安全默认值，防止没配
+ *       的进程误写第二个库）；**两个已拆应用的 yaml 显式默认开启**，因为它们是副本的维护者。</li>
+ *   <li><b>只镜像写、不动权威读</b>：读路径一律走权威库；副本只服务未拆模块。</li>
+ *   <li><b>失败绝不影响主流程</b>：镜像异常只记 ERROR 日志 + 计数，权威库已提交、不回滚；
+ *       差量由对账脚本 {@code scripts/reconcile-product-activity.ps1} 兜底（切换期它同时是门禁）。</li>
+ *   <li><b>调用点必须在权威库事务提交之后</b>：避免"权威库回滚但副本已落"的不一致。</li>
  * </ol>
  *
  * <p>实现取舍：过渡期写量低，用一次性 JDBC 连接（不引入第二套连接池/多数据源路由），
- * 换取"零配置侵入 + 一眼看懂"；切换完成后本类连同开关一起删除。</p>
+ * 换取"零配置侵入 + 一眼看懂"；等未拆模块全部迁成服务、旧库表下线后，本类连同开关一起删除。</p>
  *
  * <p>本类刻意**不依赖任何业务实体**（infra 不能反向依赖业务模块），
  * 由调用方传入 SQL 与参数，镜像"到底写了什么"在调用点一目了然。</p>
@@ -55,14 +64,14 @@ public class DualWriteMirror {
         return failureCount.get();
     }
 
-    /** 镜像 product 域写操作到 {@code flash_sale_product} */
+    /** 把 product 域写操作镜像到**副本库**（旧库 {@code flash_sale}，供未拆模块读） */
     public void mirrorProduct(String sql, Object... params) {
-        mirror("product", properties.getProductUrl(), sql, params);
+        mirror("product", properties.getLegacyProductUrl(), sql, params);
     }
 
-    /** 镜像 activity 域写操作到 {@code flash_sale_activity} */
+    /** 把 activity 域写操作镜像到**副本库**（旧库 {@code flash_sale}，供未拆模块读） */
     public void mirrorActivity(String sql, Object... params) {
-        mirror("activity", properties.getActivityUrl(), sql, params);
+        mirror("activity", properties.getLegacyActivityUrl(), sql, params);
     }
 
     private void mirror(String target, String url, String sql, Object... params) {
@@ -79,12 +88,28 @@ public class DualWriteMirror {
                 }
                 int rows = ps.executeUpdate();
                 successCount.incrementAndGet();
-                log.info("双写镜像成功，target={}, rows={}, cost={}ms", target, rows, System.currentTimeMillis() - start);
+                // 日志带目标库名：切读期"镜像方向"是最容易搞反的地方，让它一眼可辨
+                log.info("镜像成功（权威 -> 副本），target={}(db={}), rows={}, cost={}ms",
+                        target, databaseOf(url), rows, System.currentTimeMillis() - start);
             }
         } catch (Exception e) {
             failureCount.incrementAndGet();
-            log.error("双写镜像失败（不影响主流程，请跑对账脚本核对），target={}, failures={}, sql={}",
-                    target, failureCount.get(), sql, e);
+            log.error("镜像失败（不影响主流程，请跑对账脚本核对），target={}(db={}), failures={}, sql={}",
+                    target, databaseOf(url), failureCount.get(), sql, e);
         }
+    }
+
+    /** 从 JDBC URL 里取库名（仅用于日志；解析失败返回 {@code ?}） */
+    static String databaseOf(String url) {
+        if (url == null) {
+            return "?";
+        }
+        int hostEnd = url.indexOf("//");
+        int slash = hostEnd < 0 ? -1 : url.indexOf('/', hostEnd + 2);
+        if (slash < 0) {
+            return "?";
+        }
+        int queryStart = url.indexOf('?', slash);
+        return queryStart < 0 ? url.substring(slash + 1) : url.substring(slash + 1, queryStart);
     }
 }

@@ -14,7 +14,8 @@ spring:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
   datasource:
-    url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    # P4 Day 1「切读」：新 schema 是**唯一权威源** —— 读 + 写都在这（旧库降级为副本，见文末镜像段）
+    url: jdbc:mysql://localhost:3306/flash_sale_product?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
     password: ${MYSQL_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -46,8 +47,6 @@ storage:
     dir: uploads
 # ===== 以上两段从单体 application.yaml 原样拷贝 =====
 
-# P3 Day 3：双写镜像（**过渡期，默认关闭**）。开启后商品写操作在主库提交后镜像到 flash_sale_product。
-# 读路径本日不动 → 关闭时行为与 Day 2 完全一致。
 # ===== 安全（P3 Day 5）=====
 security:
   # /api/admin/** 服务侧纵深防御（infra 的 AdminAccessWebConfig；未配置则管理端一律 40100）
@@ -59,10 +58,14 @@ module:
   internal:
     token: ${INTERNAL_TOKEN:dev-internal-token}
   db:
+    # P4 Day 1「切读」：权威 = 本应用的 datasource（flash_sale_product）；
+    # **副本 = 旧库 flash_sale** —— 未拆模块（seckill / ai / analytics 仍在单体）仍读它，
+    # 所以本镜像**默认开启**（Day 3 时它只是影子副本、默认关；语义已随切读反转）：
+    #   关掉 = 未拆模块会读到"凝固的旧副本"。
     dual-write:
-      enabled: ${DUAL_WRITE_ENABLED:false}
-      product-url: jdbc:mysql://localhost:3306/flash_sale_product?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-      activity-url: jdbc:mysql://localhost:3306/flash_sale_activity?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      enabled: ${DUAL_WRITE_ENABLED:true}
+      legacy-product-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      legacy-activity-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
       username: root
       password: ${MYSQL_PASSWORD:123456}
 
