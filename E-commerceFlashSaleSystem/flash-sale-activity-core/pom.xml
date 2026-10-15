@@ -10,9 +10,9 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>flash-sale-activity</artifactId>
-    <name>flash-sale-activity</name>
-    <description>活动域：秒杀活动管理与预热编排（含预热/重置分布式锁）</description>
+    <artifactId>flash-sale-activity-core</artifactId>
+    <name>flash-sale-activity-core</name>
+    <description>活动域库：秒杀活动管理与预热编排（含预热/重置分布式锁）；HTTP 入口由 flash-sale-activity 应用承载（P3 Day 4）</description>
 
     <dependencies>
         <dependency>

@@ -42,7 +42,7 @@
         </dependency>
         <dependency>
             <groupId>com.ghb</groupId>
-            <artifactId>flash-sale-activity</artifactId>
+            <artifactId>flash-sale-activity-core</artifactId>
         </dependency>
         <dependency>
             <groupId>com.ghb</groupId>
