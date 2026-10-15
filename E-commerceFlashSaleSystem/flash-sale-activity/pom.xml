@@ -80,6 +80,12 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
+        <!-- ========== 服务间调用（P3 Day 5）：lb:// 服务名解析走 Nacos + 客户端负载均衡 ========== -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+
         <!-- ========== 服务注册（Nacos：flash-sale-activity） ========== -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>

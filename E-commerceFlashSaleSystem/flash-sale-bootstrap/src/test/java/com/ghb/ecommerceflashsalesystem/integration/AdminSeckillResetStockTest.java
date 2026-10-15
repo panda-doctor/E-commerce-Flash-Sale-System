@@ -8,6 +8,7 @@ import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;
 import com.ghb.ecommerceflashsalesystem.activity.mapper.SeckillActivityMapper;
 import com.ghb.ecommerceflashsalesystem.activity.cache.SeckillCacheService;
+import com.ghb.ecommerceflashsalesystem.activity.port.SeckillStockPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,7 +17,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
@@ -52,21 +52,23 @@ public class AdminSeckillResetStockTest {
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
     @Mock
-    private ValueOperations<String, Object> valueOps;
-    @Mock
     private SeckillActivityMapper seckillActivityMapper;
     @Mock
     private RedissonClient redissonClient;
     @Mock
     private RLock lock;
+    /** P3 Day 5：库存写入已端口化（seckill 域唯一写口）——本测试断言"经端口写了多少、TTL 多少" */
+    @Mock
+    private SeckillStockPort seckillStockPort;
 
     private SeckillCacheService seckillCacheService;
 
     @BeforeEach
     void setUp() throws Exception {
         // P3 Day 3：双写镜像关闭态注入（单测聚焦主库写回语义）
+        // P3 Day 5：库存端口以 mock 注入（断言调用参数，不再断言 activity 直写 Redis 库存键）
         seckillCacheService = new SeckillCacheService(redisTemplate, seckillActivityMapper, redissonClient,
-                new DualWriteMirror(new DualWriteProperties()));
+                new DualWriteMirror(new DualWriteProperties()), seckillStockPort);
         // 重置方法内部先获取分布式锁；单测里直接放行，聚焦守卫与写回语义
         when(redissonClient.getLock(anyString())).thenReturn(lock);
         when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
@@ -81,6 +83,7 @@ public class AdminSeckillResetStockTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         e -> assertThat(e.getCode()).isEqualTo(ResultCode.NOT_FOUND.getCode()));
         verifyNoInteractions(redisTemplate);
+        verifyNoInteractions(seckillStockPort);
     }
 
     /** 活动进行中：PARAM_ERROR 拦截，且守卫须在写 Redis 之前拦下（禁止复活已扣减库存） */
@@ -96,38 +99,33 @@ public class AdminSeckillResetStockTest {
                             assertThat(e.getCode()).isEqualTo(ResultCode.PARAM_ERROR.getCode());
                             assertThat(e.getMessage()).contains("活动进行中，禁止重置库存");
                         });
-        // 守卫在 set 之前抛异常，Redis 不得有任何交互
+        // 守卫必须在写库存之前抛异常：Redis 与库存端口都不得有任何交互
         verifyNoInteractions(redisTemplate);
+        verifyNoInteractions(seckillStockPort);
     }
 
-    /** 未开始：放行，DB 配置库存写回缓存键并刷新 TTL */
+    /** 未开始：放行，DB 配置库存经端口写回（P3 Day 5：写动作归 seckill 域） */
     @Test
     void reset_notStarted_writeBackConfigStock() {
         LocalDateTime now = LocalDateTime.now();
         when(seckillActivityMapper.selectById(ACTIVITY_ID))
                 .thenReturn(buildActivity(now.plusHours(1), now.plusHours(2)));
-        when(redisTemplate.opsForValue()).thenReturn(valueOps);
 
         seckillCacheService.resetStock(ACTIVITY_ID);
 
-        String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + ACTIVITY_ID;
-        verify(valueOps).set(eq(stockKey), eq(CONFIG_STOCK));
-        verify(redisTemplate).expire(eq(stockKey), anyLong(), eq(TimeUnit.SECONDS));
+        verify(seckillStockPort).writeStock(eq(ACTIVITY_ID), eq(CONFIG_STOCK), anyLong());
     }
 
-    /** 已结束：同样放行；即使原活动缓存已过期，也必须为重置后的库存设置最短 TTL */
+    /** 已结束：同样放行；即使原活动缓存已过期，也必须为重置后的库存设置最短 TTL（60s） */
     @Test
     void reset_alreadyEnded_writeBackConfigStock() {
         LocalDateTime now = LocalDateTime.now();
         when(seckillActivityMapper.selectById(ACTIVITY_ID))
                 .thenReturn(buildActivity(now.minusHours(2), now.minusHours(1)));
-        when(redisTemplate.opsForValue()).thenReturn(valueOps);
 
         seckillCacheService.resetStock(ACTIVITY_ID);
 
-        String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + ACTIVITY_ID;
-        verify(valueOps).set(eq(stockKey), eq(CONFIG_STOCK));
-        verify(redisTemplate).expire(eq(stockKey), eq(60L), eq(TimeUnit.SECONDS));
+        verify(seckillStockPort).writeStock(eq(ACTIVITY_ID), eq(CONFIG_STOCK), eq(60L));
         verify(redissonClient).getLock(CacheKeyConstant.SECKILL_LOCK_PREFIX + "activity-cache:" + ACTIVITY_ID);
     }
 

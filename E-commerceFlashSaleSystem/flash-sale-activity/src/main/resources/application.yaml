@@ -50,7 +50,16 @@ storage:
     dir: uploads
 
 # P3 Day 3：双写镜像（**过渡期，默认关闭**）。开启后活动写操作在主库提交后镜像到 flash_sale_activity。
+# ===== 安全（P3 Day 5）=====
+security:
+  # /api/admin/** 服务侧纵深防御（infra 的 AdminAccessWebConfig；未配置则管理端一律 40100）
+  admin-token: ${ADMIN_TOKEN:}
+
 module:
+  # 内部接口令牌（X-Internal-Token）：服务间调用（本服务 → 单体库存接口 / 商品摘要接口）使用；
+  # 未配置时双方都拒绝（fail-closed）。dev 默认值仅供本地；生产必须用环境变量覆盖。
+  internal:
+    token: ${INTERNAL_TOKEN:dev-internal-token}
   db:
     dual-write:
       enabled: ${DUAL_WRITE_ENABLED:false}

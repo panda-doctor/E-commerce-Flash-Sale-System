@@ -58,6 +58,10 @@ storage:
 # P3 Day 3：双写镜像（**过渡期，默认关闭**）。开启后活动写操作（创建/更新/预热状态）在主库提交后镜像到 flash_sale_activity。
 # 商品写操作已随 Day 2 割接迁到 flash-sale-product 服务（那边单独配置）。
 module:
+  # 内部接口令牌（P3 Day 5）：服务间调用（activity → 单体 seckill 库存接口）使用；
+  # 未配置时 /internal/** 一律拒绝（fail-closed）。dev 默认值仅供本地；生产必须用环境变量覆盖。
+  internal:
+    token: ${INTERNAL_TOKEN:dev-internal-token}
   db:
     dual-write:
       enabled: ${DUAL_WRITE_ENABLED:false}

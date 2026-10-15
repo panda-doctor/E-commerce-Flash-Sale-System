@@ -15,6 +15,7 @@ import com.ghb.ecommerceflashsalesystem.product.cache.ProductCacheService;
 import com.ghb.ecommerceflashsalesystem.activity.cache.SeckillCacheService;
 import com.ghb.ecommerceflashsalesystem.product.service.impl.ProductServiceImpl;
 import com.ghb.ecommerceflashsalesystem.activity.service.impl.SeckillActivityServiceImpl;
+import com.ghb.ecommerceflashsalesystem.activity.port.ProductCatalogPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +24,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RedissonClient;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -70,7 +74,25 @@ public class CreateBusinessValidationTest {
         // P3 Day 3：双写镜像以"关闭"状态注入 —— 单测聚焦主库行为，镜像不参与断言
         DualWriteMirror dualWriteMirror = new DualWriteMirror(new DualWriteProperties());
         productService = new ProductServiceImpl(productMapper, productCacheService, redissonClient, dualWriteMirror);
-        seckillActivityService = new SeckillActivityServiceImpl(seckillActivityMapper, seckillCacheService, productMapper, dualWriteMirror);
+        // P3 Day 5：商品访问已端口化 —— 用 mock 的 ProductMapper 组装一个"本地端口实现"
+        //（等价于单体的 LocalProductCatalogAdapter；activity 应用侧换成 HTTP 适配器）
+        seckillActivityService = new SeckillActivityServiceImpl(seckillActivityMapper, seckillCacheService,
+                new ProductCatalogPort() {
+                    @Override
+                    public boolean exists(Long productId) {
+                        return productId != null && productMapper.selectById(productId) != null;
+                    }
+
+                    @Override
+                    public Map<Long, ProductBrief> findBriefs(Collection<Long> productIds) {
+                        if (productIds == null || productIds.isEmpty()) {
+                            return Map.of();
+                        }
+                        return productMapper.selectBatchIds(productIds).stream()
+                                .collect(Collectors.toMap(Product::getId,
+                                        p -> new ProductBrief(p.getId(), p.getName(), p.getImageUrl(), p.getOriginalPrice())));
+                    }
+                }, dualWriteMirror);
     }
 
     /** 活动"productId 存在性"通过：mock selectById 返回非 null 商品；成功路径 insert 返回 1 */

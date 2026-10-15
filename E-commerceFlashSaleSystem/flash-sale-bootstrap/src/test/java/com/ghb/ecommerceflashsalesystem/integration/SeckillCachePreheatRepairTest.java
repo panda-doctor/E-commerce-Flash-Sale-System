@@ -8,6 +8,7 @@ import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;
 import com.ghb.ecommerceflashsalesystem.activity.mapper.SeckillActivityMapper;
 import com.ghb.ecommerceflashsalesystem.activity.cache.SeckillCacheService;
+import com.ghb.ecommerceflashsalesystem.activity.port.SeckillStockPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +31,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /** 验证数据库预热标记与实际缓存不一致时，重试可以修复缓存。 */
@@ -40,18 +42,20 @@ class SeckillCachePreheatRepairTest {
 
     @Mock private RedisTemplate<String, Object> redisTemplate;
     @Mock private HashOperations<String, Object, Object> hashOperations;
-    @Mock private ValueOperations<String, Object> valueOperations;
     @Mock private SeckillActivityMapper activityMapper;
     @Mock private RedissonClient redissonClient;
     @Mock private RLock lock;
+    /** P3 Day 5：库存写入已端口化（seckill 域唯一写口） */
+    @Mock private SeckillStockPort seckillStockPort;
 
     private SeckillCacheService cacheService;
 
     @BeforeEach
     void setUp() throws InterruptedException {
         // P3 Day 3：双写镜像关闭态注入（单测聚焦预热修复语义）
+        // P3 Day 5：库存端口 mock 注入（活动哈希仍由 RedisTemplate 写，库存改由端口写）
         cacheService = new SeckillCacheService(redisTemplate, activityMapper, redissonClient,
-                new DualWriteMirror(new DualWriteProperties()));
+                new DualWriteMirror(new DualWriteProperties()), seckillStockPort);
         when(redissonClient.getLock(anyString())).thenReturn(lock);
         when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(lock.isHeldByCurrentThread()).thenReturn(true);
@@ -65,15 +69,14 @@ class SeckillCachePreheatRepairTest {
         when(redisTemplate.hasKey(activityKey)).thenReturn(true);
         when(redisTemplate.hasKey(stockKey)).thenReturn(false);
         when(redisTemplate.opsForHash()).thenReturn(hashOperations);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(activityMapper.update(any(), any())).thenReturn(1);
 
         cacheService.preheatActivity(ACTIVITY_ID);
 
         verify(hashOperations).putAll(eq(activityKey), any());
-        verify(valueOperations).set(stockKey, 12);
+        // 库存写入走端口（seckill:stock:* 归 seckill 域），活动哈希仍由本服务写
+        verify(seckillStockPort).writeStock(eq(ACTIVITY_ID), eq(12), anyLong());
         verify(redisTemplate).expire(eq(activityKey), anyLong(), eq(TimeUnit.SECONDS));
-        verify(redisTemplate).expire(eq(stockKey), anyLong(), eq(TimeUnit.SECONDS));
         verify(activityMapper).update(any(), any());
     }
 
@@ -90,6 +93,7 @@ class SeckillCachePreheatRepairTest {
         verify(redisTemplate, never()).opsForHash();
         verify(redisTemplate, never()).opsForValue();
         verify(activityMapper, never()).update(any(), any());
+        verifyNoInteractions(seckillStockPort);
     }
 
     private SeckillActivity buildPreheatedActivity() {

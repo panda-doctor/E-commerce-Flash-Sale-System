@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import com.ghb.ecommerceflashsalesystem.activity.port.SeckillStockPort;
 import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteMirror;
 
 import java.util.concurrent.TimeUnit;
@@ -42,6 +43,8 @@ public class SeckillCacheService {
     private final RedissonClient redissonClient;
     /** P3 Day 3：过渡期双写镜像（默认关；失败只记日志，不影响预热/回置主流程） */
     private final DualWriteMirror dualWriteMirror;
+    /** P3 Day 5：库存键写入选口 —— seckill:stock:* 归 seckill 域，activity 只表达"写多少、保留多久" */
+    private final SeckillStockPort seckillStockPort;
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -105,14 +108,13 @@ public class SeckillCacheService {
             hashFields.put("status", activity.getStatus());
             redisTemplate.opsForHash().putAll(activityKey, hashFields);
 
-            // 写库存 String
-            String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
-            redisTemplate.opsForValue().set(stockKey, activity.getSeckillStock());
-
-            // 设置 TTL（活动结束时间 + 缓冲）
+            // TTL（活动结束时间 + 缓冲）：活动哈希与库存键共用同一个 TTL
             long ttlSeconds = activityCacheTtlSeconds(now, activity.getEndTime());
+
+            // 写库存 String —— 走 seckill 域端口（P3 Day 5 权属收口：activity 不再直写 seckill:stock:*）
+            seckillStockPort.writeStock(activityId, activity.getSeckillStock(), ttlSeconds);
+
             redisTemplate.expire(activityKey, ttlSeconds, TimeUnit.SECONDS);
-            redisTemplate.expire(stockKey, ttlSeconds, TimeUnit.SECONDS);
 
             // 更新数据库预热状态为"已预热"
             UpdateWrapper<SeckillActivity> updateWrapper = new UpdateWrapper<>();
@@ -150,13 +152,12 @@ public class SeckillCacheService {
                     && !now.isBefore(activity.getStartTime()) && now.isBefore(activity.getEndTime())) {
                 throw new BusinessException(ResultCode.PARAM_ERROR, "活动进行中，禁止重置库存");
             }
-            String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + activityId;
-            redisTemplate.opsForValue().set(stockKey, activity.getSeckillStock());
-
-            // SET 会清除原 TTL；统一设置最短保留时间，避免重置已结束活动后产生永久键。
+            // SET 会清除原 TTL；统一设置保留时间，避免重置已结束活动后产生永久键。
             long ttlSeconds = activityCacheTtlSeconds(LocalDateTime.now(), activity.getEndTime());
-            redisTemplate.expire(stockKey, ttlSeconds, TimeUnit.SECONDS);
-            log.info("库存重置成功，activityId={}, stock={}", activityId, activity.getSeckillStock());
+
+            // 走 seckill 域端口写库存（P3 Day 5 权属收口）
+            seckillStockPort.writeStock(activityId, activity.getSeckillStock(), ttlSeconds);
+            log.info("库存重置请求完成，activityId={}, stock={}", activityId, activity.getSeckillStock());
         });
     }
 
