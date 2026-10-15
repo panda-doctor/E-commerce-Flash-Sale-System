@@ -1024,7 +1024,7 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 | Day 1 | product 域「**库 + 应用**」拆分：`flash-sale-product` 改名 `flash-sale-product-core`，新建 `flash-sale-product` 应用（:8084）并注册 Nacos；**零行为变更** | ✅ 2026-10-15 | `install` exit=0（16 模块）；`:8084` health **UP**（db/redis/nacosDiscovery 全 UP）；Nacos **5 服务**（新增 `flash-sale-product`）；**零行为变更**：网关路由表本日无 product 路由、经网关 `/api/products` 200、`/api/admin/products/1` 带令牌 `code=0` / 无令牌 `40100`（网关准入）、`X-Trace-Id` 单值、**停 8084 后经网关 `/api/products` 仍 200**（证明仍由单体服务）；全量回归 **124 用例 0 失败 BUILD SUCCESS**（1.6 分钟，16 模块全 SUCCESS）；观测栈补 `flash-sale-product` job（Prometheus targets **6/6 UP**）；改名提交 `3afc88b`、应用与登记提交 `fa00c89` |
 | Day 2 | product 域割接：controllers + FileStorageWebConfig 迁入应用；单体摘除；网关导流 `/api/products/**`、`/api/admin/products/**`、`/api/admin/files/**`、`/uploads/**` | ✅ 2026-10-15 | 接口迁出：3 controller + `FileStorageWebConfig` 迁入应用（git 识别 **4 个 rename**），core jar 内已无 `product/controller|config` → 单体自动摘除（**未改任何 POM**）；网关导流（**含 `/uploads/**`**，置于 `/api/**` 兜底前）：经网关 `/api/products` **200**、`/api/products/1` 200、**直连单体 404**、直连 8084 200；admin 带令牌 `code=0` / 无令牌 `40100`（网关准入）；**上传→回读**：`POST /api/admin/files/image` `code=0`（storageType=local）→ 经网关 `GET /uploads/...` **200**、直连单体 **404**；**反证：停 8084 后经网关 503**（网关日志 `No servers available for service: flash-sale-product`；Day 1 同测为 200）；其它域不变（`/api/health` 200、`auth/me` 40100、`support/chat` 40001）、`X-Trace-Id` 单值；全量回归 **125 用例 0 失败 BUILD SUCCESS**（2.2 分钟，16 模块） |
 | Day 3 | 数据所有权：product / activity 独立 schema（DDL + 迁移脚本）+ 双写开关 + 对账脚本 | ✅ 2026-10-15 | 新库 `flash_sale_product` / `flash_sale_activity` 建成：列定义/索引与旧库**逐项一致**（10 列 / 13 列、索引 3/3 与 4/4），**外键归零**（旧库 5 个 FK 含 2 个跨域 FK，新库 0 个）；幂等迁移（连跑 3 次 exit=0）；**双写镜像**：开 → 经网关建商品/活动（含更新、预热）后新库逐字段一致（`preheat=1 ver=1`）、日志 `target=product 1 次 / target=activity 4 次`；**关 → 新库完全不动**（主库 6→7 / 20→21，新库仍 6/20）；**对账脚本**正/负向双向验证（8/8 OK exit=0；人为改一行 → DIFF exit=1；重跑迁移重同步 → 恢复 OK）；全量回归 **125 用例 0 失败 BUILD SUCCESS**（1.9 分钟，16 模块）；读路径未变 → **零行为变更** |
-| Day 4 | activity 域服务化（:8085，同「库 + 应用」模式）+ 网关导流 + 预热锁归属 activity | ⏳ | 预热并发用例绿；经网关活动链路可用 |
+| Day 4 | activity 域服务化（:8085，同「库 + 应用」模式）+ 网关导流 + 预热锁归属 activity | ⏳（**任务卡见下**） | 经网关活动管理端链路可用（建/改、预热、重置库存）；**metrics 与 dead-letters 仍由单体**（路由必须精确）；直连单体同路径 404；双写仍一致；全量回归绿线 |
 | Day 5 | seckill 提供内部「库存初始化/重置」接口（供 activity 编排）+ 全量回归 + 收口 | ⏳ | 接口收敛后回归绿线；文档同步 |
 
 ### P3 Day 1 详细任务卡（product 域「库 + 应用」拆分，零行为变更）
@@ -1152,6 +1152,45 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 
 ---
 
+### P3 Day 4 详细任务卡（activity 域服务化：库 + 应用 :8085 + 网关精确导流）
+
+> 执行方式：panda 实现 + 导师现场纠偏；预估 2~3 小时。
+
+**目标**：`flash-sale-activity`（库）改名 `flash-sale-activity-core`；新建 `flash-sale-activity` 应用（:8085）；**只把 activity 自己的管理端接口**（建/改活动、预热、重置库存）迁入应用并**精确导流**；`dead-letters/replay`（order 域）留在单体；预热锁随库进应用；**读路径仍指旧库**（Day 5 切换）。
+
+**Day 4 侦察结论（决定动作面）**：
+
+- `AdminSeckillController` 在 **bootstrap**（`controller.admin` 包），**混了 3 个域**：`POST /activities`、`POST /activities/{id}/preheat`、`POST /activities/{id}/reset-stock`（activity）与 **`POST /dead-letters/replay`（order）** → **必须一分为二**。
+- 依赖面（照 `docs/microservices-plan.md`）：activity = common + domain-model + infra + **product-core**（创建活动校验商品存在）；**不含 auth-core**；被 **bootstrap / ai / seckill** 三个模块依赖 → 改名要同步 3 处 + 父 POM。
+- **管理令牌纵深防御在 auth-core**（`ApiAccessWebConfig` + `ApiAccessInterceptor`，还依赖 `UserSessionService` / `UserTokenRegistry`）→ **product 应用与新的 activity 应用都不会自带它**（Day 2 遗留缺口：直连 `:8084/api/admin/products/**` 无令牌校验，只有网关把关）。**本日决策**：接受"网关唯一准入"并记录；**收口日**把"仅 requireAdmin"的部分（`SecurityProperties` + 令牌校验）下沉到 `infra`，一次性恢复两个应用的纵深防御。
+- 单体只剩 3 个文件：`AdminSeckillController` / `HealthController` / 启动类（`@MapperScan` 5 个域 + `@EnableScheduling`）。
+- **新应用不要开 `@EnableScheduling`**：单体里它驱动的是 seckill/order/analytics 的定时任务；activity 应用不需要，开了有**重复执行**风险（Step 0 先 grep 确认 activity-core 无 `@Scheduled`）。
+- 测试面：**没有** MockMvc 测试打 `/api/admin/seckill/**`（只有网关过滤器测试引用该路径字符串）→ 迁接口不打断现有测试，只需新增归属守卫断言。
+- 预热锁：`SeckillCacheService.withActivityCacheLock`（Redisson）已在 activity 库 ✓ 随库进应用，**本日零代码改动**即完成"预热锁归属 activity"。
+
+**关键设计：网关不能整段导流 `/api/admin/seckill/**`** —— 同前缀下还有 analytics 的 `GET /activities/{id}/metrics`、`POST /activities/{id}/snapshot` 与 order 的 `POST /dead-letters/replay`。必须精确三条：
+
+```yaml
+            - Path=/api/admin/seckill/activities,/api/admin/seckill/activities/*/preheat,/api/admin/seckill/activities/*/reset-stock
+```
+
+| 步骤 | 内容 | 要点 |
+|---|---|---|
+| Step 0 前置 | 停 5 服务；grep 确认 activity-core 无 `@Scheduled`；工作区 clean | 停服务再构建（老坑） |
+| Step 1 改名 | `flash-sale-activity` → `flash-sale-activity-core`；父 POM（module + dependencyManagement，版本用 `${project.version}`）+ 引用面 3 处（bootstrap / ai / seckill） | 照 Day 1 改名提交的做法，一条原子提交 |
+| Step 2 新应用 | 新建 `flash-sale-activity`（:8085）：POM 照 `flash-sale-product/pom.xml` 抄（activity-core + common/domain-model/infra + web/validation/mybatis-plus/mysql/redis/redisson/dotenv/actuator/micrometer/nacos-discovery + boot 插件 `workingDirectory`）；启动类放根包 + `@MapperScan("...activity.mapper")`、**不加 `@EnableScheduling`**；yaml（8085 / `flash-sale-activity` / **过渡期 datasource 仍指 `flash_sale`** / `module.db.dual-write` 段 / `classpath*:mapper/*.xml` / traceId 日志格式） | **新模块 POM 四条自查**：`</dependencies>` 位置、父 POM 只登记不继承（`<dependencyManagement>`）、`${project.version}`、启动类位置 |
+| Step 3 接口拆分 | 新建 `activity.controller.AdminSeckillController`（3 个 activity 接口，**路径不变**）；单体侧 `AdminSeckillController` 精简为**只留 `dead-letters/replay`**（建议改名 `AdminMessageController`，路径不变） | **不要搬** service / mapper / cache / vo / dto（seckill、ai 依赖 core）；`dead-letters/replay` **绝不能**进 activity 应用（order 域） |
+| Step 4 网关精确导流 | 在 `flash-sale-product` 之后、单体兜底之前插入 `id: flash-sale-activity` → 上面三条 Path | **不要**用 `/api/admin/seckill/**` |
+| Step 5 验证 + 回归 + 文档 + 提交 | 构建 → 起 6 服务 → 判据 → 停服务回归 → plan.md Day 4 ✅ → 2~3 条原子提交 | 回退点：网关路由回退 + `git revert` |
+
+**验收判据**：① `install` exit=0（reactor **17 模块**）；② Nacos **6 服务**、`:8085/actuator/health` UP（db/redis/nacos 全 UP）；③ 经网关活动管理端链路：`POST /api/admin/seckill/activities` → `code=0`、`.../{id}/preheat` → `code=0`（返回 stock/stockKey）、`.../{id}/reset-stock` → `code=0`；④ **路由精确性**：`GET /api/admin/seckill/activities/{id}/metrics`（analytics）与 `POST /api/admin/seckill/dead-letters/replay`（order）**仍由单体**提供；⑤ **反证**：停 `:8085` → 经网关三条 activity 路径 **5xx**（日志 `No servers available for service: flash-sale-activity`），metrics 仍 200；⑥ **直连单体** `POST /api/admin/seckill/activities` → **404**（已摘除），直连 `:8085` → 200；⑦ **双写回归**（Day 3）：经网关建/改/预热后 `flash_sale_activity.seckill_activity` 与主库逐字段一致，对账脚本 `8/8 consistent`；⑧ 其它域不变：`/api/seckill/activities`（seckill 域仍在单体）、`/api/rank/top10`、`/api/support/chat`、`/api/health`；⑨ `X-Trace-Id` 单值；⑩ 全量回归绿线（125 + 新增守卫断言）。
+
+**坑**：① **整段导流 `/api/admin/seckill/**` 会抢走** analytics 的 metrics/snapshot 与 order 的 dead-letters；② `dead-letters/replay` 属 order 域，进 activity 应用 = 非法跨域依赖；③ 新模块 POM 四条自查（Day 1 全踩过）；④ **不加 `@EnableScheduling`**；⑤ 停服务再构建；⑥ 新应用**没有** auth-core 的 `/api/admin/**` 令牌校验（与 product 应用同）→ 直连 `:8085` 无令牌也放行，只有网关把关，收口日补；⑦ 改名后 `~/.m2` 里会残留旧 `flash-sale-activity-*.jar`（无害，排查依赖时注意）。
+
+**提交计划**：① `refactor(p3-day4): activity 模块改名 flash-sale-activity-core（引用面 3 处同步）`；② `feat(p3-day4): 新建 flash-sale-activity 应用（:8085）+ 活动管理端接口迁入 + 网关精确导流`；③ `test(p3-day4)+docs: 归属守卫断言 + plan.md Day 4 记录`。
+
+---
+
 *文档创建日期：2026-07-29*
 *上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16）；**P2 Day 3~4 完成并收口**（ai 服务化 :8083 + 网关准入鉴权 + 全量 **124 用例**绿线 + `p2-done` 标签；提交 `1014a8e`/`7db07eb`/`4275ba2`）；**P3 Day 1 完成**（product 域拆为 `flash-sale-product-core` 库 + `flash-sale-product` 应用 :8084；零行为变更 —— 网关路由未改、停 8084 后经网关商品接口仍 200；Nacos 5 服务；全量 124 用例绿线；改名提交 `3afc88b`）；**P3 Day 2 完成**（product 接口迁入应用 + 网关导流含 `/uploads/**`；单体 404 / 新服务 200 / **停 8084 经网关 503**；上传→回读 200；全量 **125 用例**绿线）；**P3 Day 3 完成**（product / activity 独立 schema + 幂等迁移 + 双写镜像（默认关）+ 对账脚本；新库外键归零、列/索引逐项一致；双写开 8/8 一致、关时新库不动；脚本正/负向双向验证；全量 125 用例绿线））*
-*下次开始位置：①**P3 Day 4 — activity 域服务化**（:8085，同「库 + 应用」模式：`flash-sale-activity-core` 库 + `flash-sale-activity` 应用）+ 网关导流 `/api/seckill/activities/**`、`/api/admin/seckill/**` + **预热锁归属 activity**；注意 activity 现仍被 monolith / ai 依赖（`flash-sale-ai` 依赖商品与活动）→ 同 Day 1 的"库 + 应用"约束；②P3 Day 5 — seckill 提供内部「库存初始化 / 重置」接口（供 activity 编排）+ **切换读路径到新 schema**（`DualWriteMirror` 与旧库读路径的收口）+ 全量回归 + 收口；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
+*下次开始位置：①**P3 Day 4 — activity 域服务化（任务卡已写入第九章，待实施）**：`flash-sale-activity` 改名 `flash-sale-activity-core` + 新建应用 `:8085`；**只迁**建/改活动、预热、重置库存三个管理端接口 + 网关**精确三条 Path** 导流（整段 `/api/admin/seckill/**` 会抢走 analytics 的 metrics/snapshot 与 order 的 dead-letters）；`dead-letters/replay` 留单体；预热锁随库进应用；②P3 Day 5 — seckill 提供内部「库存初始化 / 重置」接口（供 activity 编排）+ **切换读路径到新 schema**（`DualWriteMirror` 收口）+ **补 product/activity 应用的 `/api/admin/**` 令牌纵深防御**（把 auth-core 的 admin 校验部分下沉 `infra`）+ 全量回归 + 收口；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
