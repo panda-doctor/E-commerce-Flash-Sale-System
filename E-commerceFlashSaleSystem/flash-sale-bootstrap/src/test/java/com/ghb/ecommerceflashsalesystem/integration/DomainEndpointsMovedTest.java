@@ -8,6 +8,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -60,5 +62,22 @@ class DomainEndpointsMovedTest {
         // GET /api/products/{id} 同属公开路径：无处理器 → 404（比 POST 更贴近真实调用形态）
         mockMvc.perform(get("/api/products/1"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void activityAdminEndpointsBelongToActivityService() throws Exception {
+        // P3 Day 4：/api/admin/** 在单体被 ApiAccessWebConfig 的管理端拦截器**优先拒绝**
+        // （无令牌恒为 200 + 40100）→ 该前缀不能用 404 判"接口是否搬走"，
+        // 因此改用**类路径归属**做判据：HTTP 入口还在不在单体的 classpath 上。
+        assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.ghb.ecommerceflashsalesystem.activity.controller.AdminSeckillController"),
+                "activity 的管理端接口（建/改活动、预热、重置库存）应已迁至 flash-sale-activity 应用（:8085）");
+        // 反例：同一前缀下不属于 activity 的接口（order 域死信补偿）必须留在单体
+        assertNotNull(Class.forName("com.ghb.ecommerceflashsalesystem.controller.admin.AdminMessageController"),
+                "order 域的死信补偿接口应保留在单体（不能随 activity 域迁走）");
+        // 行为面：无令牌访问该前缀仍被单体拦截器先拒 —— 与割接前行为一致
+        mockMvc.perform(post("/api/admin/seckill/activities").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(not(0)));
     }
 }

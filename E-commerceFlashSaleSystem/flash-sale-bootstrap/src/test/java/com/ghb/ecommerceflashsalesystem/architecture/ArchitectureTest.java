@@ -19,7 +19,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.*;
  * 规则把"约定"变成"编译后可验证的红线"，后续拆服务时边界不会悄悄腐化。</p>
  *
  * <p>过渡豁免：装配层 {@code bootstrap} 的白名单组件（ApiAccessInterceptor / ApiAccessWebConfig /
- * AdminSeckillController / HealthController）允许被 bootstrap 自身持有，规则已按此设计（R5 只禁止
+ * AdminMessageController / HealthController）允许被 bootstrap 自身持有，规则已按此设计（R5 只禁止
  * 业务模块反向依赖 bootstrap，不禁 bootstrap 内部使用）。</p>
  */
 @AnalyzeClasses(
