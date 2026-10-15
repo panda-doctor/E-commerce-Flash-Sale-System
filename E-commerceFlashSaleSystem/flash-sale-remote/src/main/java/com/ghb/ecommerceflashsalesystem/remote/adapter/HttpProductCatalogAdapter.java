@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.activity.adapter;
+package com.ghb.ecommerceflashsalesystem.remote.adapter;
 
 import com.ghb.ecommerceflashsalesystem.activity.port.ProductCatalogPort;
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
@@ -21,7 +21,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * {@link ProductCatalogPort} 的 <b>HTTP 适配器</b>（activity 应用专用）。
+ * {@link ProductCatalogPort} 的 <b>HTTP 适配器</b>（P4 Day 2 起由 flash-sale-remote 提供给需要跨进程调用的应用：
+ * activity、seckill）。
  *
  * <p>调用商品应用的内部批量接口 {@code POST /internal/products/briefs}
  * （{@code lb://flash-sale-product}，不经网关，带 {@code X-Internal-Token}）——

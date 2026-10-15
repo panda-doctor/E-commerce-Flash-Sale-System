@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.activity.config;
+package com.ghb.ecommerceflashsalesystem.remote.config;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cloud.client.loadbalancer.LoadBalanced;
@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
 
 /**
- * 服务间调用客户端配置（P3 Day 5：activity 应用第一次发起服务间调用）。
+ * 服务间调用客户端配置（P3 Day 5 引入，P4 Day 2 随适配器一起搬进 flash-sale-remote 共享）。
  *
  * <p>用 {@code @LoadBalanced RestClient.Builder}：URI 里写 {@code http://flash-sale-monolith/...}
  * 这样的<b>服务名</b>，由 Spring Cloud LoadBalancer + Nacos 解析成实例地址（多实例自动轮询），

@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.activity.adapter;
+package com.ghb.ecommerceflashsalesystem.remote.adapter;
 
 import com.ghb.ecommerceflashsalesystem.activity.port.SeckillStockPort;
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
@@ -16,10 +16,11 @@ import org.springframework.web.client.RestClient;
 import java.util.Map;
 
 /**
- * {@link SeckillStockPort} 的 <b>HTTP 适配器</b>（activity 应用专用）。
+ * {@link SeckillStockPort} 的 <b>HTTP 适配器</b>（P4 Day 2 起由 flash-sale-remote 提供给需要跨进程调用的应用）。
  *
- * <p>调用单体的内部接口 {@code POST /internal/seckill/activities/{id}/stock}
- * （{@code lb://flash-sale-monolith}，不经网关），随请求带 {@code X-Internal-Token}。</p>
+ * <p>调用单体（或未来 seckill 应用）的内部接口
+ * {@code POST /internal/seckill/activities/{id}/stock}（{@code lb://flash-sale-monolith}，不经网关），
+ * 随请求带 {@code X-Internal-Token}。</p>
  *
  * <p><b>失败语义</b>：任何失败（网络 / 令牌被拒 / 业务码非 0）都抛异常，
  * 由调用方（{@code SeckillCacheService}）转成"预热失败"状态 —— 绝不允许"静默当成成功"，

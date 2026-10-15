@@ -80,10 +80,12 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
-        <!-- ========== 服务间调用（P3 Day 5）：lb:// 服务名解析走 Nacos + 客户端负载均衡 ========== -->
+        <!-- ========== 服务间调用（P4 Day 2）：HTTP 适配器搬进共享库 flash-sale-remote ==========
+             本应用只声明"我需要跨进程调用"；具体适配器（库存写入 / 商品摘要）与 lb:// 负载均衡
+             客户端都在那个库里，seckill 应用同样复用它（避免第二个应用复制一份适配器）。 -->
         <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-remote</artifactId>
         </dependency>
 
         <!-- ========== 服务注册（Nacos：flash-sale-activity） ========== -->

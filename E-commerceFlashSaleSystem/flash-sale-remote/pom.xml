@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.ghb</groupId>
+        <artifactId>flash-sale-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>flash-sale-remote</artifactId>
+    <name>flash-sale-remote</name>
+    <description>跨进程适配器库（端口的 HTTP 装配）：lb:// 服务名解析 + X-Internal-Token；只有需要服务间调用的应用才依赖它</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-contracts</artifactId>
+        </dependency>
+        <!-- infra 带进 spring-boot-starter-web（RestClient）与 InternalTokenProperties / 内部令牌护栏 -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-infra</artifactId>
+        </dependency>
+        <!-- 端口定义所在（activity.port.ProductCatalogPort / SeckillStockPort）
+             注：这也意味着依赖本模块的应用会传递依赖 activity-core；等端口拆到独立 ports 模块后即可解耦 -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-activity-core</artifactId>
+        </dependency>
+        <!-- 服务名（lb://）解析：Spring Cloud LoadBalancer + Nacos 实例列表 -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+        </dependency>
+    </dependencies>
+</project>
