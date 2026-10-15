@@ -1,0 +1,88 @@
+# =====================================================
+# 活动服务（flash-sale-activity）—— P3 Day 4：activity 域服务化
+# 端口 8085；服务名 flash-sale-activity
+# 过渡期：① 读路径仍指 flash_sale 库（Day 5 切换）；② 写路径双写到 flash_sale_activity（Day 3 开关）
+# =====================================================
+server:
+  port: ${ACTIVITY_PORT:8085}
+
+spring:
+  application:
+    name: flash-sale-activity
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+  datasource:
+    # 过渡期共用主库（读路径未切）；Day 5 切到 flash_sale_activity 作为唯一事实源
+    url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 2
+      connection-timeout: 10000
+      max-lifetime: 1800000
+  data:
+    # 必须与单体同一个 Redis 库：预热写入的 seckill:activity:* / seckill:stock:* 要与单体
+    # 的秒杀执行/校验路径共用（否则预热在本服务写、执行读不到）
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+      database: 1
+      timeout: 5000ms
+
+# ===== 以下两段与单体/商品应用一字不差：product-core 的存储 Bean（本地/OSS 二选一）需要它们
+#      才能初始化；活动服务本身不使用上传功能 =====
+aliyun:
+  oss:
+    enabled: ${OSS_ENABLED:false}
+    endpoint: ${OSS_ENDPOINT:oss-cn-beijing.aliyuncs.com}
+    access-key-id: ${OSS_ACCESS_KEY_ID:}
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+    bucket-name: ${OSS_BUCKET_NAME:panda-tea}
+    domain: ${OSS_DOMAIN:https://panda-tea.oss-cn-beijing.aliyuncs.com}
+
+storage:
+  local:
+    dir: uploads
+
+# P3 Day 3：双写镜像（**过渡期，默认关闭**）。开启后活动写操作在主库提交后镜像到 flash_sale_activity。
+module:
+  db:
+    dual-write:
+      enabled: ${DUAL_WRITE_ENABLED:false}
+      product-url: jdbc:mysql://localhost:3306/flash_sale_product?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      activity-url: jdbc:mysql://localhost:3306/flash_sale_activity?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      username: root
+      password: ${MYSQL_PASSWORD:123456}
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml      # XML 在 activity-core jar 里，必须 classpath*
+  type-aliases-package: com.ghb.ecommerceflashsalesystem.domain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: INPUT
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    com.ghb.ecommerceflashsalesystem: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId:-}] %-5level %logger{36} - %msg%n"

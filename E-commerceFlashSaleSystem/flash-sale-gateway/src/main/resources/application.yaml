@@ -35,6 +35,14 @@ spring:
           predicates:
             # /uploads/** 不在 /api/** 下，必须单列 —— 静态图片的读取出口（FileStorageWebConfig 已随域迁入本服务）
             - Path=/api/products/**,/api/admin/products/**,/api/admin/files/**,/uploads/**
+        # P3 Day 4：activity 域已服务化（flash-sale-activity :8085）。
+        # 只能列 activity 自己的三条管理端路径：同前缀下还有 analytics 的
+        # /api/admin/seckill/activities/{id}/metrics、/{id}/snapshot 与 order 的
+        # /api/admin/seckill/dead-letters/replay —— 用 /api/admin/seckill/** 整段导流会把它们一起抢走。
+        - id: flash-sale-activity
+          uri: lb://flash-sale-activity
+          predicates:
+            - Path=/api/admin/seckill/activities,/api/admin/seckill/activities/*/preheat,/api/admin/seckill/activities/*/reset-stock
         # 单体（P0 模块化单体）已注册为 flash-sale-monolith；
         # lb:// 走服务发现 + 客户端负载均衡（多实例时自动轮询），不再写死 IP:端口
         - id: flash-sale-monolith
