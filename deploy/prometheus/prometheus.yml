@@ -47,6 +47,14 @@ scrape_configs:
         labels:
           application: flash-sale-ai
 
+  # P3 拆分出的服务（Day 1：product；Day 4 起：activity）
+  - job_name: flash-sale-product
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['localhost:8084']
+        labels:
+          application: flash-sale-product
+
   # Prometheus 自身（确认抓取链路与 TSDB 写入本身健康）
   - job_name: prometheus
     static_configs:
