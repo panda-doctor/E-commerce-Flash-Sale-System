@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.remote.adapter;
+package com.ghb.ecommerceflashsalesystem.activity.adapter;
 
 import com.ghb.ecommerceflashsalesystem.activity.port.SeckillStockPort;
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
@@ -16,11 +16,15 @@ import org.springframework.web.client.RestClient;
 import java.util.Map;
 
 /**
- * {@link SeckillStockPort} 的 <b>HTTP 适配器</b>（P4 Day 2 起由 flash-sale-remote 提供给需要跨进程调用的应用）。
+ * {@link SeckillStockPort} 的 <b>HTTP 适配器</b>（<b>本应用专用</b>）。
  *
- * <p>调用单体（或未来 seckill 应用）的内部接口
- * {@code POST /internal/seckill/activities/{id}/stock}（{@code lb://flash-sale-monolith}，不经网关），
- * 随请求带 {@code X-Internal-Token}。</p>
+ * <p>P4 Day 2 结构决策：它**刻意留在 activity 应用**而不是进 flash-sale-remote —— 因为
+ * "需要跨进程写库存"的只有 activity 应用（它编排预热/重置，但库存真身在 seckill 进程里）；
+ * flash-sale-seckill 应用自己就有 {@code LocalSeckillStockAdapter}（{@code SeckillStockService}
+ * 在它的 classpath 上），两者同时被扫描会直接 Bean 冲突。共享的是**两边都要用**的商品目录适配器。</p>
+ *
+ * <p>调用单体的内部接口 {@code POST /internal/seckill/activities/{id}/stock}
+ * （{@code lb://flash-sale-monolith}，不经网关），随请求带 {@code X-Internal-Token}。</p>
  *
  * <p><b>失败语义</b>：任何失败（网络 / 令牌被拒 / 业务码非 0）都抛异常，
  * 由调用方（{@code SeckillCacheService}）转成"预热失败"状态 —— 绝不允许"静默当成成功"，

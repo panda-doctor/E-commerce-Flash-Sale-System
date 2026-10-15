@@ -14,9 +14,13 @@ spring:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
   datasource:
-    # 只读活动数据。指权威库而不是旧库副本：本应用不写任何表，读权威反而最新鲜，
-    # 也不欠"旧库下线"这笔债（旧库只是给未拆模块单体读的副本）。
-    url: jdbc:mysql://localhost:3306/flash_sale_activity?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    # ⚠️ 必须指**旧库 flash_sale**，而不是 Day 1 切读后的权威库 —— 因为本应用按设计要带 auth-core
+    # （execute/check 取 AUTHENTICATED_USER_ID），而 auth-core 的用户表（user_account 等）**只存在于
+    # 旧库**（auth 域尚未拆分，旧库就是用户数据的权威）。活动数据读的是旧库副本，由两个应用的
+    # 反向镜像保持新鲜（毫秒级）。
+    # 待办（写进 plan.md）：auth 域服务化 / 或把"瘦用户会话守卫"下沉 infra 后，本应用改用
+    # flash_sale_activity 权威库 + 只扫 activity.mapper（那时才真正不欠旧库的债）。
+    url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
     password: ${MYSQL_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver

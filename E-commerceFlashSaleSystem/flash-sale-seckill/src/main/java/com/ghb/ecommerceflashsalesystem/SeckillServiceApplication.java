@@ -11,14 +11,14 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * {@code GET /api/seckill/activities/{id}} 与需登录的 {@code GET /api/seckill/activities/{id}/check}、
  * {@code POST /api/seckill/execute}。</p>
  *
- * <p><b>只读一个表</b>：{@code seckill_activity}（活动缓存失效时兜底读），所以
- * {@code @MapperScan} 只扫 {@code activity.mapper} —— 本应用对 {@code product} 表零访问
- * （商品信息经 {@code flash-sale-remote} 的 HTTP 适配器向商品服务取），对两表也**零写**
- * （订单落库由 order 域消费者在单体完成）。</p>
+ * <p><b>两个 mapper 包</b>：{@code activity.mapper} 是活动读（缓存失效时兜底，本应用对两表零写）；
+ * {@code user.mapper} 是 auth-core 的 {@code UserAccountService} 需要的（本应用带 auth-core 是为了
+ * 用户身份校验，与单体同一套机制）—— 用户表只存在于旧库，因此 yaml 里数据源也指旧库。</p>
  *
  * <p><b>刻意不加 {@code @EnableScheduling}</b>：定时任务只存在于 order 域的 Stream 消费调度（单体）。</p>
  */
-@MapperScan("com.ghb.ecommerceflashsalesystem.activity.mapper")
+@MapperScan({"com.ghb.ecommerceflashsalesystem.activity.mapper",
+        "com.ghb.ecommerceflashsalesystem.user.mapper"})
 @SpringBootApplication
 public class SeckillServiceApplication {
 

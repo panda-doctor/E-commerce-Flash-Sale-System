@@ -80,4 +80,31 @@ class DomainEndpointsMovedTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(not(0)));
     }
+
+    @Test
+    void seckillEndpointsBelongToSeckillService() throws Exception {
+        // P4 Day 2：seckill 域的 4 个 HTTP 入口（活动列表/详情、可秒杀校验、执行）已迁至
+        // flash-sale-seckill 应用（:8086）。与 activity 同理：/api/seckill/execute 在单体被
+        // ApiAccessWebConfig 的用户态拦截器**优先拒绝**（恒 200 + 40100）→ 该前缀不能用
+        // HTTP 状态判"接口是否搬走"，改用**类路径归属**（HTTP 入口还在不在单体 classpath 上）。
+        assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.ghb.ecommerceflashsalesystem.seckill.controller.SeckillExecuteController"),
+                "秒杀执行入口应已迁至 flash-sale-seckill 应用（:8086）");
+        assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.ghb.ecommerceflashsalesystem.seckill.controller.SeckillActivityController"),
+                "秒杀活动读入口应已迁至 flash-sale-seckill 应用（:8086）");
+        // 反例 1：seckill 的域服务必须留在库里 —— 单体仍以「本地装配」用它做库存写入
+        assertNotNull(Class.forName("com.ghb.ecommerceflashsalesystem.seckill.service.SeckillStockService"),
+                "seckill 库存写口（SeckillStockService）应在 flash-sale-seckill-core 库里，单体本地装配依赖它");
+        // 反例 2：同一前缀下 order 域的接口必须留在单体（否则订单查询会被 seckill 应用抢走）
+        assertNotNull(Class.forName("com.ghb.ecommerceflashsalesystem.order.controller.OrderController"),
+                "order 域的订单查询接口应保留在单体（/api/seckill/orders/*、/api/seckill/users/*/orders 同前缀）");
+        // 行为面：无令牌访问 execute 仍被单体拦截器先拒（实测 curl: 200 + 40100）—— 与割接前一致
+        mockMvc.perform(post("/api/seckill/execute").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(not(0)));
+        // 公开读路径不带拦截器：无处理器 → 404（可直接证明控制器已搬走）
+        mockMvc.perform(get("/api/seckill/activities"))
+                .andExpect(status().isNotFound());
+    }
 }
