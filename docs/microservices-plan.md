@@ -207,7 +207,7 @@ flash-sale-parent
   - **P2 实施小结（2026-10-14 完成，进度与提交见 `docs/plan.md`）**：`flash-sale-auth`（:8082，auth 域实现下沉为库 `flash-sale-auth-core`）与 `flash-sale-ai`（:8083）已独立部署并注册 Nacos；网关精确路由 `/api/auth/**`、`/api/admin/users/**`、`/api/support/**` 到对应服务，并新增**准入鉴权**（管理令牌全量校验 + 用户态凭证存在性，拒绝时返回同形态 `40100` 信封）；服务侧 `ApiAccessInterceptor` 保留为**纵深防御**（直连服务仍受保护），CSRF / 会话有效性 / 资源归属等细校验仍在服务内完成。全量回归 124 用例绿线。
   - **P2 未做（明确留待后续）**：网关侧的**会话有效性核验**（introspection 或 JWT 无状态化）、auth 域 schema 独立与双写迁移（P3）、`/api/seckill/**` 与 `/api/admin/{seckill,products,files,metrics}` 仍在单体（P3/P4 拆出）。
 - **P3**：product 独立 schema + 缓存键所有权 + OSS 凭据；activity 独立 schema + 预热锁；seckill-service 提供内部"库存初始化/重置"接口；双写开关 + 对账脚本。
-- **P4**：seckill 独立 + order 独立；`order.created` 事件契约与版本化；死信回放跨服务改造；数据迁移三阶段（双写 → 切读 → 下线旧表）；JMeter 全链路复测。
+- **P4**：seckill 独立 + order 独立；`order.created` 事件契约与版本化；死信回放跨服务改造；数据迁移三阶段（**双写 ✅ P3 Day 3 → 切读 ✅ P4 Day 1 → 下线旧表 ⏳**）；JMeter 全链路复测。
 - **P5**：analytics 消费 `order.created` 建读模型（ZSet NX 幂等）；指标埋点从 execute 侧改为事件 + 本地计数；单体退化为后台只读聚合或下线。
 - **P6**：CI/CD 流水线（构建→测试→镜像→部署→灰度）；Prometheus 告警规则；混沌演练（kill order / 停 Redis / 注入延迟）；Runbook（回滚、对账、死信处理）。
 
