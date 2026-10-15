@@ -1025,7 +1025,7 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 | Day 2 | product 域割接：controllers + FileStorageWebConfig 迁入应用；单体摘除；网关导流 `/api/products/**`、`/api/admin/products/**`、`/api/admin/files/**`、`/uploads/**` | ✅ 2026-10-15 | 接口迁出：3 controller + `FileStorageWebConfig` 迁入应用（git 识别 **4 个 rename**），core jar 内已无 `product/controller|config` → 单体自动摘除（**未改任何 POM**）；网关导流（**含 `/uploads/**`**，置于 `/api/**` 兜底前）：经网关 `/api/products` **200**、`/api/products/1` 200、**直连单体 404**、直连 8084 200；admin 带令牌 `code=0` / 无令牌 `40100`（网关准入）；**上传→回读**：`POST /api/admin/files/image` `code=0`（storageType=local）→ 经网关 `GET /uploads/...` **200**、直连单体 **404**；**反证：停 8084 后经网关 503**（网关日志 `No servers available for service: flash-sale-product`；Day 1 同测为 200）；其它域不变（`/api/health` 200、`auth/me` 40100、`support/chat` 40001）、`X-Trace-Id` 单值；全量回归 **125 用例 0 失败 BUILD SUCCESS**（2.2 分钟，16 模块） |
 | Day 3 | 数据所有权：product / activity 独立 schema（DDL + 迁移脚本）+ 双写开关 + 对账脚本 | ✅ 2026-10-15 | 新库 `flash_sale_product` / `flash_sale_activity` 建成：列定义/索引与旧库**逐项一致**（10 列 / 13 列、索引 3/3 与 4/4），**外键归零**（旧库 5 个 FK 含 2 个跨域 FK，新库 0 个）；幂等迁移（连跑 3 次 exit=0）；**双写镜像**：开 → 经网关建商品/活动（含更新、预热）后新库逐字段一致（`preheat=1 ver=1`）、日志 `target=product 1 次 / target=activity 4 次`；**关 → 新库完全不动**（主库 6→7 / 20→21，新库仍 6/20）；**对账脚本**正/负向双向验证（8/8 OK exit=0；人为改一行 → DIFF exit=1；重跑迁移重同步 → 恢复 OK）；全量回归 **125 用例 0 失败 BUILD SUCCESS**（1.9 分钟，16 模块）；读路径未变 → **零行为变更** |
 | Day 4 | activity 域服务化（:8085，同「库 + 应用」模式）+ 网关导流 + 预热锁归属 activity | ✅ 2026-10-15 | 库改名 `flash-sale-activity-core`（3 处引用同步）+ 新应用 `flash-sale-activity`（reactor **17 模块**、Nacos **6 服务**、`:8085` health db/redis/nacos 全 UP）；控制器一分为二（activity 三接口进应用、`dead-letters/replay` 留单体，**路径全不变**）；网关**精确三条 Path**：经网关建/改活动 `code=0`、预热 `code=0`（stock=50）、重置库存 `code=0`（stock=60）；**metrics `code=0` 与 replay `40004` 仍由单体**；**反证：停 :8085 → 三条 activity 路径 503**（日志 `No servers available for service: flash-sale-activity`）而 metrics 仍 200；直连单体 **404** / 直连 :8085 200；**双写回归** 22/22 逐字段一致 + 对账 **8/8 consistent**；全量回归 **126 用例 0 失败 BUILD SUCCESS**（1.8 分钟） |
-| Day 5 | seckill 提供内部「库存初始化/重置」接口（供 activity 编排）+ 全量回归 + 收口 | ⏳ | 接口收敛后回归绿线；文档同步 |
+| Day 5 | seckill 提供内部「库存初始化/重置」接口（供 activity 编排）+ 全量回归 + 收口 | ⏳（**任务卡见下**） | **库存权属**：`seckill:stock:*` 只由 seckill 域写（内部接口 + 令牌 + 越权 40100）；**纵深防御**：直连 :8084/:8085 的 `/api/admin/**` 无令牌 → 40100；**去跨域直读**：activity 应用不再直连 product 表（改调 product 服务接口）；全量回归绿线 |
 
 ### P3 Day 1 详细任务卡（product 域「库 + 应用」拆分，零行为变更）
 
@@ -1206,6 +1206,50 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 
 ---
 
+### P3 Day 5 详细任务卡（收口日：库存权属 + 纵深防御 + 去跨域直读）
+
+> 执行方式：panda 实现 + 导师现场纠偏；预估 2.5~3.5 小时。
+
+**目标**：把 P3 剩的三件事收口，并为 P4 的"读切换"扫清**最后一个前置条件**：
+
+1. **库存权属收口**：activity 不再直写 `seckill:stock:*`，改调 seckill 域的内部接口（init / reset）；
+2. **补齐 `/api/admin/**` 服务侧纵深防御**（Day 4 记录的缺口：直连 :8084/:8085 无令牌也放行）；
+3. **去掉 activity 对 `product` 表的跨域直读**（改为调用 product 服务接口）—— 「读切换」的硬前置。
+
+**Day 5 侦察结论（决定动作面与"读切换"的时间点）**：
+
+- **`seckill:stock:*` 的写者只有 3 处**：`SeckillCacheService`（activity，preheat/reset 各一次 `redisTemplate.set`）、`decr_stock.lua`/`seckill_execute.lua`（seckill 扣减）、`SeckillOrderConsumer` 死信补偿 `increment` 回补。按设计"库存归 seckill"→ activity 的两处属**越权写**，本日收口。
+- **DB 库存列没有任何 UPDATE 路径**：`SeckillActivityMapper.xml` / `ProductMapper.xml` 只有 `resultMap`（无 UPDATE 语句）；Java 侧对库存全是读与 `setXxx` → **库存真身在 Redis，DB 是配置值**。
+- **两张表的 DB 写者只有两个应用**：生产代码里 `product` / `seckill_activity` 的 insert/update 只出现在 `ProductServiceImpl`（product 应用）与 `SeckillActivityServiceImpl` / `SeckillCacheService`（activity 应用）；**单体 / seckill / analytics / order / ai 全是只读**，且**没有任何** `createActivity` / `preheatActivity` / `resetStock` / `saveProduct` 调用点（已复核）。
+  → 结论：**"翻转权威源"（应用写新库 + 反向镜像保旧库给未拆模块读）在技术上可行**，但有一个硬前置：**activity 应用现在直读 `product` 表**（`SeckillActivityServiceImpl` 用 `ProductMapper.selectById` 校验商品存在 + 应用 `@MapperScan` 扫了 `product.mapper`）→ 一旦把它的 datasource 切到 `flash_sale_activity`，该校验会因为**新库没有 product 表**而失败 ✗。
+  → 因此本日先做第 3 件（去跨域直读），**读切换放到 P4 首日**（那时 seckill/ai/analytics 陆续迁成服务，旧库表才有下线条件），切换配方已记在下方"P4 首日配方"里。
+- **无 internal 接口约定**（全仓 `/internal` 零命中）→ 本日新建，统配 `X-Internal-Token`（内网直连、不经网关，故必须自带令牌校验）。
+- **管理令牌校验在 auth-core** 的 `ApiAccessInterceptor.requireAdmin`，其依赖仅 `SecurityProperties`（纯配置类）+ common 的异常/结果码 → **可下沉 `infra`**（`infra` 已依赖 common；R1 规则禁止把框架配置放 `common`，故 `infra` 是正确落点）。
+
+| 步骤 | 内容 | 要点 |
+|---|---|---|
+| Step 0 前置 | 停 6 服务；复核"单体无 `product`/`seckill_activity` 写调用点"（本卡已复核）；工作区 clean | 复核命令写进提交信息 |
+| Step 1 库存权属 | ① seckill 域新增 `SeckillStockService`（`initStock` / `resetStock`：**唯一** Redis 库存写口，保留"仅未开始/已结束可重置"以外的**数据侧**幂等与 TTL 语义）；② 单体暴露 `POST /internal/seckill/activities/{activityId}/stock`（`X-Internal-Token` 校验 + `InternalTokenProperties`）；③ activity-core 定义**端口** `SeckillStockPort`，activity 应用给 `HttpSeckillStockAdapter`（`lb://flash-sale-monolith`），单体给 `LocalSeckillStockAdapter`（进程内调 `SeckillStockService`）→ **端口与适配器**，activity 域不反向依赖 seckill 模块 | 业务守卫（活动状态/时间窗）**留在 activity**；seckill 只管"写库存"；preheat 变成"两步"（先 seckill init 库存 → 再写 `seckill:activity:*` 与 `preheat_status`），失败要在 `preheat_status=PREHEAT_FAILED` 上体现 |
+| Step 2 纵深防御 | `infra` 新增 `security/AdminTokenProperties` + `security/AdminAccessWebConfig`（只对 `/api/admin/**` 做令牌校验，独立于 auth-core 的会话/CORS 逻辑）；product / activity 应用自动获得；单体为"双校验"（与 auth-core 同规则、结果一致；P4 合并） | 令牌缺失/不匹配 → `40100`；`OPTIONS` 放行（与现行为一致） |
+| Step 3 去跨域直读 | activity-core 的 `SeckillActivityServiceImpl` 改为依赖 `ProductCatalogPort`（`existsById` / `getPrice`）；activity 应用给 `HttpProductCatalogAdapter`（`GET /api/products/{productId}`，`lb://flash-sale-product`）；**撤掉 `@MapperScan` 里的 `product.mapper`**（Day 4 的过渡修法退场）；单测把 `ProductMapper` stub 换成 port stub | product 服务不可用时创建活动必须**明确失败**（不静默放行）；详情/校验路径不能因网络错误而误判 |
+| Step 4 验证 | 起 6 服务 → 判据表（含反向证明） | 见下 |
+| Step 5 回归 + 文档 + 提交 | 全量回归绿线 → plan.md Day 5 ✅ + **P3 收口小结**（含"读切换"配方与 P4 顺序）→ 3 条原子提交 | 回退点：`git revert` + 恢复配置 |
+
+**验收判据**：① 构建 17 模块绿线；② Nacos 6 服务 + `:8085` health UP；③ **库存权属**：经网关预热活动 → 单体日志出现 `/internal/seckill/activities/{id}/stock` 请求、activity 日志**不再**出现库存写入；`reset-stock` 经网关仍 `code=0`；④ **越权阻断**：直连单体 `POST /internal/seckill/activities/1/stock` **无 `X-Internal-Token` → 40100**；⑤ **纵深防御**：直连 `:8084`/`:8085` 的 `/api/admin/**` 无令牌 → **40100**、带令牌 → 通过；经网关仍 `code=0`；⑥ **去跨域直读**：activity 应用 `@MapperScan` 只剩 `activity.mapper`；**停 `:8084` 后**经网关建活动 → 明确失败（`4xxxx`/5xx，**绝不静默通过**），恢复 `:8084` 后建活动成功；⑦ 其它域不变（`/api/seckill/activities`、`/api/rank/top10`、`/api/support/chat`、metrics、dead-letters）；⑧ **双写与对账无回归**：经网关建活动 → 两库一致、对账 `8/8 consistent`；⑨ 全量回归绿线（126 + 新增断言）；⑩ 文档：plan.md Day 5 ✅ + P3 收口小结。
+
+**坑**：① 内部接口**必须**带令牌校验（否则等于把库存写口暴露给内网任何进程）；② `lb://` 调用需 `spring-cloud-starter-loadbalancer`，服务名必须与注册名一致（`flash-sale-monolith`）；③ preheat 跨进程两段式**不能**当本地事务（第一段成功、第二段失败时以 `PREHEAT_FAILED` + 运维重置兜底）；④ 撤 `@MapperScan(product.mapper)` 的同时必须去掉 `SeckillActivityServiceImpl` 的 `ProductMapper` 构造参数（否则启动期就报 `No qualifying bean`）；⑤ 单测 `CreateBusinessValidationTest` 用 `ProductMapper` stub → 换成 port stub；⑥ 单体"双校验"要在文档里写明（P4 合并）；⑦ 停服务再构建。
+
+**提交计划**：① `feat(p3-day5): seckill 内部库存初始化/重置接口 + activity 端口化委托（库存权属收口）`；② `feat(p3-day5): infra 下沉管理令牌校验（product/activity 补齐 /api/admin/** 纵深防御）`；③ `refactor(p3-day5)+docs: activity 改调 product 服务接口校验商品（撤销跨域直读）+ plan.md 收口`。
+
+**P4 首日配方（读切换 / 翻转权威源，本日不做）**：
+
+1. **前置**（本日完成）：无单体跨域 DB 写 ✓、activity 不再直读 product 表 ✓；
+2. **翻转**：product 应用 `spring.datasource.url` → `flash_sale_product`；activity 应用 → `flash_sale_activity`；`module.db.dual-write` 的**镜像目标改指旧库**（`flash_sale`）—— 未拆模块（seckill/ai/analytics 在单体）继续读旧库且由反向镜像保持新鲜；
+3. **门禁**：对账脚本作为**切换前置门禁**（差异非 0 阻断）；切换后跑同一套判据（读己之写 + 反向镜像 + 对账 `8/8`）；
+4. **退役条件**：seckill / ai / analytics 全部迁成服务并直接读新库后，删除反向镜像、旧库表下线。
+
+---
+
 *文档创建日期：2026-07-29*
 *上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16）；**P2 Day 3~4 完成并收口**（ai 服务化 :8083 + 网关准入鉴权 + 全量 **124 用例**绿线 + `p2-done` 标签；提交 `1014a8e`/`7db07eb`/`4275ba2`）；**P3 Day 1 完成**（product 域拆为 `flash-sale-product-core` 库 + `flash-sale-product` 应用 :8084；零行为变更 —— 网关路由未改、停 8084 后经网关商品接口仍 200；Nacos 5 服务；全量 124 用例绿线；改名提交 `3afc88b`）；**P3 Day 2 完成**（product 接口迁入应用 + 网关导流含 `/uploads/**`；单体 404 / 新服务 200 / **停 8084 经网关 503**；上传→回读 200；全量 **125 用例**绿线）；**P3 Day 3 完成**（product / activity 独立 schema + 幂等迁移 + 双写镜像（默认关）+ 对账脚本；新库外键归零、列/索引逐项一致；双写开 8/8 一致、关时新库不动；脚本正/负向双向验证；全量 125 用例绿线）；**P3 Day 4 完成**（activity 库改名 `flash-sale-activity-core` + 新应用 `:8085` + 控制器一分为二（路径不变）+ 网关精确三条 Path；停 :8085 → 三条 activity 路径 **503** 而 metrics 仍 200；双写 22/22 + 对账 8/8；全量 **126 用例**绿线））*
-*下次开始位置：①**P3 Day 5 — 收口日**：seckill 提供内部「库存初始化 / 重置」接口（供 activity 编排，替掉 activity 直写 `seckill:stock:*`）+ **切换读路径到新 schema**（product / activity 应用改 datasource，`DualWriteMirror` 退役）+ **补 product/activity 应用的 `/api/admin/**` 令牌纵深防御**（把 auth-core 的 admin 校验部分下沉 `infra`）+ 全量回归 + 收口；②P4 — 下一批域拆分（seckill / order / analytics：表归属 + 服务化 + 网关导流，沿用「库 + 应用 → 接口割接 → 精确导流」三步法）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
+*下次开始位置：①**P3 Day 5 — 收口日（任务卡已写入第九章，待实施）**：库存权属收口（seckill 内部 `init/reset` 接口 + activity 端口化委托，activity 不再直写 `seckill:stock:*`）+ `/api/admin/**` 纵深防御下沉 `infra`（product/activity 应用补齐）+ **去掉 activity 对 `product` 表的跨域直读**（改调 product 服务接口）；②**P4 首日 — 读切换（翻转权威源）**：应用 datasource 切新库 + `DualWriteMirror` 反向（镜像目标改指旧库，给未拆模块读）+ 对账脚本作切换门禁；之后再启动下一批域拆分（seckill / order / analytics：表归属 + 服务化 + 网关导流，沿用「库 + 应用 → 接口割接 → 精确导流」三步法）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
