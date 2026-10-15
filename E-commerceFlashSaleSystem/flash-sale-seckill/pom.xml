@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.ghb</groupId>
+        <artifactId>flash-sale-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>flash-sale-seckill</artifactId>
+    <name>flash-sale-seckill</name>
+    <description>秒杀执行域应用（:8086）：公开活动读 + 秒杀执行（滑动窗口限流 / Lua 原子扣减 / Stream 投递）；用户身份校验走 auth-core（P4 Day 2）</description>
+
+    <dependencies>
+        <!-- ========== 内部模块 ========== -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-domain-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-infra</artifactId>
+        </dependency>
+        <!-- P4 Day 2 决策：本应用的 execute/check 需要"当前用户"，而该身份是 auth-core 的
+             ApiAccessInterceptor.requireUser 校验令牌后写入的 request attribute
+             （AUTHENTICATED_USER_ID）—— 与单体同一套机制，行为零变化。
+             这是对架构表依赖面的有意扩张，已在 plan.md / microservices-plan.md 记录；
+             后续收口日可考虑抽出"瘦用户会话守卫"下沉 infra。 -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-auth-core</artifactId>
+        </dependency>
+        <!-- 活动读（缓存优先，DB 兜底）+ 端口定义（SeckillStockPort / ProductCatalogPort） -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-activity-core</artifactId>
+        </dependency>
+        <!-- 秒杀执行域库：SeckillService（限流/Lua 扣减/Stream）+ SeckillStockService（库存写口）
+             + LocalSeckillStockAdapter（库存端口的本地装配：库存真身就在本应用进程内） -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-seckill-core</artifactId>
+        </dependency>
+        <!-- 商品目录端口的 HTTP 装配（活动列表/详情要补商品名/图，走商品服务内部接口） -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-remote</artifactId>
+        </dependency>
+
+        <!-- ========== Web 层 ========== -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- ========== 持久层（只读活动表；本应用对 product / seckill_activity 零写） ========== -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- ========== Redis / Redisson（Lua 扣减 + 活动缓存 + 预热锁 Bean） ========== -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+        </dependency>
+
+        <!-- ========== .env 环境变量加载（与单体一致：以聚合根为工作目录） ========== -->
+        <dependency>
+            <groupId>me.paulschwarz</groupId>
+            <artifactId>spring-dotenv</artifactId>
+        </dependency>
+
+        <!-- ========== 可观测：健康 / 指标 + Prometheus 抓取端点 ========== -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <!-- ========== 服务注册（Nacos：flash-sale-seckill） ========== -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+
+        <!-- ========== 测试 ========== -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- bootable 模块（bootstrap / gateway / flash-sale-auth / product / activity / seckill）各自声明；库模块不得声明 -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <!-- 与单体一致：以聚合根为工作目录（.env 相对路径解析） -->
+                <configuration>
+                    <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

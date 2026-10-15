@@ -1,0 +1,91 @@
+# =====================================================
+# 秒杀执行服务（flash-sale-seckill）—— P4 Day 2：seckill 域服务化
+# 端口 8086；服务名 flash-sale-seckill
+# 数据源：**权威库 flash_sale_activity**（本应用只读活动表；对两表零写 → 不需要镜像配置）
+# =====================================================
+server:
+  port: ${SECKILL_PORT:8086}
+
+spring:
+  application:
+    name: flash-sale-seckill
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+  datasource:
+    # 只读活动数据。指权威库而不是旧库副本：本应用不写任何表，读权威反而最新鲜，
+    # 也不欠"旧库下线"这笔债（旧库只是给未拆模块单体读的副本）。
+    url: jdbc:mysql://localhost:3306/flash_sale_activity?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 2
+      connection-timeout: 10000
+      max-lifetime: 1800000
+  data:
+    # 必须与单体同一个 Redis 库：活动缓存 seckill:activity:*、库存 seckill:stock:*、
+    # 限流 rate:limit:*、订单 Stream 全在这里与单体共用（否则扣减/校验/投递三处对不上）
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+      database: 1
+      timeout: 5000ms
+
+# ===== 安全（P4 Day 2）：与单体一字不差的一段 —— auth-core 的 SecurityProperties 要用 =====
+# admin-token：/api/admin/** 护栏（本应用没有该前缀的接口，保留是为了配置一致性）
+# user-tokens / session-*：用户身份校验（execute / check 取 AUTHENTICATED_USER_ID 属性的来源）
+security:
+  admin-token: ${ADMIN_TOKEN:}
+  user-tokens: ${USER_TOKENS:}
+  legacy-user-tokens-enabled: ${LEGACY_USER_TOKENS_ENABLED:false}
+  session-cookie-name: ${SESSION_COOKIE_NAME:FLASH_SESSION}
+  session-cookie-secure: ${SESSION_COOKIE_SECURE:false}
+  session-ttl-hours: ${SESSION_TTL_HOURS:168}
+  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+
+module:
+  # 内部接口令牌（X-Internal-Token）：本应用 → 商品服务 /internal/products/briefs
+  # 未配置则双方都拒绝（fail-closed）。dev 默认值仅供本地；生产必须用环境变量覆盖。
+  internal:
+    token: ${INTERNAL_TOKEN:dev-internal-token}
+  # 刻意**不配** db.dual-write：本应用对 product / seckill_activity 两表零写，
+  # 镜像对它没有意义（DualWriteProperties.enabled 类内默认 false）——
+  # 这条注释是提醒：别顺手抄 activity 应用的 yaml 把镜像也打开。
+
+# 秒杀 execute 防刷限流（滑动窗口，粒度 rate:limit:{activityId}:{userId}）—— 与单体默认值一致
+flash:
+  rate-limit:
+    window-seconds: 60
+    max-count: 5
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml      # XML 在 activity-core jar 里，必须 classpath*
+  type-aliases-package: com.ghb.ecommerceflashsalesystem.domain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: INPUT
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    com.ghb.ecommerceflashsalesystem: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId:-}] %-5level %logger{36} - %msg%n"

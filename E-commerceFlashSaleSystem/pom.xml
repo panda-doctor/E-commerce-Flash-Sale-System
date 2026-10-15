@@ -36,6 +36,7 @@
         <module>flash-sale-activity</module>
         <module>flash-sale-seckill-core</module>
         <module>flash-sale-remote</module>
+        <module>flash-sale-seckill</module>
         <module>flash-sale-order</module>
         <module>flash-sale-analytics</module>
         <module>flash-sale-ai</module>
@@ -110,6 +111,11 @@
             <dependency>
                 <groupId>com.ghb</groupId>
                 <artifactId>flash-sale-remote</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.ghb</groupId>
+                <artifactId>flash-sale-seckill</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
