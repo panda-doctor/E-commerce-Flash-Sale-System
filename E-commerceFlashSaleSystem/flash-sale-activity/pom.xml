@@ -30,7 +30,7 @@
         <!-- 活动创建需校验关联商品存在（activity → product，允许的依赖边） -->
         <dependency>
             <groupId>com.ghb</groupId>
-            <artifactId>flash-sale-product</artifactId>
+            <artifactId>flash-sale-product-core</artifactId>
         </dependency>
     </dependencies>
 </project>

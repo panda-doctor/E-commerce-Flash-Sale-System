@@ -38,7 +38,7 @@
         </dependency>
         <dependency>
             <groupId>com.ghb</groupId>
-            <artifactId>flash-sale-product</artifactId>
+            <artifactId>flash-sale-product-core</artifactId>
         </dependency>
         <dependency>
             <groupId>com.ghb</groupId>

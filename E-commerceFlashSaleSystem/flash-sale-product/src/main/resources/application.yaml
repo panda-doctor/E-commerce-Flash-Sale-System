@@ -1,0 +1,75 @@
+# =====================================================
+# 商品服务（flash-sale-product）—— P3 Day 1 服务化骨架
+# 端口 8084；服务名 flash-sale-product
+# 过渡期：① 共用 flash_sale 库（Day 3 做 schema 隔离）；② 对外接口仍由单体提供（Day 2 割接）
+# =====================================================
+server:
+  port: ${PRODUCT_PORT:8084}
+
+spring:
+  application:
+    name: flash-sale-product
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+  datasource:
+    url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 2
+      connection-timeout: 10000
+      max-lifetime: 1800000
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+      database: 1
+      timeout: 5000ms
+
+# ===== 以下两段必须与单体 yaml 一字不差（否则上传 URL / 落盘目录不一致）=====
+aliyun:
+  oss:
+    enabled: ${OSS_ENABLED:false}
+    endpoint: ${OSS_ENDPOINT:oss-cn-beijing.aliyuncs.com}
+    access-key-id: ${OSS_ACCESS_KEY_ID:}
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+    bucket-name: ${OSS_BUCKET_NAME:panda-tea}
+    domain: ${OSS_DOMAIN:https://panda-tea.oss-cn-beijing.aliyuncs.com}
+
+storage:
+  local:
+    dir: uploads
+# ===== 以上两段从单体 application.yaml 原样拷贝 =====
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml      # XML 在 core jar 里，必须 classpath*
+  type-aliases-package: com.ghb.ecommerceflashsalesystem.domain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: INPUT
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    com.ghb.ecommerceflashsalesystem: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId:-}] %-5level %logger{36} - %msg%n"

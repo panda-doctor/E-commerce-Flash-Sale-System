@@ -10,8 +10,8 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>flash-sale-product</artifactId>
-    <name>flash-sale-product</name>
+    <artifactId>flash-sale-product-core</artifactId>
+    <name>flash-sale-product-core</name>
     <description>商品域：商品 CRUD / 缓存三防护 / 图片存储（本地磁盘与 OSS 双策略）</description>
 
     <dependencies>
