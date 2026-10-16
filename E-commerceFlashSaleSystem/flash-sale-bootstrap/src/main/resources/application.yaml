@@ -63,6 +63,11 @@ storage:
 module:
   # 内部接口令牌（P3 Day 5）：服务间调用（activity → 单体 seckill 库存接口）使用；
   # 未配置时 /internal/** 一律拒绝（fail-closed）。dev 默认值仅供本地；生产必须用环境变量覆盖。
+  # P4 Day 8：本应用（单体）不是订单数据的属主 → rank/metrics 的订单数据改调 order 服务
+  # （analytics.adapter.HttpOrderQueryAdapter），不再直读旧库 flash_sale 的 order 副本。
+  # order 应用**不配**这一项（默认 local：查自己的权威库 flash_sale_order）。
+  analytics:
+    order-query: remote
   internal:
     token: ${INTERNAL_TOKEN:dev-internal-token}
 # P4 Day 1「切读」：单体**不再配置镜像** —— 它对 product / seckill_activity 两表可达到的跨域写为 0
