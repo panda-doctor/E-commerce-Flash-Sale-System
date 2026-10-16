@@ -1517,6 +1517,45 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 
 ---
 
+### P4 Day 6 详细任务卡（旧库下线检查表·第 ① 项：auth 域「库」拆分 + 清理任务归属收口）
+
+> 执行方式：panda 实现 + 导师现场纠偏；预估 3~4 小时。
+
+**目标**：把 auth 域两张表（`user_account` / `user_session`）迁到独立 schema `flash_sale_auth` —— **权威 = 新 schema**（auth 应用读写），**副本 = 旧库 `flash_sale`**（monolith / seckill / order 三个运行时继续用它做会话校验），由**反向镜像**保鲜。与 product/activity/order 完全同法，本日只做 auth。**顺带修一个潜伏 bug**：过期会话清理任务的 `@Scheduled` 写在共享库里，被 3 个运行时同时触发。
+
+**侦察结论（决定可行性与动作面）**：
+
+- **单写者前提成立** ✓：两张表的全部写方法只在 `UserAccountService`（`insert` / `updateById` ×2 / `revokeAllForUser` ×3）与 `UserSessionService`（`create` / `revoke` / `rotateCsrf` / `purgeExpiredSessions`）里，而这些方法只被 **auth 应用**的 `UserAuthController` / `AdminUserController` 调用。另外三个宿主的 `ApiAccessInterceptor` **只读**（`authenticate` 查会话 + `requireCsrf` 只比对哈希，不写）→ **其它运行时能触达的写点 = 0** ✓（与 Day 1 切读、Day 4 order 同形）。
+- **两表列（旧库实测）**：`user_account`(id, account_name, password_hash, display_name, status, created_at, updated_at, deleted_at) **115 行**，UK `account_name`；`user_session`(**主键是 `token_hash`**（char(64)，无自增 id）, user_id, csrf_token_hash, expires_at, revoked_at, created_at) **133 行**；两表间 1 条外键 `fk_session_user`（ON DELETE NO ACTION）。
+- **⚠️ 清理任务是本日唯一的多写者**：`UserSessionService.purgeExpiredSessions()` 带 `@Scheduled(cron = "0 17 3 * * *")`，而"带 `@EnableScheduling` **且**宿主 auth-core"的有 **3 个运行时**（monolith / order 应用 / seckill 应用）→ 每天 03:17 三方各自 `DELETE` 一次。今天三方都指旧库（同表、幂等 → 无害）；**拆分后就会变成"非属主去删副本"** → 必须随本次一起收口（`activity` 应用也有 `@EnableScheduling`，但它不带 auth-core，不受影响）。
+- **auth-core 已依赖 infra** ✓（`DualWriteMirror` 可直接用，与 `order-core` 同先例）；**auth 应用没有 `@EnableScheduling`** ✓ → 收口时一并加上。
+
+**设计决定（写给评审）**：
+
+1. **迁移带上那条外键**（与前三块拆分的"零外键"不同）：`user_session.user_id → user_account.id` 是真实不变量（不存在无主会话），auth 的写者只有一个应用、迁移可"先用户后会话"→ 带上更安全。Day 5 的教训（测试库丢外键 → 失败路径用例静默成功）也支持这个方向。
+2. **调度入口按"文件位置表达归属"**（沿用 Day 3 `StreamConsumerScheduler` 的手法）：把 `@Scheduled` 从 auth-core 的 `UserSessionService` **移到 auth 应用**的新类 `user.scheduler.AuthSessionCleanupScheduler`；清理逻辑 `purgeExpiredSessions()` 留在库里（可测），调度器只做触发 + 两侧清理。并加**守卫测试**断言该类不在单体 classpath（与 Day 3 同形）。
+3. **清理要两侧都清**：拆分后权威在 `flash_sale_auth`，副本（旧库）的过期行若不一起清会长期堆积 → `AuthMirror.purgeExpired(cutoff)` 提供"副本侧同样的 DELETE"，调度器先删权威、再删副本。
+4. **不改另外三个运行时**：它们继续读旧库副本 ✓ 是设计；但要**主动验证**（判据 ⑤）。
+5. **修正一处 Day 5 笔记的口径**：auth 库拆分**并不能**直接"解锁删 order 双数据源桥"—— 拆完后 auth 两表在 `flash_sale_auth`，仍不在 `flash_sale_order` 里，桥照样要。真正删桥的前置是**会话校验不再需要各运行时自带 auth mapper**（内部 `validate` 接口 / 会话守卫下沉），那是下一块。
+
+| 步骤 | 内容 | 要点 |
+|---|---|---|
+| Step 1 DDL + 迁移 | `db/migration/V20261016__split_auth_schema.sql`：建库 + 两表（`LIKE`）+ **补外键** + 全量 `REPLACE`（先用户后会话）+ 行数/外键校验 | **停服务时跑**；幂等（先 DROP 再建） |
+| Step 2 镜像组件 | `DualWriteProperties` += `legacyAuthUrl`（键 `legacy-auth-url`）；`DualWriteMirror` += `mirrorAuth`；auth-core 新增 `user.mirror.AuthMirror`（account 按 id upsert / session 按 token_hash upsert / `revokeAllForUser` / `purgeExpired`） | 复用既有 `mirror()` 内核（日志已带目标库名 ✓） |
+| Step 3 写点接镜像 | `UserAccountService`（`create` / `adminUpdate` / `softDelete`）+ `UserSessionService`（`create` / `revoke` / `rotateCsrf`），共 6 处 | 镜像**默认关** → 单体/测试零行为变化 |
+| Step 4 清理归属收口 | 删 `UserSessionService` 上的 `@Scheduled`；新增 auth 应用 `user.scheduler.AuthSessionCleanupScheduler`（先删权威、再镜像删副本）；auth 启动类加 `@EnableScheduling`；守卫测试 | 本日"顺带修的潜伏 bug" |
+| Step 5 切权威 | auth 应用 yaml：datasource → `flash_sale_auth`；`module.db.dual-write`（`enabled=true` + `legacy-auth-url`） | monolith / seckill / order **不动** |
+| Step 6 对账扩展 | `reconcile-product-activity.ps1` 增 **2 项 auth 检查**（行数 + 指纹；`user_session` 指纹以 `token_hash` 为准） | 迁移前后各跑一次 |
+| Step 7 验证 + 回归 + 文档 + 提交 | 8 服务判据表（含权威/副本双向证据 + 清理归属）→ 回归 → Day 6 ✅ → 提交 | 回退 = datasource 换回旧库 + 关镜像 |
+
+**验收判据**：① 构建 **20 模块**绿线；② Nacos **8 服务** + `:8082` health `db` UP（连 `flash_sale_auth`）；③ **迁移门禁**：迁移前后对账一致（14 → **16 项**）；`flash_sale_auth` 两表行数 = 旧库 = **115 / 133** ✓ 且外键 **1 条** ✓；④ **权威在 auth schema**：经网关 注册→登录→登出 全通；新用户在 `flash_sale_auth` 命中 ✓ + 镜像日志 `target=auth(db=flash_sale)` ✓ + **旧库副本同有** ✓；⑤ **另外三个运行时读副本仍工作**：用会话经网关做一次**秒杀**（monolith/seckill/order 的会话校验走旧库副本）+ 一次 `/api/seckill/users/me/orders` → 正常；⑥ **清理归属**：守卫断言 `AuthSessionCleanupScheduler` 不在单体 classpath；手工触发一次清理 → **权威与副本两侧同时少掉过期行**（造一行过期会话验证）；⑦ 路由与反证：停 `:8082` → 经网关 `/api/auth/login` **503** 而 `/api/seckill/activities` 仍 **200**；⑧ 对账 **16/16** consistent；⑨ 其它域不变（products / rank / metrics / order / ai）；⑩ 全量回归绿线 + 文档（Day 6 ✅ + 检查表推进）。
+
+**坑**：① 迁移必须在**停服务**时跑（避免半程写入）；② `user_session` **主键是 `token_hash`**（无 id）→ 指纹/幂等一律以它为准；③ 新 schema 首次建无所谓，但脚本**重跑**前必须 DROP（`REPLACE` 不删旧行，Day 5 教训）；④ 镜像 SQL 要**覆盖全部列**（`ON DUPLICATE KEY UPDATE`），尤其 `user_account` 的 `deleted_at` 与 `user_session` 的 `revoked_at` 可为 NULL；⑤ 镜像默认关 → 忘了在 auth 应用 yaml 开 `enabled` 会让副本凝固（判据 ④ 专抓）；⑥ `UserSessionService` 上的 `@Scheduled` **必须真的删掉**（否则收口无效，判据 ⑥ 抓）；⑦ 外键在**镜像写副本**时受顺序约束（先 user 后 session ✓ 现状天然满足）；⑧ 单体 / order / seckill **不要动**（读副本即设计）；⑨ 前端 `SESSION_COOKIE` 逻辑与本日无关（会话表结构不变）。
+
+**提交计划**：① `feat(p4-day6): auth 独立 schema + 幂等迁移 + AuthMirror + 清理任务归属收口`；② `test(p4-day6): 清理调度归属守卫 + 对账扩到 16 项`；③ `docs(p4-day6): plan.md Day 6 完成 + 旧库下线检查表推进`。
+
+---
+
 *文档创建日期：2026-07-29*
 *上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16）；**P2 Day 3~4 完成并收口**（ai 服务化 :8083 + 网关准入鉴权 + 全量 **124 用例**绿线 + `p2-done` 标签；提交 `1014a8e`/`7db07eb`/`4275ba2`）；**P3 Day 1 完成**（product 域拆为 `flash-sale-product-core` 库 + `flash-sale-product` 应用 :8084；零行为变更 —— 网关路由未改、停 8084 后经网关商品接口仍 200；Nacos 5 服务；全量 124 用例绿线；改名提交 `3afc88b`）；**P3 Day 2 完成**（product 接口迁入应用 + 网关导流含 `/uploads/**`；单体 404 / 新服务 200 / **停 8084 经网关 503**；上传→回读 200；全量 **125 用例**绿线）；**P3 Day 3 完成**（product / activity 独立 schema + 幂等迁移 + 双写镜像（默认关）+ 对账脚本；新库外键归零、列/索引逐项一致；双写开 8/8 一致、关时新库不动；脚本正/负向双向验证；全量 125 用例绿线）；**P3 Day 4 完成**（activity 库改名 `flash-sale-activity-core` + 新应用 `:8085` + 控制器一分为二（路径不变）+ 网关精确三条 Path；停 :8085 → 三条 activity 路径 **503** 而 metrics 仍 200；双写 22/22 + 对账 8/8；全量 **126 用例**绿线）；**P3 Day 5 完成（P3 收口）**（库存权属收口：seckill 内部接口 + 端口化委托，activity 不再写 `seckill:stock:*`；`/internal/**` 与 `/api/admin/**` 双护栏 fail-closed（直连两应用无令牌 → 40100）；去跨域直读：activity 不再依赖 product-core，商品校验改调商品服务接口（停 :8084 → `50000` 且零写入）；双写 22/22 + 对账 8/8；全量 **129 用例**绿线）；**P4 Day 1 完成（切读：翻转权威源）**（两应用数据源 → 新 schema，镜像语义反转为"写副本旧库"且应用侧默认开启；门禁 + 切换后对账均 8/8；镜像日志 `target=*(db=flash_sale)`；未拆模块经旧库读到新数据；决定性判定用"新 id 探针"证明读权威、不读副本；全量 **129 用例**绿线）；**P4 Day 2 完成（seckill 域服务化）**（改名 seckill-core + 共享 HTTP 适配器模块 flash-sale-remote + 新应用 `flash-sale-seckill` :8086（带 auth-core、数据源指旧库）+ 网关四条精确 Path；**execute 端到端**：`code=0 QUEUED` + 重复 `40901 DUPLICATED` + 无令牌 `40100` + 订单经 Stream 在单体落库（`seckill_order`/`seckill_message_log` 命中）；停 :8086 → activities 503 而 order 域路径仍 200；直连单体公开读 404；对账 8/8；全量 **130 用例**绿线）；**P4 Day 3 完成（order 域服务化）**（改名 order-core + 新应用 `flash-sale-order` :8087（带 auth-core + analytics）+ **只搬调度入口**（消费者本体留库，4 个集成测试注入）+ 3 个入口随域迁入 + 网关四条精确 Path；**消费迁移正反双向**：`:8087 [scheduling-1] 订单落库成功并ACK` + `seckill_order` 落库 + 榜单更新，而单体 `订单落库成功` **0 次**；停 :8087 → order 路径 503 而 seckill 域仍 200；直连单体死信端 404；对账 8/8；全量 **131 用例**绿线）；**P4 Day 4 完成（order 的「库」拆分）**（新 schema `flash_sale_order`：`LIKE` 建表零外键 + `REPLACE` 幂等迁移 4027/5174 行 + `OrderMirror` 六写点反向镜像（日志 `target=order(db=flash_sale)`）+ 对账扩到 **14 项**；**双数据源过渡桥**解 auth 域未拆（`user_session` 只在旧库）；**本日最大的坑**：MyBatis-Plus 的 `sqlSessionFactory` 带 `@ConditionalOnMissingBean` → 声明 auth 工厂后主扫描落到它上面，**订单查询静默读副本**，修法 = 主工厂显式声明（约定名）+ 显式 `sqlSessionFactoryRef` + 启动自检日志；判定用"只改权威 / 只改副本"双向改值；全量 **131 用例**绿线）；**收尾发现"影子消费"**（回归测试跑在单体 JVM、消费者扫真实 Stream → 旧库多 23 行，查明为重复消息无订单 → 清理回 5175/5175，并留档"回归后先清影子行再对账"的约定 + Day 5 做测试数据源隔离）；**P4 Day 5 完成（ai 摘出旧库 + 测试数据源隔离）**（ai 新增 `CatalogQueryPort` 走服务**公开接口**、摘掉数据源/mapper/mybatis → **健康不再有 db 组件**；反证=停商品服务即目录降级；收窄扫描面修 `SeckillCacheService` 缺失 mapper 的启动失败；测试隔离 `flash_sale_test` 快照（DROP+CREATE+**重建外键**）× bootstrap/auth；**回归 132 用例 0 失败 + 业务库与三个权威 schema 逐表行数不变** + 对账 14/14；旧库下线检查表写入第九章末））*
 *下次开始位置：①**P4 Day 6 — auth 域「库」拆分**（**旧库下线检查表第 ① 项**，卡待写）：`flash_sale_auth` 新 schema（`user_account` / `user_session` + 幂等迁移 + 反向镜像，与 order 同法）+ **写者唯一性核查**（`UserSessionService` 的 `@Scheduled` 清理任务现在被 4 个宿主运行时各自触发 → 必须收口到 auth 应用）→ 解锁"删 order 双数据源桥（`order.config.DataSourceConfig` + `module.auth-db`）+ seckill 应用切回权威库"；②之后按检查表推进：analytics 读端点跨服务化（`OrderQueryAdapter` 不再读副本）→ Redis 隔离 → **删反向镜像 + 旧库 `flash_sale` 下线**（三阶段迁移收官）；③可选 T6 — OTel/Zipkin 替换自研 traceId；④图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
