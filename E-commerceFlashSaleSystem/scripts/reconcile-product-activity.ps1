@@ -48,6 +48,18 @@ function Invoke-Scalar([string]$sql) {
     return (($out | Out-String).Trim())
 }
 
+# ============================================================================
+# P4 Day 10 · Step C ⑥：**本脚本已退役** —— 旧库 flash_sale 已下线（DROP DATABASE）。
+# 历史作用：三阶段迁移**过渡期**的双写一致性门禁（旧库副本 ↔ 权威库逐项对比，18 项）。
+# 过渡结束后的替代口径：
+#   · 权威四库（flash_sale_product / _activity / _order / _auth）成为唯一事实；
+#   · 跨库/跨服务一致性由"全量回归 + 测试库快照行数断言 + 运行时反证"承担；
+#   · 需要复跑本脚本时，先用 _legacy-backup/flash_sale_20261016.sql 把旧库恢复回来。
+# 保留文件作为迁移史档案（含 18 项检查的定义）。
+# ============================================================================
+Write-Output 'RESULT: retired —— 旧库 flash_sale 已下线（P4 Day 10 收官）；权威四库自检见回归门禁'
+exit 0
+
 # ---- 3. checks: each item gives the same-shaped SQL for legacy vs new schema ----
 # content fingerprint = MD5 over business columns ordered by id (timestamps excluded on purpose:
 # a write + its mirror can straddle a second boundary, which would create false positives)

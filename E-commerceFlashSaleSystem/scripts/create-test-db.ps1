@@ -20,9 +20,19 @@
   隔离 Redis（Testcontainers 或独立 database 索引）列入 Day 6，见 docs/plan.md。
 #>
 param(
-    [string]$Schema = 'flash_sale_test',
-    [string]$Source = 'flash_sale'
+    [string]$Schema = 'flash_sale_test'
 )
+
+# P4 Day 10 · Step C：旧库 flash_sale 已下线 → 测试库改为**按表从各自权威库**取快照。
+$sourceOf = @{
+    'product'                   = 'flash_sale_product'
+    'seckill_activity'          = 'flash_sale_activity'
+    'seckill_order'             = 'flash_sale_order'
+    'seckill_message_log'       = 'flash_sale_order'
+    'seckill_activity_snapshot' = 'flash_sale_order'
+    'user_account'              = 'flash_sale_auth'
+    'user_session'              = 'flash_sale_auth'
+}
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -48,7 +58,7 @@ function Invoke-Mysql([string]$sql) {
     & $mysql '--host=127.0.0.1' '--user=root' "--execute=$sql" 2>&1 | ForEach-Object { '    ' + $_ }
 }
 
-Write-Output "=== 建/刷新测试库 $Schema（源：$Source）==="
+Write-Output "=== 建/刷新测试库 $Schema（源：四个权威库，逐表映射）==="
 Invoke-Mysql "CREATE DATABASE IF NOT EXISTS $Schema DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
 
 foreach ($t in $tables) {
@@ -60,45 +70,41 @@ foreach ($t in $tables) {
     # （实测：fk_activity_product 挡住 DROP product —— DROP 顺序无法同时满足所有父子关系）。
     # 注意 SET FOREIGN_KEY_CHECKS 是**会话级**的，而 Invoke-Mysql 每次都是独立的 mysql.exe
     # 进程 → 必须和 DROP 写在**同一条** --execute 里才生效。
+    # 每张表的权威库不同（旧库已下线，不能再当唯一来源）
+    $src = $sourceOf[$t]
     Invoke-Mysql "SET FOREIGN_KEY_CHECKS=0; DROP TABLE IF EXISTS $Schema.$t;"
     # LIKE 只复制结构（含索引），不复制外键 —— 与 P3/P4 的 schema 拆分同一手法
-    Invoke-Mysql "CREATE TABLE $Schema.$t LIKE $Source.$t;"
-    Invoke-Mysql "INSERT INTO $Schema.$t SELECT * FROM $Source.$t;"
+    Invoke-Mysql "CREATE TABLE $Schema.$t LIKE $src.$t;"
+    Invoke-Mysql "INSERT INTO $Schema.$t SELECT * FROM $src.$t;"
 }
 
 # ---------------------------------------------------------------------------
-# 恢复外键：LIKE 不复制外键，但**测试用例依赖它们** —— SeckillMessageReliabilityTest 的
-# "坏活动/坏商品"失败路径正是靠 `seckill_order` 的 FK 失败来制造 FAILED/DEAD；
-# 丢了外键这些用例会"意外成功"，断言 expected: 2 but was: 1（实测踩到）。
-# 做法：从 information_schema 生成 ALTER 语句（含原有 ON DELETE/UPDATE 规则），
-# 在数据导入**之后**执行（这样插入顺序不受约束）。
+# 恢复外键（P4 Day 10 · Step C 起改为**脚本内显式声明**）：
+# 原先从源库 information_schema 反查，但 ① 权威四库是"零外键"schema（P3/P4 拆分手法），
+# ② 旧库已下线 —— 再没有地方能"反查"出这些约束。而测试用例**依赖它们**
+# （SeckillMessageReliabilityTest 的坏商品/坏活动失败路径正是靠 FK 失败制造 FAILED/DEAD）。
+# 约束形状取自旧库下线前的逻辑备份（_legacy-backup/flash_sale_20261016.sql）：
+# 5 条外键的 DEL/UPDATE 规则实测全为 NO ACTION（= 省略 ON 子句时的 MySQL 默认），故此处不写 ON。
 # ---------------------------------------------------------------------------
-$fkQuery = @"
-SELECT CONCAT('ALTER TABLE $Schema.', k.table_name, ' ADD CONSTRAINT ', k.constraint_name,
-       ' FOREIGN KEY (', GROUP_CONCAT(k.column_name ORDER BY k.ordinal_position), ') REFERENCES $Schema.',
-       k.referenced_table_name, ' (', GROUP_CONCAT(k.referenced_column_name ORDER BY k.ordinal_position), ')',
-       ' ON DELETE ', rc.delete_rule, ' ON UPDATE ', rc.update_rule, ';') AS ddl
-FROM information_schema.key_column_usage k
-JOIN information_schema.referential_constraints rc
-  ON rc.constraint_schema = k.table_schema AND rc.constraint_name = k.constraint_name
-WHERE k.table_schema = '$Source' AND k.referenced_table_name IS NOT NULL
-GROUP BY k.table_name, k.constraint_name, k.referenced_table_name, rc.delete_rule, rc.update_rule;
-"@
-$fkRows = & $mysql '--host=127.0.0.1' '--user=root' '--skip-column-names' "--execute=$fkQuery;" 2>&1
+$fkDdl = @(
+    'ALTER TABLE {0}.seckill_activity ADD CONSTRAINT fk_activity_product FOREIGN KEY (product_id) REFERENCES {0}.product (id);'
+    'ALTER TABLE {0}.seckill_activity_snapshot ADD CONSTRAINT fk_snapshot_activity FOREIGN KEY (activity_id) REFERENCES {0}.seckill_activity (id);'
+    'ALTER TABLE {0}.seckill_order ADD CONSTRAINT fk_order_activity FOREIGN KEY (activity_id) REFERENCES {0}.seckill_activity (id);'
+    'ALTER TABLE {0}.seckill_order ADD CONSTRAINT fk_order_product FOREIGN KEY (product_id) REFERENCES {0}.product (id);'
+    'ALTER TABLE {0}.user_session ADD CONSTRAINT fk_session_user FOREIGN KEY (user_id) REFERENCES {0}.user_account (id);'
+)
 $fkCount = 0
-foreach ($row in $fkRows) {
-    $ddl = ($row -split ';')[0].Trim()
-    if ($ddl) { Invoke-Mysql $ddl | Out-Null; $fkCount++ }
-}
+foreach ($tpl in $fkDdl) { Invoke-Mysql ($tpl -f $Schema) | Out-Null; $fkCount++ }
 Write-Output "  已恢复外键约束: $fkCount 条"
 
-Write-Output '=== 快照校验（源库 vs 测试库行数）==='
-$sql = ($tables | ForEach-Object {
-        "SELECT '$_' AS t, (SELECT COUNT(*) FROM $Source.$_) AS src, (SELECT COUNT(*) FROM $Schema.$_) AS test"
-    }) -join ' UNION ALL '
-& $mysql '--host=127.0.0.1' '--user=root' '--skip-column-names' "--execute=$sql;" 2>&1 | ForEach-Object {
-    $p = ($_ -split "`t")
-    $flag = if ($p[1] -eq $p[2]) { '✓' } else { '✗' }
-    '  {0,-26} 源={1,-6} 测试={2,-6} {3}' -f $p[0], $p[1], $p[2], $flag
+Write-Output '=== 快照校验（各权威库 vs 测试库行数）==='
+foreach ($t in $tables) {
+    $src = $sourceOf[$t]
+    $q1 = "SELECT COUNT(*) FROM $src.$t"
+    $q2 = "SELECT COUNT(*) FROM $Schema.$t"
+    $c1 = (& $mysql '--host=127.0.0.1' '--user=root' '--skip-column-names' "--execute=$q1;" 2>&1 | Out-String).Trim()
+    $c2 = (& $mysql '--host=127.0.0.1' '--user=root' '--skip-column-names' "--execute=$q2;" 2>&1 | Out-String).Trim()
+    $flag = if ($c1 -eq $c2) { '✓' } else { '✗' }
+    '  {0,-26} 源={1,-6} 测试={2,-6} {3}' -f $t, $c1, $c2, $flag
 }
-Write-Output '  （测试库与业务库结构一致即可；行数一致说明快照是最新的）'
+Write-Output '  （源=各表权威库；行数一致说明快照是最新的）'
