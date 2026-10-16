@@ -3,6 +3,7 @@ package com.ghb.ecommerceflashsalesystem.controller.health;
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,7 +29,12 @@ import java.util.Map;
 @RestController
 @RequiredArgsConstructor
 public class HealthController {
-    private final DataSource dataSource;
+    /**
+     * P4 Day 10 · Step C：单体生产不连任何库 → 数据源改为**可选依赖**（有库时照旧探测，
+     * 无库时如实报 {@code ABSENT}，而不是启动失败）。测试上下文由测试 properties 覆盖
+     * {@code spring.autoconfigure.exclude} 为空来恢复数据源。
+     */
+    private final ObjectProvider<DataSource> dataSourceProvider;
     private final RedisTemplate<String, Object> redisTemplate;
 
     /**
@@ -59,6 +65,11 @@ public class HealthController {
      * @return "UP" 或 "DOWN"
      */
     private String checkMysql() {
+        DataSource dataSource = dataSourceProvider.getIfAvailable();
+        if (dataSource == null) {
+            // 无数据源 = 本运行时（单体）不连库，属预期设计（P4 Day 10 · Step C）
+            return "ABSENT";
+        }
         // 使用 try-with-resources 自动归还连接
         try(Connection connection = dataSource.getConnection()){
             // isValid 超时设为 1 秒，避免长时间阻塞

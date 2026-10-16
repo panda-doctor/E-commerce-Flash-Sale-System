@@ -113,6 +113,13 @@ spring:
   # =====================================================
   # MySQL 数据源
   # =====================================================
+  # P4 Day 10 · Step C：单体生产已无任何 mapper/DB 需求（快照写走 ObjectProvider、订单读走
+  # order 服务、会话校验走 auth 服务、库存走 Redis）→ **按属性排除数据源自动配置**。
+  # 为什么用属性而不是 @SpringBootApplication(exclude=…)：类级 exclude 编译进 classpath，
+  # 测试**无法撤销**（上一轮正是这么红掉的）；属性可被测试 properties 以空值覆盖 → 测试照旧有库。
+  # 下列 datasource 配置随之成为**惰性配置**（没有任何自动配置消费它），待旧库 DROP 后删除。
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
   datasource:
     url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
