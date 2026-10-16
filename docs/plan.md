@@ -1788,6 +1788,16 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 
 **为什么这版设计能成立**：Day-10 侦察发现"A 的成本在测试耦合"，于是把耦合**搬到测试侧显式表达**（一个配置文件），生产侧就能真的瘦下来 —— 这是"装配面"与"测试沙盘"职责分离，而不是为测试保留生产依赖。
 
+**Step A 已完成（✓ 2026-10-16，`c515c06`）**：单体 `scanBasePackages` 收窄为 `{.controller, .analytics, .user, .infra, .remote, .common, .contracts}` + **`@MapperScan` 整段删除** + `@Import(SeckillStockService.class)`；测试侧新增 `analytics/TestDomainContextConfig`（`@ComponentScan(product/activity/order/seckill)` + `@MapperScan(四包)` + `@Import(LocalProductCatalogAdapter.class)`，放在被扫描的包里以便 `@SpringBootTest` 自动拾取）。判据：构建 ✅、沙盘代表用例 **26/0/0** ✅、**全量回归 136/0/0/0（测试文件零改动）** ✅。执行中躲过的坑：`SeckillStockService`（单体 `/internal/seckill` 仍需要它，字段只有 RedisTemplate）与 `SeckillServiceImpl`（要 activity.mapper）同在 `seckill.*` 之下 → 必须用 `@Import` **精确引入单个 Bean**，扫包会把 `service.impl` 一起带回来。
+
+**Step C 启动验证（⚠️ 阻塞已定位，2026-10-16）**：实测 `exclude = DataSourceAutoConfiguration.class` 后单体**启动失败** ——
+
+```
+Parameter 0 of constructor in com.ghb.ecommerceflashsalesystem.controller.health.HealthController
+required a bean of type 'javax.sql.DataSource' that could not be found.
+```
+⇒ 去数据源必须与"健康检查改为可选依赖"**一起做**：把 `HealthController` 的 `DataSource` 改成 `ObjectProvider<DataSource>`（无库时该组件报 `db: absent/unknown`，有库时照旧），然后才能 `exclude` 并删 yaml 的 datasource 段。**已回退**（保持可启动），并在启动类留了注释指针。**Step C 剩余顺序**：① 健康检查可选化（1 处）→ ② `exclude` + 删 datasource 段 + 单跑单体验证 health 无 `db` → ③ 停镜像（三个应用的 `module.db.dual-write.enabled=false`）观察一轮回归 → ④ 删镜像代码（`DualWriteMirror`/`OrderMirror`/`AuthMirror`/`DualWriteProperties` + 18 个写点）→ ⑤ `mysqldump flash_sale` 备份 → ⑥ `DROP DATABASE flash_sale` + 对账脚本退役（改权威四库自检）→ ⑦ 守卫断言（单体无 `@MapperScan`、生产上下文无死链 Bean）。
+
 **Step A 的准确范围（改由下一单元承载）**：① 单体收窄 `scanBasePackages` + `@MapperScan` 只留必要；② **测试套件搬迁/替身化**（上面点名的两个测试 + 约十个 autowire 域 Bean 的用例）—— 这一项必须作为一个完整单元推进，且要在 Step B 完成后进行（那时快照已不在单体侧）。
 
 ---

@@ -35,6 +35,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         "com.ghb.ecommerceflashsalesystem.common",
         "com.ghb.ecommerceflashsalesystem.contracts"
 })
+// ⚠️ P4 Day 10 · Step C：本想在这里 exclude = DataSourceAutoConfiguration.class（单体已无 mapper，
+// 数据源无人使用）—— 实测**启动失败**：`HealthController` 的构造器直接依赖 `javax.sql.DataSource`
+// （健康检查里的 DB 探针）。所以去数据源必须与"健康检查改为可选依赖（ObjectProvider<DataSource>）"
+// 一起做，详见 plan.md 的 Step C 记录。此处保持可启动状态，不半程改动。
 @Import(SeckillStockService.class)
 public class ECommerceFlashSaleSystemApplication {
 
