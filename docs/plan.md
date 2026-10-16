@@ -1774,6 +1774,20 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 - **判据**：构建 ✅；定向用例 `SeckillMetricsTest` **6/0/0** ✅（该用例直接调服务、不走端点，所以搬家不打穿它）；**全量回归 136/0/0/0** ✅；业务库 + 四权威 schema 逐表不变（含新表 `ord…/0`）✅；对账 **18/18** ✅；结构证据：写端点**只**在 order 应用（`AdminMetricsCaptureController`）、analytics 控制器只剩读 ✅。
 - **尚未完成的一步（诚实记录）**：单体 `@MapperScan` 里的 `analytics.mapper` **还不能删** —— `MetricsServiceImpl` 的构造器直接注入 `SeckillActivitySnapshotMapper`（写快照用），即使单体侧不再有写端点（端点是入口，Bean 是装配）。要真正清空单体扫描面，需把该依赖改为 `ObjectProvider<SeckillActivitySnapshotMapper>`（缺 mapper 时构造成功、调用才报错）或把写方法拆出去 —— 这与 Step A 一起做。
 
+**Step B 收尾（已完成 ✓ 2026-10-16）**：`MetricsServiceImpl` 的快照写入由构造器直连改为
+`ObjectProvider<SeckillActivitySnapshotMapper>`（缺 mapper 的宿主照样装配成功，真调用才报可诊断错误）—— 判据：构建 ✅、定向 `SeckillMetricsTest` 6/0/0 ✅、**全量回归 136/0/0/0** ✅、工作区 clean（`7e543df`）。**→ Step B 三件套（数据面 / 端点归属 / 装配解耦）全部完成。**
+
+**Step A 执行设计（已定稿，待执行 —— 关键是把"测试要什么"与"生产要什么"分开表达）**：
+
+| 面 | 动作 |
+|---|---|
+| **生产（单体）** | ① `@SpringBootApplication(scanBasePackages = {自己.controller, 自己.analytics, user, infra, remote, common, contracts})` —— **不列** 根 `adapter`（那里面是已死的 `LocalProductCatalogAdapter`）、也不列 product/activity/order；② `@MapperScan` **整段删除**（生产已无 mapper 需求：快照走 `ObjectProvider` ✓、订单走 HTTP ✓、会话走 HTTP ✓）；③ yaml 加 `module.activity.cache-service: false`（死链里最后一个还要求 mapper 的 Bean） |
+| **测试（单体）** | 新增 **一个** 测试配置类，放在**被扫描的包**里（如 `com.ghb.ecommerceflashsalesystem.analytics`）→ `@SpringBootTest` 会自动拾取 ✓：`@Configuration + @ComponentScan({"….product","….activity","….order"}) + @MapperScan({"….product.mapper","….activity.mapper","….order.mapper","….analytics.mapper"}) + @Import(LocalProductCatalogAdapter.class)`。**理由**：那 ~10 个集成测试是**有意**把单体当"全域装配沙盘"跑域 Bean 的（`CreateBusinessValidationTest` 注入 `ProductServiceImpl`/`SeckillActivityServiceImpl`、`AdminSeckillResetStockTest` 注入 `SeckillCacheService`、`SeckillMessageReliabilityTest` 注入 order-core 的消费者）→ 这些需求属**测试**，不该由**生产**扫描面承担；放进测试树后生产收窄、测试照旧 ✓ |
+| **守卫（新）** | 在 `DomainEndpointsMovedTest` 加两条断言：① 单体的 `@MapperScan` 不存在或为空；② 生产上下文里**没有** `SeckillCacheService`/`SeckillActivityServiceImpl` Bean（与"死链"结论对齐，防回潮） |
+| **验收** | 构建 ✅；**全量回归 136/0/0/0**（测试**零改动**，靠测试配置补齐 Bean）；对账 18/18；结构证据 = 扫描面收窄 + 守卫断言绿 |
+
+**为什么这版设计能成立**：Day-10 侦察发现"A 的成本在测试耦合"，于是把耦合**搬到测试侧显式表达**（一个配置文件），生产侧就能真的瘦下来 —— 这是"装配面"与"测试沙盘"职责分离，而不是为测试保留生产依赖。
+
 **Step A 的准确范围（改由下一单元承载）**：① 单体收窄 `scanBasePackages` + `@MapperScan` 只留必要；② **测试套件搬迁/替身化**（上面点名的两个测试 + 约十个 autowire 域 Bean 的用例）—— 这一项必须作为一个完整单元推进，且要在 Step B 完成后进行（那时快照已不在单体侧）。
 
 ---
