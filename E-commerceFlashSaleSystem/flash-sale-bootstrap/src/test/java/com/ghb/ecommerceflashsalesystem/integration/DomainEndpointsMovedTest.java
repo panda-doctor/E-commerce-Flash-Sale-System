@@ -84,6 +84,21 @@ class DomainEndpointsMovedTest {
                 .andExpect(jsonPath("$.code").value(not(0)));
     }
 
+    /**
+     * P4 Day 6：过期会话清理的**调度入口**归属 auth 应用。
+     *
+     * <p>清理逻辑 {@code UserSessionService.purgeExpiredSessions()} 在 auth-core 共享库里，
+     * 任何"带 {@code @EnableScheduling} 且宿主 auth-core"的运行时都会触发它 —— 单体正是这样的
+     * 运行时（连同 order / seckill 一共三个）。auth 权威切到 {@code flash_sale_auth} 之后，
+     * 若单体继续跑就成了"非属主去删副本"：因此调度类必须**只在** auth 应用。
+     * 本断言与 Day 3 的 {@code StreamConsumerScheduler} 守卫同形。</p>
+     */
+    @Test
+    void authSessionCleanupSchedulerBelongsToAuthService() {
+        assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.ghb.ecommerceflashsalesystem.user.scheduler.AuthSessionCleanupScheduler"));
+    }
+
     @Test
     void seckillEndpointsBelongToSeckillService() throws Exception {
         // P4 Day 2：seckill 域的 4 个 HTTP 入口（活动列表/详情、可秒杀校验、执行）已迁至

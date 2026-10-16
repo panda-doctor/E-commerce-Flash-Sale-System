@@ -3,6 +3,8 @@ package com.ghb.ecommerceflashsalesystem.integration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
+import com.ghb.ecommerceflashsalesystem.user.scheduler.AuthSessionCleanupScheduler;
+import com.ghb.ecommerceflashsalesystem.user.service.UserSessionService;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +17,8 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -34,6 +38,19 @@ class AuthRegisterIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
+    /** P4 Day 6：清理调度入口归属本应用（反向守卫见单体侧 DomainEndpointsMovedTest） */
+    @Autowired private AuthSessionCleanupScheduler authSessionCleanupScheduler;
+
+    /**
+     * P4 Day 6：①调度入口在本应用上下文里（正面）；②共享库里的服务**不带** {@code @Scheduled}
+     * （反面 —— 否则宿主 auth-core 的单体/order/seckill 会各自删一遍会话）。
+     */
+    @Test
+    void sessionCleanupSchedulerBelongsToThisServiceAndServiceIsNotSelfScheduled() throws Exception {
+        assertNotNull(authSessionCleanupScheduler);
+        assertNull(UserSessionService.class.getMethod("purgeExpiredSessions")
+                .getAnnotation(org.springframework.scheduling.annotation.Scheduled.class));
+    }
 
     @Test
     void registrationCreatesPersistedAccountAndHttpOnlySession() throws Exception {

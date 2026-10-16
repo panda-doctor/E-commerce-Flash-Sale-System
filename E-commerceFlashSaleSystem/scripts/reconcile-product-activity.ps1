@@ -59,6 +59,10 @@ $preheatDist = 'SELECT CONCAT(SUM(preheat_status=0),CHAR(45),SUM(preheat_status=
 $orderTailFp = "SELECT MD5(GROUP_CONCAT(CONCAT_WS(',', id, order_no, activity_id, product_id, user_id, seckill_price, status, IFNULL(stream_message_id,''), IFNULL(failure_reason,'')) ORDER BY id SEPARATOR '|')) FROM (SELECT * FROM {0}.seckill_order ORDER BY id DESC LIMIT 12) t"
 $logTailFp = "SELECT MD5(GROUP_CONCAT(CONCAT_WS(',', id, stream_key, stream_message_id, IFNULL(order_no,''), retry_count, status, IFNULL(error_message,'')) ORDER BY id SEPARATOR '|')) FROM (SELECT * FROM {0}.seckill_message_log ORDER BY id DESC LIMIT 12) t"
 $logStatusDist = 'SELECT CONCAT(SUM(status=0),CHAR(45),SUM(status=1),CHAR(45),SUM(status=2),CHAR(45),SUM(status=3)) FROM {0}.seckill_message_log'
+# P4 Day 6：auth 域（user_account / user_session）。user_session **主键是 token_hash**（无自增 id），
+# 指纹与排序一律以它为准；user_account.deleted_at 与 user_session.revoked_at 可为 NULL（业务语义的 null）。
+$accountTailFp = "SELECT MD5(GROUP_CONCAT(CONCAT_WS(',', id, account_name, password_hash, status, IFNULL(display_name,''), IFNULL(deleted_at,'')) ORDER BY id SEPARATOR '|')) FROM (SELECT * FROM {0}.user_account ORDER BY created_at DESC LIMIT 12) t"
+$sessionTailFp = "SELECT MD5(GROUP_CONCAT(CONCAT_WS(',', token_hash, user_id, csrf_token_hash, expires_at, IFNULL(revoked_at,'')) ORDER BY token_hash SEPARATOR '|')) FROM (SELECT * FROM {0}.user_session ORDER BY created_at DESC LIMIT 12) t"
 
 $checks = @(
     [pscustomobject]@{ Name = 'product.rows';        Old = 'SELECT COUNT(*) FROM flash_sale.product';                       New = 'SELECT COUNT(*) FROM flash_sale_product.product' }
@@ -76,6 +80,11 @@ $checks = @(
     [pscustomobject]@{ Name = 'msglog.rows';         Old = 'SELECT COUNT(*) FROM flash_sale.seckill_message_log';              New = 'SELECT COUNT(*) FROM flash_sale_order.seckill_message_log' }
     [pscustomobject]@{ Name = 'msglog.status_dist';  Old = ($logStatusDist -f 'flash_sale');                                   New = ($logStatusDist -f 'flash_sale_order') }
     [pscustomobject]@{ Name = 'msglog.tail_fp';      Old = ($logTailFp -f 'flash_sale');                                       New = ($logTailFp -f 'flash_sale_order') }
+    # ---- P4 Day 6 新增：auth 域（权威 = flash_sale_auth）----
+    [pscustomobject]@{ Name = 'auth.account_rows';    Old = 'SELECT COUNT(*) FROM flash_sale.user_account';                     New = 'SELECT COUNT(*) FROM flash_sale_auth.user_account' }
+    [pscustomobject]@{ Name = 'auth.account_tail_fp'; Old = ($accountTailFp -f 'flash_sale');                                   New = ($accountTailFp -f 'flash_sale_auth') }
+    [pscustomobject]@{ Name = 'auth.session_rows';    Old = 'SELECT COUNT(*) FROM flash_sale.user_session';                     New = 'SELECT COUNT(*) FROM flash_sale_auth.user_session' }
+    [pscustomobject]@{ Name = 'auth.session_tail_fp'; Old = ($sessionTailFp -f 'flash_sale');                                   New = ($sessionTailFp -f 'flash_sale_auth') }
 )
 
 # ---- 4. run reconciliation ----

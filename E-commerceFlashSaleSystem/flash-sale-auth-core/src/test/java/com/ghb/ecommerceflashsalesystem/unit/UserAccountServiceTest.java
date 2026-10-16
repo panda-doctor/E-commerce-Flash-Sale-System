@@ -6,6 +6,7 @@ import com.ghb.ecommerceflashsalesystem.user.dto.request.RegisterRequest;
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserAccount;
 import com.ghb.ecommerceflashsalesystem.user.mapper.UserAccountMapper;
 import com.ghb.ecommerceflashsalesystem.user.mapper.UserSessionMapper;
+import com.ghb.ecommerceflashsalesystem.user.mirror.AuthMirror;
 import com.ghb.ecommerceflashsalesystem.user.service.UserAccountService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,8 @@ class UserAccountServiceTest {
     private UserAccountMapper accountMapper;
     private UserSessionMapper sessionMapper;
     private BCryptPasswordEncoder passwordEncoder;
+    /** P4 Day 6：写后镜像到旧库副本 —— 单测里是 no-op mock（镜像本身由双写门禁/对账兜底） */
+    private AuthMirror authMirror;
     private UserAccountService service;
 
     @BeforeEach
@@ -30,7 +33,8 @@ class UserAccountServiceTest {
         accountMapper = mock(UserAccountMapper.class);
         sessionMapper = mock(UserSessionMapper.class);
         passwordEncoder = new BCryptPasswordEncoder(12);
-        service = new UserAccountService(accountMapper, sessionMapper, passwordEncoder);
+        authMirror = mock(AuthMirror.class);
+        service = new UserAccountService(accountMapper, sessionMapper, passwordEncoder, authMirror);
     }
 
     @Test
