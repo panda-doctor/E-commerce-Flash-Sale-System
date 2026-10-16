@@ -214,6 +214,7 @@ flash-sale-parent
   - **HTTP 入口归属用文件位置表达**：4 个 seckill 入口随**控制器文件**迁入应用（被多个运行时共用的库，入口留在库里 = 单体也会暴露一份；实测直连单体原本返回 200，搬迁后 404）。网关仍是**四条精确 Path**（同前缀下 order 域的 `/api/seckill/orders/*`、`/api/seckill/users/*/orders` 仍归单体）。
   - **新增共享模块 `flash-sale-remote`**：跨进程适配器（端口的 HTTP 装配：`HttpProductCatalogAdapter` + `LoadBalancedClientConfig`）。**只有需要跨进程调用的应用才依赖它**；"仅某个应用需要"的适配器（如 `HttpSeckillStockAdapter`）留在该应用内，避免与本地实现同类型 Bean 冲突。reactor 现为 **19 模块 / Nacos 7 服务**。
   - **Day 2 遗留**：seckill 应用数据源暂指**旧库**（auth 的用户表只在那里）→ 待 auth 域服务化后切回权威库；旧库有 5 条 FK、新 schema 零 FK（反向镜像写旧库受 FK 顺序约束）。
+  - **Day 3 order 服务化**：库改名 `flash-sale-order-core` → 新建应用 `flash-sale-order`（:8087，带 auth-core + analytics）。**只有"调度入口"随域迁走**（`StreamConsumerScheduler`），消费者本体 `SeckillOrderConsumer` 留在库里（4 个集成测试注入它驱动消费）—— 加上单体 `flash.stream.auto-poll: false`，双重保证"不重复消费"（**重复消费 = 重复建单**，是本次唯一高危点，守卫断言已钉住）。三个订单查询入口与死信回放随域迁入（**入口归属用文件位置表达**，单体不再持有任何 order 入口）。网关新增四条精确 Path（与 seckill 域共用 `/api/seckill` 前缀，只能精确切）。reactor **20 模块 / Nacos 8 服务**；order 的三张表仍在旧库（schema 拆分 + 反向镜像留给 Day 4）。
 - **P5**：analytics 消费 `order.created` 建读模型（ZSet NX 幂等）；指标埋点从 execute 侧改为事件 + 本地计数；单体退化为后台只读聚合或下线。
 - **P6**：CI/CD 流水线（构建→测试→镜像→部署→灰度）；Prometheus 告警规则；混沌演练（kill order / 停 Redis / 注入延迟）；Runbook（回滚、对账、死信处理）。
 
