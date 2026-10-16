@@ -63,7 +63,7 @@ module:
     # 所以本镜像**默认开启**（Day 3 时它只是影子副本、默认关；语义已随切读反转）：
     #   关掉 = 未拆模块会读到"凝固的旧副本"。
     dual-write:
-      enabled: ${DUAL_WRITE_ENABLED:true}
+      enabled: ${DUAL_WRITE_ENABLED:false}
       legacy-product-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
       legacy-activity-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
       username: root

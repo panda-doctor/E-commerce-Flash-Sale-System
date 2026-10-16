@@ -60,7 +60,7 @@ module:
   # 对账脚本的 order.* 检查会立刻报 DIFF）。单体/ai 不配这一段（它们没有 order 写路径）。
   db:
     dual-write:
-      enabled: ${DUAL_WRITE_ENABLED:true}
+      enabled: ${DUAL_WRITE_ENABLED:false}
       legacy-order-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
       username: root
       password: ${MYSQL_PASSWORD:123456}
