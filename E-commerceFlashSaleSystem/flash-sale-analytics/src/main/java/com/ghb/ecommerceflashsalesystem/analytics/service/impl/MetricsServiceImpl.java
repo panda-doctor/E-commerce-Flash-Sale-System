@@ -5,6 +5,7 @@ import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivitySnapshot;
 import com.ghb.ecommerceflashsalesystem.analytics.vo.ActivityMetricsVO;
 import com.ghb.ecommerceflashsalesystem.analytics.mapper.SeckillActivitySnapshotMapper;
+import org.springframework.beans.factory.ObjectProvider;
 import com.ghb.ecommerceflashsalesystem.analytics.service.MetricsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +24,16 @@ public class MetricsServiceImpl implements MetricsService {
     private final RedisTemplate<String, Object> redisTemplate;
     /** P0 Day 4：订单数经端口由 order 域提供（避免 analytics → order 反向依赖） */
     private final OrderQueryPort orderQueryPort;
-    private final SeckillActivitySnapshotMapper snapshotMapper;
+    /**
+     * 快照写入器（P4 Day 10：由直连改为 {@link ObjectProvider} 延后解析）。
+     *
+     * <p><b>为什么</b>：快照表 {@code seckill_activity_snapshot} 的权威库是 {@code flash_sale_order}，
+     * 写入口已按归属搬到 order 应用；另一个宿主（单体）虽然也扫到本类，但它**不该**、也即将
+     * 不再持有 {@code analytics.mapper}。用构造器直连会让"没有该 mapper 的宿主"直接启动失败
+     * （端点是入口、Bean 是装配 —— 入口搬走了装配还挂着）。改成 {@code ObjectProvider} 后：
+     * <b>没有 mapper 的宿主也能装配成功</b>，只有真的调用写快照时才需要它（调用点给出可诊断的错误）。</p>
+     */
+    private final ObjectProvider<SeckillActivitySnapshotMapper> snapshotMapperProvider;
 
     @Override
     public ActivityMetricsVO collectMetrics(Long activityId) {
@@ -90,6 +100,12 @@ public class MetricsServiceImpl implements MetricsService {
         snapshot.setRateLimitRejectCount(metrics.getRateLimitRejectCount());
         snapshot.setSoldOutRejectCount(metrics.getSoldOutRejectCount());
         snapshot.setSnapshotTime(LocalDateTime.now());
+        SeckillActivitySnapshotMapper snapshotMapper = snapshotMapperProvider.getIfAvailable();
+        if (snapshotMapper == null) {
+            throw new IllegalStateException(
+                    "当前宿主没有 seckill_activity_snapshot 的 mapper：快照写能力归 order 应用"
+                            + "（它拥有权威库 flash_sale_order），activityId=" + activityId);
+        }
         snapshotMapper.insert(snapshot);
         log.info("指标快照已落库，activityId={}", activityId);
     }
