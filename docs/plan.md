@@ -1457,7 +1457,10 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 - **已知取舍**：order 应用仍扫 `analytics.mapper`（`SeckillActivitySnapshotMapper`），而 snapshot 表不在 `flash_sale_order` 里 —— 启动只建 Bean（MyBatis 不校验表存在），该查询路径不在本应用路由上；analytics 服务化那天消掉。
 - **门禁与回归**：对账 **14/14 consistent（exit=0）**；全量回归 **131 用例 0 失败 0 错误 BUILD SUCCESS**（1.8 分钟，20 模块）。
 - 探针：`P4D4-ProdA` / `P4D4-ActA` + 探针订单保留（旧库 FK 链 订单→活动→商品；也是镜像证据）。今天的额外教训：往旧库 `seckill_order` 插探针行会被 **FK**（activity/product）+ **唯一键 `uk_activity_user`** 双双拦下。
-- **Day 5 清单**：① auth 域服务化（或"瘦用户会话守卫"下沉 infra）→ 删双数据源桥 + seckill 应用切回权威库；② ai 目录端口化（`ProductCatalogPort` 扩"上架列表" + 新建活动目录端口 + 内部接口 + 三处适配器）；③ order→analytics 解耦（`order.created` 事件或端口化）；④ **删反向镜像 + 旧库 `flash_sale` 下线**（三阶段迁移收官）。
+- **收尾时发现的隐藏影响（已处理并留档）**：提交后核对终态，`seckill_message_log` **副本比权威多 23 行** ✗。查明不是脏数据、也不是业务回归：那 23 行是 13:14:49–13:14:52 的一次突发（`consumer_group=seckill:order:group`、全部 `status=1(SUCCESS)`、真实雪花订单号），**但两侧 `seckill_order` 都没有对应订单**（行数 4028 = 4028）—— 即**回归测试跑在单体 JVM 里，其消费者扫到了真实 Redis Stream**，把 23 条已处理消息又消费了一遍、全部被 `uk_activity_user` 判重 → 只留下日志行。
+  → **权威切换后的结构性影响**：bootstrap 的集成测试用的是**旧库数据源**，所以**跑一次全量回归就会在旧库（副本）留下"影子消费/影子日志"**，而对账门禁只看两库一致性 → 门禁会红。处置：按 `id > 权威 max(id)` 精确清掉影子行（5175/5175 复原，对账回 **14/14**）；**约定**：回归之后先清影子行再对账。
+  → **Day 5 必做**：① **测试数据源隔离**（独立测试库或 Testcontainers）—— 治本；② 或让测试用独立 Stream key，不碰真实 `flash:stream:seckill`；③ CI 里对账的调用顺序（测试 → 清影子 → 对账）。
+- **Day 5 清单**：① auth 域服务化（或"瘦用户会话守卫"下沉 infra）→ 删双数据源桥 + seckill 应用切回权威库；② ai 目录端口化（`ProductCatalogPort` 扩"上架列表" + 新建活动目录端口 + 内部接口 + 三处适配器）；③ order→analytics 解耦（`order.created` 事件或端口化）；④ **集成测试数据源隔离**（见上条，否则"回归 → 对账"这条链在权威切换后必然假红）；⑤ **删反向镜像 + 旧库 `flash_sale` 下线**（三阶段迁移收官）。
 
 ---
 

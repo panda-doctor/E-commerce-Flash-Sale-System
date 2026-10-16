@@ -80,6 +80,14 @@ $checks = @(
 
 # ---- 4. run reconciliation ----
 Write-Output '=== reconcile: flash_sale(副本) vs flash_sale_product / flash_sale_activity / flash_sale_order(权威) ==='
+# ⚠️ P4 Day 4 起的重要约定（否则本脚本会假红）：
+#   bootstrap 的集成测试跑在**旧库数据源**上，其消费者会扫真实 Redis Stream
+#   （group=seckill:order:group）→ 会在旧库（order 的副本）留下"影子"日志/订单行。
+#   因此**回归测试之后、对账之前**必须先清影子行：
+#     DELETE FROM flash_sale.seckill_message_log WHERE id > (SELECT MAX(id) FROM flash_sale_order.seckill_message_log);
+#     DELETE FROM flash_sale.seckill_order       WHERE id > (SELECT MAX(id) FROM flash_sale_order.seckill_order)
+#       AND order_no NOT IN (SELECT order_no FROM flash_sale_order.seckill_order);
+#   治本方案（Day 5）：给测试隔离数据源 / 独立 Stream key。详见 plan.md P4 Day 4 实施记录。
 Write-Output ("{0,-22} {1,-36} {2,-36} {3}" -f 'CHECK', 'LEGACY', 'NEW', 'RESULT')
 
 $diffs = @()
