@@ -827,7 +827,7 @@
 | P1 | 基础设施（Nacos / Gateway / Compose / 追踪 / 监控） | 3 天 | M2 基建就绪 | 🔄 P1-1 ✅ / P1-2 进行中（T1 ✅） |
 | P2 | 边缘抽取（auth-service / ai-service / 网关统一鉴权） | 4 天 | M3 首个服务上线 | ⏳ |
 | P3 | 商品与活动（product / activity 独立库与缓存所有权） | 5 天 | M4 主数据域独立 | ⏳ |
-| P4 | 核心交易（seckill / order / `order.created` 事件 / 数据迁移） | 6 天 | M5 跨服务交易闭环 | ⏳（**Day 1 切读 ✅ / Day 2 seckill ✅ / Day 3 order ✅**（2026-10-16）；Day 4+ 待做） |
+| P4 | 核心交易（seckill / order / `order.created` 事件 / 数据迁移） | 6 天 | M5 跨服务交易闭环 | ⏳（**Day 1 切读 ✅ / Day 2 seckill ✅ / Day 3 order ✅**；**Day 4 order 库拆分（卡见第九章末）**） |
 | P5 | 读模型收口（analytics 事件驱动，CQRS 完成） | 3 天 | M6 读模型分离 | ⏳ |
 | P6 | 质量运维（CI/CD / 告警 / 混沌演练 / Runbook） | 4 天 | M7 可运维交付 | ⏳ |
 
@@ -1411,6 +1411,41 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 
 ---
 
+### P4 Day 4 详细任务卡（order 的「库」拆分：flash_sale_order + 幂等迁移 + 反向镜像 + 对账门禁）
+
+> 执行方式：panda 实现 + 导师现场纠偏；预估 2~3 小时。
+
+**目标**：把 order 域两张表（`seckill_order` / `seckill_message_log`）迁到独立 schema `flash_sale_order` —— **权威 = 新 schema**（order 应用读写），**副本 = 旧库 `flash_sale`**（单体侧 analytics 的订单读取继续用它），由**反向镜像**保鲜。与 product/activity 完全同法（P3 Day 3 双写 → P4 Day 1 切读），本日只做 order。
+
+**侦察结论（决定可行性与动作面）**：
+
+- **单一写者前提成立**：P4 Day 3 之后 order 的 HTTP 入口与消费调度都在 `flash-sale-order` 应用；单体只剩消费者 Bean（无调度）与 `DeadLetterReplayService`（无入口）→ **可达到的写点为 0** ✓（与 Day 1 切读的硬前提同形）。
+- **写点共 6 处**：`SeckillOrderConsumer`：`seckillOrderMapper.insert`(198)、`seckillMessageLogMapper.insert`(284)、`updateById`×3(296/308/314)；`DeadLetterReplayService.updateById`(120)。
+- **两表列（旧库实测）**：`seckill_order`(id, order_no, activity_id, product_id, user_id, seckill_price, status, stream_message_id, failure_reason, created_at, updated_at) **4027 行**；`seckill_message_log`(id, stream_key, stream_message_id, consumer_group, consumer_name, order_no, activity_id, product_id, user_id, retry_count, status, error_message, created_at, updated_at) **5174 行**。
+- **榜单写不受影响**：消费者调的 `SeckillRankServiceImpl.recordSuccess` 是**纯 Redis**（ZADD NX 幂等，零 DB）✓ → order 换库后榜单照写（读端在单体，同一个 Redis）。
+- **⚠️ analytics 的 mapper 会跟着进 order 应用**：P4 Day 3 的装配扫了 `analytics.mapper`（`SeckillActivitySnapshotMapper`），而该表**不在** `flash_sale_order` 里 —— 启动只建 mapper Bean（MyBatis 不校验表存在 ✓），snapshot 查询路径不在本应用路由上 ✓。**记为已知取舍**：analytics 服务化那天消掉。
+- **迁移脚本范本**：`db/migration/V20261015__split_product_activity_schema.sql`（`CREATE DATABASE/TABLE IF NOT EXISTS … LIKE` + `REPLACE INTO … SELECT` + 行数校验）→ 本日照抄为 `V20261016__split_order_schema.sql`。
+
+**范围裁剪（本日的重要判断）**：原计划同时做"ai 目录改走服务接口"。实测 **`AiChatServiceImpl` 里还直连两处 mapper**（`ProductMapper` 列表查询 + `SeckillActivityMapper`），不只是 P3 Day 5 端口化过的那个适配器 → 完整迁移需要**新增"活动目录端口" + 内部接口 + 三处适配器实现**，是独立一天的工作量；半途迁移没价值（ai 仍读旧库）。→ **本日只做 order 库拆分**，ai 目录端口化 + order→analytics 解耦列入 Day 5（清单写进实施记录）。
+
+| 步骤 | 内容 | 要点 |
+|---|---|---|
+| Step 0 前置 | 停 8 服务；工作区 clean；**对账留底**（含 order 行数 4027 / 5174） | 差异非 0 不许迁 |
+| Step 1 DDL + 迁移 | 写 `V20261016__split_order_schema.sql`（建库 + `LIKE` 两表 + `REPLACE` 全量 + 校验 SELECT）并执行 | `LIKE` 不复制外键（与 P3 同）；用 `REPLACE` 保幂等 |
+| Step 2 镜像组件 | `DualWriteProperties` += `legacyOrderUrl`（键 `legacy-order-url`）；`DualWriteMirror` += `mirrorOrder(…)` | 复用既有 `mirror()` 内核（日志已带目标库名 ✓） |
+| Step 3 写点接镜像 | order-core 新增小工具 `order.mirror.OrderMirror`（两条 upsert SQL：order / message_log，`INSERT … ON DUPLICATE KEY UPDATE`），6 个写点各加一行；消费者与死信服务构造函数加参数（Spring 注入 → 4 个集成测试不受影响 ✓） | 镜像**默认关** → 单体/测试零行为变化 |
+| Step 4 切权威 | order 应用 yaml：datasource → `flash_sale_order`；`module.db.dual-write`（`enabled: true` + `legacy-order-url`） | 单体 yaml 不动（无 order 写路径） |
+| Step 5 对账扩展 | `scripts/reconcile-product-activity.ps1` 增 **2 条 order 检查**（行数 + 内容指纹，与既有 8 项同形）→ 迁移前后各跑一次 | 脚本仍是切换门禁 |
+| Step 6 验证 + 回归 + 文档 + 提交 | 8 服务 → 判据表（含权威/副本双向证据）→ 回归 → Day 4 ✅ → 提交 | 回退 = datasource 换回旧库 + 镜像关 |
+
+**验收判据**：① 构建 **20 模块**绿线；② Nacos **8 服务** + `:8087` health UP（db 连 `flash_sale_order`）；③ **迁移门禁**：迁移前对账一致（含 order）→ 迁移后一致；`flash_sale_order` 两表行数 = 旧库 = **4027 / 5174** ✓；④ **权威在 order schema**：经网关执行一次秒杀 → 新 `flash_sale_order.seckill_order` 命中该订单 ✓ + 应用日志 `镜像成功（权威 -> 副本），target=order(db=flash_sale)` ✓ + **旧库副本同有** ✓；⑤ **单体读副本仍工作（切读证据）**：`GET /api/rank/top10`（单体 analytics 经 `OrderQueryAdapter` 读 `seckill_order`）返回该用户/订单号 ✓；⑥ 死信回放写 `seckill_message_log` → 权威有 ✓ + 副本有 ✓；⑦ 路由与反证：带会话经网关查一条订单 `code=0`；停 `:8087` → 三条 order 路径 **503** 而 seckill 域仍 **200** ✓；⑧ 对账（**10 项**）一致；⑨ 其它域不变（products / support / metrics / ai）；⑩ 全量回归绿线 + 文档（含 ai 迁移清单与 analytics 取舍）。
+
+**坑**：① 迁移脚本在**停服务**时跑（避免半程写入）；② 镜像 SQL 必须**覆盖全部业务列**（`ON DUPLICATE KEY UPDATE`），否则 `updateById` 的镜像会漏列；③ 镜像默认关 → 忘了在应用 yaml 开 `enabled` 会让副本凝固（判据 ⑤ 专抓这个）；④ `analytics.mapper` 仍要扫（否则启动失败）；⑤ 旧库 `seckill_order` 有指向活动/商品的 FK，新 schema 的 `LIKE` **不带** FK ✓，但反向镜像写旧库受 FK 顺序约束（先活动/商品后订单，现状天然满足 ✓）；⑥ 迁移后**别再**用旧库行数做业务判断（权威已在新库）；⑦ 迁移期间老数据用 `REPLACE` 覆盖，新写入靠镜像 —— 两者不冲突（主键雪花 id ✓）。
+
+**提交计划**：① `feat(p4-day4): order 独立 schema + 幂等迁移 + 反向镜像（旧库降级为副本）`；② `docs(p4-day4): 对账扩展 + plan.md Day 4 完成 + ai/analytics 遗留清单`。
+
+---
+
 *文档创建日期：2026-07-29*
 *上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16）；**P2 Day 3~4 完成并收口**（ai 服务化 :8083 + 网关准入鉴权 + 全量 **124 用例**绿线 + `p2-done` 标签；提交 `1014a8e`/`7db07eb`/`4275ba2`）；**P3 Day 1 完成**（product 域拆为 `flash-sale-product-core` 库 + `flash-sale-product` 应用 :8084；零行为变更 —— 网关路由未改、停 8084 后经网关商品接口仍 200；Nacos 5 服务；全量 124 用例绿线；改名提交 `3afc88b`）；**P3 Day 2 完成**（product 接口迁入应用 + 网关导流含 `/uploads/**`；单体 404 / 新服务 200 / **停 8084 经网关 503**；上传→回读 200；全量 **125 用例**绿线）；**P3 Day 3 完成**（product / activity 独立 schema + 幂等迁移 + 双写镜像（默认关）+ 对账脚本；新库外键归零、列/索引逐项一致；双写开 8/8 一致、关时新库不动；脚本正/负向双向验证；全量 125 用例绿线）；**P3 Day 4 完成**（activity 库改名 `flash-sale-activity-core` + 新应用 `:8085` + 控制器一分为二（路径不变）+ 网关精确三条 Path；停 :8085 → 三条 activity 路径 **503** 而 metrics 仍 200；双写 22/22 + 对账 8/8；全量 **126 用例**绿线）；**P3 Day 5 完成（P3 收口）**（库存权属收口：seckill 内部接口 + 端口化委托，activity 不再写 `seckill:stock:*`；`/internal/**` 与 `/api/admin/**` 双护栏 fail-closed（直连两应用无令牌 → 40100）；去跨域直读：activity 不再依赖 product-core，商品校验改调商品服务接口（停 :8084 → `50000` 且零写入）；双写 22/22 + 对账 8/8；全量 **129 用例**绿线）；**P4 Day 1 完成（切读：翻转权威源）**（两应用数据源 → 新 schema，镜像语义反转为"写副本旧库"且应用侧默认开启；门禁 + 切换后对账均 8/8；镜像日志 `target=*(db=flash_sale)`；未拆模块经旧库读到新数据；决定性判定用"新 id 探针"证明读权威、不读副本；全量 **129 用例**绿线）；**P4 Day 2 完成（seckill 域服务化）**（改名 seckill-core + 共享 HTTP 适配器模块 flash-sale-remote + 新应用 `flash-sale-seckill` :8086（带 auth-core、数据源指旧库）+ 网关四条精确 Path；**execute 端到端**：`code=0 QUEUED` + 重复 `40901 DUPLICATED` + 无令牌 `40100` + 订单经 Stream 在单体落库（`seckill_order`/`seckill_message_log` 命中）；停 :8086 → activities 503 而 order 域路径仍 200；直连单体公开读 404；对账 8/8；全量 **130 用例**绿线）；**P4 Day 3 完成（order 域服务化）**（改名 order-core + 新应用 `flash-sale-order` :8087（带 auth-core + analytics）+ **只搬调度入口**（消费者本体留库，4 个集成测试注入）+ 3 个入口随域迁入 + 网关四条精确 Path；**消费迁移正反双向**：`:8087 [scheduling-1] 订单落库成功并ACK` + `seckill_order` 落库 + 榜单更新，而单体 `订单落库成功` **0 次**；停 :8087 → order 路径 503 而 seckill 域仍 200；直连单体死信端 404；对账 8/8；全量 **131 用例**绿线））*
-*下次开始位置：①**P4 Day 4 — order 的「库」拆分 + ai 改走服务接口**（任务卡待写）：`flash_sale_order` 新 schema（`seckill_order` / `seckill_message_log` + 幂等迁移 + 反向镜像到旧库，与 product/activity 同法）+ ai 的 `LocalProductCatalogAdapter` 换 `flash-sale-remote` 的 HTTP 适配器 + **order 不再直接依赖 analytics**（`order.created` 事件或端口化，为旧库下线扫清最后一条 order→analytics 边）；②**P4 Day 4 — ai 目录改走服务接口**（把 `LocalProductCatalogAdapter` / `LocalSeckillStockAdapter` 换成 `flash-sale-remote` 的 HTTP 适配器；注意 activity-core 端口的本地实现与 HTTP 装配的**同类型 Bean 冲突**问题）→ **然后：删除反向镜像、旧库 `flash_sale` 下线**（三阶段迁移收官）；③**P4 收尾待办（Day 2 遗留）**：把 seckill 应用的数据源从旧库切回权威库（前置：auth 域服务化 或 "瘦用户会话守卫" 下沉 infra）；④可选 T6 — OTel/Zipkin 替换自研 traceId；⑤图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
+*下次开始位置：①**P4 Day 4 — order 的「库」拆分（任务卡已写入第九章末，待实施）**：`flash_sale_order` 新 schema + 幂等迁移（`REPLACE`）+ 反向镜像到旧库 + 对账扩展为 10 项门禁；**范围裁剪**：ai 目录迁移与 order→analytics 解耦移入 Day 5（侦察发现 `AiChatServiceImpl` 直连两处 mapper，需要新增"活动目录端口"+ 内部接口 + 三处适配器 = 独立一天）；②**P4 Day 4 — ai 目录改走服务接口**（把 `LocalProductCatalogAdapter` / `LocalSeckillStockAdapter` 换成 `flash-sale-remote` 的 HTTP 适配器；注意 activity-core 端口的本地实现与 HTTP 装配的**同类型 Bean 冲突**问题）→ **然后：删除反向镜像、旧库 `flash_sale` 下线**（三阶段迁移收官）；③**P4 收尾待办（Day 2 遗留）**：把 seckill 应用的数据源从旧库切回权威库（前置：auth 域服务化 或 "瘦用户会话守卫" 下沉 infra）；④可选 T6 — OTel/Zipkin 替换自研 traceId；⑤图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
