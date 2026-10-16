@@ -55,7 +55,12 @@ foreach ($t in $tables) {
     # ⚠️ 必须 DROP + CREATE，而不是 CREATE IF NOT EXISTS + REPLACE：
     # REPLACE 只覆盖"源库里有"的行，**不会删除**上一轮测试遗留的行 ——
     # 实测踩到：上一轮测试写的 23 行留在测试库，导致依赖行数/状态断言的用例变红。
-    Invoke-Mysql "DROP TABLE IF EXISTS $Schema.$t;"
+    # ⚠️ 必须先关外键检查再 DROP：脚本尾部会**恢复外键**（Day 5 的修复），于是第二次以后的
+    # 重建就会撞上 "Cannot drop table 'product' referenced by a foreign key constraint"
+    # （实测：fk_activity_product 挡住 DROP product —— DROP 顺序无法同时满足所有父子关系）。
+    # 注意 SET FOREIGN_KEY_CHECKS 是**会话级**的，而 Invoke-Mysql 每次都是独立的 mysql.exe
+    # 进程 → 必须和 DROP 写在**同一条** --execute 里才生效。
+    Invoke-Mysql "SET FOREIGN_KEY_CHECKS=0; DROP TABLE IF EXISTS $Schema.$t;"
     # LIKE 只复制结构（含索引），不复制外键 —— 与 P3/P4 的 schema 拆分同一手法
     Invoke-Mysql "CREATE TABLE $Schema.$t LIKE $Source.$t;"
     Invoke-Mysql "INSERT INTO $Schema.$t SELECT * FROM $Source.$t;"
