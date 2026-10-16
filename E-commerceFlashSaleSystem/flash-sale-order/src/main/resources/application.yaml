@@ -1,0 +1,79 @@
+# =====================================================
+# 订单服务（flash-sale-order）—— P4 Day 3：order 域服务化
+# 端口 8087；服务名 flash-sale-order
+# 数据源：**旧库 flash_sale**（order 的三张表尚未拆 schema；auth 用户表也只在那里）
+# =====================================================
+server:
+  port: ${ORDER_PORT:8087}
+
+spring:
+  application:
+    name: flash-sale-order
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+  datasource:
+    # 本日只搬入口与定时任务，不动数据：order 的 schema 拆分是后续独立的一天。
+    url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 2
+      connection-timeout: 10000
+      max-lifetime: 1800000
+  data:
+    # 必须与单体同一个 Redis 库：订单 Stream、消费组/PEL、实时榜 ZSet 都在 database=1
+    # （榜单读端在单体，写端在本应用 —— 不同库就静默不更新）
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+      database: 1
+      timeout: 5000ms
+
+# ===== 安全：与单体一字不差的一段 —— auth-core 的 SecurityProperties 要用 =====
+security:
+  admin-token: ${ADMIN_TOKEN:}
+  user-tokens: ${USER_TOKENS:}
+  legacy-user-tokens-enabled: ${LEGACY_USER_TOKENS_ENABLED:false}
+  session-cookie-name: ${SESSION_COOKIE_NAME:FLASH_SESSION}
+  session-cookie-secure: ${SESSION_COOKIE_SECURE:false}
+  session-ttl-hours: ${SESSION_TTL_HOURS:168}
+  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+
+flash:
+  stream:
+    # 消费调度开关：本应用是**唯一**开启它的进程（单体已置 false 且其 classpath 上已无调度器）。
+    # 消费频率见 StreamConsumerScheduler：新消息 150ms、PEL 重试 5s。
+    auto-poll: ${FLASH_STREAM_AUTO_POLL:true}
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml      # XML 在 order-core jar 里，必须 classpath*
+  type-aliases-package: com.ghb.ecommerceflashsalesystem.domain.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: INPUT
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    com.ghb.ecommerceflashsalesystem: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId:-}] %-5level %logger{36} - %msg%n"

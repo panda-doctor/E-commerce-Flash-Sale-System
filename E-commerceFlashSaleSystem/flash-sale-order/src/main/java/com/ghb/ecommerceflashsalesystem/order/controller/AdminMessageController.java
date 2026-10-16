@@ -1,4 +1,4 @@
-package com.ghb.ecommerceflashsalesystem.controller.admin;
+package com.ghb.ecommerceflashsalesystem.order.controller;
 
 import com.ghb.ecommerceflashsalesystem.common.api.Result;
 import com.ghb.ecommerceflashsalesystem.order.dto.request.DeadLetterReplayRequest;
@@ -14,16 +14,15 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 /**
- * 管理端死信补偿控制器（P3 Day 4：自 {@code AdminSeckillController} 拆出）。
+ * 管理端死信补偿控制器（P3 Day 4 自 {@code AdminSeckillController} 拆出；<b>P4 Day 3 随 order 域迁入本应用</b>）。
  *
- * <p>死信重放属于 <b>order 域</b>（Stream 消费失败的补偿），不能随 activity 域迁入
- * {@code flash-sale-activity} 应用 —— 那会让活动服务反向依赖 order 模块，破坏域边界。
- * 因此原控制器一分为二、<b>HTTP 路径完全不变</b>：</p>
- * <ul>
- *   <li>建/改活动、预热、重置库存（activity 域）→ {@code flash-sale-activity} 应用（:8085）
- *       的 {@code activity.controller.AdminSeckillController}；</li>
- *   <li>{@code POST /api/admin/seckill/dead-letters/replay}（order 域）→ 本类（单体）。</li>
- * </ul>
+ * <p>死信重放属于 <b>order 域</b>（Stream 消费失败的补偿），HTTP 路径不变：
+ * {@code POST /api/admin/seckill/dead-letters/replay}。P3 Day 4 时它暂居单体
+ * （bootstrap 的 {@code controller.admin}），order 服务化后按"入口归属用文件位置表达"的原则
+ * 迁到这里 —— 单体不再持有任何 order 域的 HTTP 入口。</p>
+ *
+ * <p>安全：{@code /api/admin/**} 由 infra 的 {@code AdminAccessWebConfig} 校验
+ * {@code X-Admin-Token}（与 auth-core 同 key、fail-closed）。</p>
  */
 @Slf4j
 @RestController

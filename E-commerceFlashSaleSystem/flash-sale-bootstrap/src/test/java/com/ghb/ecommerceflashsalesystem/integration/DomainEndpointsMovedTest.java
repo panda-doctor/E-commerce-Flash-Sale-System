@@ -72,9 +72,12 @@ class DomainEndpointsMovedTest {
         assertThrows(ClassNotFoundException.class,
                 () -> Class.forName("com.ghb.ecommerceflashsalesystem.activity.controller.AdminSeckillController"),
                 "activity 的管理端接口（建/改活动、预热、重置库存）应已迁至 flash-sale-activity 应用（:8085）");
-        // 反例：同一前缀下不属于 activity 的接口（order 域死信补偿）必须留在单体
-        assertNotNull(Class.forName("com.ghb.ecommerceflashsalesystem.controller.admin.AdminMessageController"),
-                "order 域的死信补偿接口应保留在单体（不能随 activity 域迁走）");
+        // 反例（P4 Day 3 后含义反转）：order 域的死信补偿接口曾在单体暂居（P3 Day 4 拆出时），
+        // order 服务化后随域迁到 flash-sale-order 应用 —— 入口归属用**文件位置**表达，
+        // 单体不再持有任何 order 域 HTTP 入口
+        assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.ghb.ecommerceflashsalesystem.controller.admin.AdminMessageController"),
+                "order 域的死信补偿接口应已迁至 flash-sale-order 应用（:8087）");
         // 行为面：无令牌访问该前缀仍被单体拦截器先拒 —— 与割接前行为一致
         mockMvc.perform(post("/api/admin/seckill/activities").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isOk())
@@ -96,9 +99,14 @@ class DomainEndpointsMovedTest {
         // 反例 1：seckill 的域服务必须留在库里 —— 单体仍以「本地装配」用它做库存写入
         assertNotNull(Class.forName("com.ghb.ecommerceflashsalesystem.seckill.service.SeckillStockService"),
                 "seckill 库存写口（SeckillStockService）应在 flash-sale-seckill-core 库里，单体本地装配依赖它");
-        // 反例 2：同一前缀下 order 域的接口必须留在单体（否则订单查询会被 seckill 应用抢走）
-        assertNotNull(Class.forName("com.ghb.ecommerceflashsalesystem.order.controller.OrderController"),
-                "order 域的订单查询接口应保留在单体（/api/seckill/orders/*、/api/seckill/users/*/orders 同前缀）");
+        // 反例 2（P4 Day 3 后含义反转）：order 域的订单查询入口已随 order 服务化迁走，
+        // 但**消费者本体**必须留在库里（4 个集成测试注入它、由测试自行驱动消费）——
+        // 迁走的是"入口"，不是"域"
+        assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.ghb.ecommerceflashsalesystem.order.controller.OrderController"),
+                "order 的订单查询入口应已迁至 flash-sale-order 应用（:8087）");
+        assertNotNull(Class.forName("com.ghb.ecommerceflashsalesystem.order.consumer.SeckillOrderConsumer"),
+                "Stream 消费者本体应留在 flash-sale-order-core（集成测试注入它驱动消费）");
         // 行为面：无令牌访问 execute 仍被单体拦截器先拒（实测 curl: 200 + 40100）—— 与割接前一致
         mockMvc.perform(post("/api/seckill/execute").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isOk())
@@ -106,5 +114,32 @@ class DomainEndpointsMovedTest {
         // 公开读路径不带拦截器：无处理器 → 404（可直接证明控制器已搬走）
         mockMvc.perform(get("/api/seckill/activities"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void orderEndpointsAndSchedulerBelongToOrderService() throws Exception {
+        // P4 Day 3：order 域服务化（flash-sale-order :8087）。
+        // **本日唯一的高危点是重复消费**：消费者本体故意留在 order-core（4 个集成测试注入它），
+        // 所以必须钉住"调度入口只在应用一侧" —— 一旦调度器类回到单体 classpath，
+        // 加上单体的 @EnableScheduling 就会双份建单。
+        assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.ghb.ecommerceflashsalesystem.order.scheduler.StreamConsumerScheduler"),
+                "Stream 消费调度器必须只存在于 flash-sale-order 应用（否则单体与应用会重复建单）");
+        assertThrows(ClassNotFoundException.class,
+                () -> Class.forName("com.ghb.ecommerceflashsalesystem.order.controller.AdminMessageController"),
+                "死信回放入口应已迁至 flash-sale-order 应用（:8087）");
+        // 域服务留在库里：单体仍持有它们（集成测试也注入它们驱动消费）
+        assertNotNull(Class.forName("com.ghb.ecommerceflashsalesystem.order.service.OrderQueryService"),
+                "订单查询服务应留在 flash-sale-order-core");
+        assertNotNull(Class.forName("com.ghb.ecommerceflashsalesystem.order.service.DeadLetterReplayService"),
+                "死信回放服务应留在 flash-sale-order-core");
+        // 行为面：三条订单查询路径都在 auth-core 的用户态拦截器名单里 → 无令牌恒 200 + 40100
+        //（与 /api/admin/** 同理，不能靠 HTTP 404 判"接口是否搬走"）
+        mockMvc.perform(get("/api/seckill/orders/SK-PROBE-NOT-EXIST"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(not(0)));
+        mockMvc.perform(get("/api/seckill/users/me/orders"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(not(0)));
     }
 }

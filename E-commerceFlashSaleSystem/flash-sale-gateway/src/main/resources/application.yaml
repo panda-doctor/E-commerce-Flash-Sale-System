@@ -51,6 +51,13 @@ spring:
           uri: lb://flash-sale-seckill
           predicates:
             - Path=/api/seckill/activities,/api/seckill/activities/*,/api/seckill/activities/*/check,/api/seckill/execute
+        # P4 Day 3：order 域已服务化（flash-sale-order :8087）。
+        # 它的路径与 seckill 域**共用 /api/seckill 前缀**，所以只能用精确 Path 切开：
+        # 订单三个查询（都要登录，服务侧 auth-core 再校一次）+ 死信回放（/api/admin/** 走管理护栏）。
+        - id: flash-sale-order
+          uri: lb://flash-sale-order
+          predicates:
+            - Path=/api/seckill/orders/*,/api/seckill/users/*/orders,/api/seckill/users/me/orders,/api/admin/seckill/dead-letters/replay
         # 单体（P0 模块化单体）已注册为 flash-sale-monolith；
         # lb:// 走服务发现 + 客户端负载均衡（多实例时自动轮询），不再写死 IP:端口
         - id: flash-sale-monolith

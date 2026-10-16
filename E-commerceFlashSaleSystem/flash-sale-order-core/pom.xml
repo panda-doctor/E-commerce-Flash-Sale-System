@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.ghb</groupId>
+        <artifactId>flash-sale-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>flash-sale-order-core</artifactId>
+    <name>flash-sale-order-core</name>
+    <description>订单域库：Stream 消费落单 / 订单查询 / 消息日志 / 重试 / 死信与回放；HTTP 入口与消费调度由 flash-sale-order 应用承载（P4 Day 3）</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-contracts</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-domain-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-infra</artifactId>
+        </dependency>
+        <!-- 落单成功后写入实时榜（order → analytics；P5 改为事件驱动） -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-analytics</artifactId>
+        </dependency>
+    </dependencies>
+</project>

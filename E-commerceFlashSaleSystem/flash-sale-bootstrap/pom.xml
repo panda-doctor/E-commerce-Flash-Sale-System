@@ -50,7 +50,7 @@
         </dependency>
         <dependency>
             <groupId>com.ghb</groupId>
-            <artifactId>flash-sale-order</artifactId>
+            <artifactId>flash-sale-order-core</artifactId>
         </dependency>
         <dependency>
             <groupId>com.ghb</groupId>
