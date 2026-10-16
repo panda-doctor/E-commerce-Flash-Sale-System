@@ -57,7 +57,9 @@ spring:
         - id: flash-sale-order
           uri: lb://flash-sale-order
           predicates:
-            - Path=/api/seckill/orders/*,/api/seckill/users/*/orders,/api/seckill/users/me/orders,/api/admin/seckill/dead-letters/replay
+            # P4 Day 10：快照落库端点按守卫归属搬到 order 应用（权威库 flash_sale_order 是它），
+            # 所以这里补一条**精确** Path —— 不加会落到 monolith 的 /api/** 兜底上（先匹配先赢）。
+            - Path=/api/seckill/orders/*,/api/seckill/users/*/orders,/api/seckill/users/me/orders,/api/admin/seckill/dead-letters/replay,/api/admin/seckill/activities/*/snapshot
         # 单体（P0 模块化单体）已注册为 flash-sale-monolith；
         # lb:// 走服务发现 + 客户端负载均衡（多实例时自动轮询），不再写死 IP:端口
         - id: flash-sale-monolith
