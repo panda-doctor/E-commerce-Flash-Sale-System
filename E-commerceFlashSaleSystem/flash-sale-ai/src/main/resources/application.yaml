@@ -20,17 +20,9 @@ spring:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
 
-  # 过渡期共用同一 MySQL（P3 起 schema 隔离）
-  datasource:
-    url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-    username: root
-    password: ${MYSQL_PASSWORD:123456}
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    hikari:
-      maximum-pool-size: 8
-      minimum-idle: 2
-      connection-timeout: 10000
-      max-lifetime: 1800000
+  # 【无数据源】P4 Day 5「ai 无库」：本服务没有自己的表，目录（在售商品/活动）改走两个服务的
+  # 公开读接口（ai.port.CatalogQueryPort -> HttpCatalogQueryAdapter）。
+  # 启动类已 exclude DataSourceAutoConfiguration —— 健康检查里也不会再出现 db 组件。
 
   # infra 的 Redis/Redisson 配置需要（AI 对话本身不用缓存）
   data:
@@ -55,16 +47,8 @@ ai:
     timeout-seconds: 30
 
 # =====================================================
-# MyBatis-Plus（目录查询：商品 / 活动）
+# 无 MyBatis-Plus 配置（P4 Day 5：ai 不再持有任何 mapper / 数据源）
 # =====================================================
-mybatis-plus:
-  # 多模块后 XML 分散在各模块 jar，必须用 classpath* 通配扫描
-  mapper-locations: classpath*:mapper/*.xml
-  type-aliases-package: com.ghb.ecommerceflashsalesystem.domain.entity
-  configuration:
-    map-underscore-to-camel-case: true
-  global-config:
-    banner: false
     db-config:
       id-type: INPUT
 

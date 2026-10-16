@@ -1,16 +1,10 @@
 package com.ghb.ecommerceflashsalesystem.ai.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.ai.dto.request.AiChatRequest;
-import com.ghb.ecommerceflashsalesystem.domain.entity.Product;
-import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;
-import com.ghb.ecommerceflashsalesystem.domain.enums.ActivityStatusEnum;
-import com.ghb.ecommerceflashsalesystem.domain.enums.ProductStatusEnum;
+import com.ghb.ecommerceflashsalesystem.ai.port.CatalogQueryPort;
 import com.ghb.ecommerceflashsalesystem.ai.vo.ChatReplyVO;
-import com.ghb.ecommerceflashsalesystem.product.mapper.ProductMapper;
-import com.ghb.ecommerceflashsalesystem.activity.mapper.SeckillActivityMapper;
 import com.ghb.ecommerceflashsalesystem.ai.service.AiChatService;
 import com.ghb.ecommerceflashsalesystem.ai.client.LlmChatClient;
 import com.ghb.ecommerceflashsalesystem.ai.client.OpenAiChatMessage;
@@ -52,15 +46,12 @@ public class AiChatServiceImpl implements AiChatService {
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("MM-dd HH:mm");
 
     private final LlmChatClient chatClient;
-    private final ProductMapper productMapper;
-    private final SeckillActivityMapper activityMapper;
+    /** P4 Day 5：目录改走服务公开接口（ai 不再持有数据源，也不再直连任何 mapper） */
+    private final CatalogQueryPort catalogQueryPort;
 
-    public AiChatServiceImpl(LlmChatClient chatClient,
-                             ProductMapper productMapper,
-                             SeckillActivityMapper activityMapper) {
+    public AiChatServiceImpl(LlmChatClient chatClient, CatalogQueryPort catalogQueryPort) {
         this.chatClient = chatClient;
-        this.productMapper = productMapper;
-        this.activityMapper = activityMapper;
+        this.catalogQueryPort = catalogQueryPort;
     }
 
     @Override
@@ -148,17 +139,13 @@ public class AiChatServiceImpl implements AiChatService {
     private String buildCatalog() {
         StringBuilder sb = new StringBuilder();
         try {
-            Map<Long, String> nameById = new HashMap<>();
-            List<Product> products = productMapper.selectList(new LambdaQueryWrapper<Product>()
-                    .eq(Product::getStatus, ProductStatusEnum.ON_SHELF.getCode())
-                    .last("LIMIT " + CATALOG_LIMIT));
+            List<CatalogQueryPort.ProductCard> products = catalogQueryPort.onShelfProducts(CATALOG_LIMIT);
             sb.append("\n【当前在售商品】\n");
-            for (Product p : products) {
-                nameById.put(p.getId(), p.getName());
-                sb.append("- #").append(p.getId()).append(' ')
-                        .append(p.getName())
-                        .append("，售价 ").append(yuan(p.getOriginalPrice()))
-                        .append("，库存 ").append(p.getAvailableStock() == null ? "?" : p.getAvailableStock())
+            for (CatalogQueryPort.ProductCard p : products) {
+                sb.append("- #").append(p.productId()).append(' ')
+                        .append(p.name())
+                        .append("，售价 ").append(yuan(p.originalPrice()))
+                        .append("，库存 ").append(p.availableStock() == null ? "?" : p.availableStock())
                         .append('\n');
             }
             if (products.isEmpty()) {
@@ -170,25 +157,17 @@ public class AiChatServiceImpl implements AiChatService {
 
         try {
             // M7：DB 的 status 是创建时快照、不会自动翻转（ENDED/SOLD_OUT 需另行维护），
-            // 目录查询除排除 CANCELLED 外，还必须按 endTime 过滤掉已过期场次，
+            // 所以"排除已结束场次"由端口实现负责（按 endTime 过滤，见 HttpCatalogQueryAdapter），
             // 否则历史活动会一直混进目录，误导模型以为"现在还有场次"。
-            LocalDateTime now = LocalDateTime.now();
-            List<SeckillActivity> activities = activityMapper.selectList(
-                    new LambdaQueryWrapper<SeckillActivity>()
-                            .in(SeckillActivity::getStatus,
-                                    ActivityStatusEnum.NOT_STARTED.getCode(),
-                                    ActivityStatusEnum.RUNNING.getCode())
-                            .ge(SeckillActivity::getEndTime, now)
-                            .orderByAsc(SeckillActivity::getStartTime)
-                            .last("LIMIT " + CATALOG_LIMIT));
+            List<CatalogQueryPort.ActivityCard> activities = catalogQueryPort.activeActivities(CATALOG_LIMIT);
             sb.append("\n【秒杀活动】\n");
-            for (SeckillActivity a : activities) {
+            for (CatalogQueryPort.ActivityCard a : activities) {
                 // 状态文案按实时时间窗推导（DB status 快照不可信），与 execute/check 口径一致
-                sb.append("- #").append(a.getId()).append(' ')
-                        .append(a.getActivityName())
-                        .append("，秒杀价 ").append(yuan(a.getSeckillPrice()))
-                        .append("，场次 ").append(fmt(a.getStartTime())).append(" ~ ").append(fmt(a.getEndTime()))
-                        .append("，状态 ").append(deriveStatusText(a.getStartTime(), a.getEndTime()))
+                sb.append("- #").append(a.activityId()).append(' ')
+                        .append(a.activityName())
+                        .append("，秒杀价 ").append(yuan(a.seckillPrice()))
+                        .append("，场次 ").append(fmt(a.startTime())).append(" ~ ").append(fmt(a.endTime()))
+                        .append("，状态 ").append(deriveStatusText(a.startTime(), a.endTime()))
                         .append('\n');
             }
             if (activities.isEmpty()) {

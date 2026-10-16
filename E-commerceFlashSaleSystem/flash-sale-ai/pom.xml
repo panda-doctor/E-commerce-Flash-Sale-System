@@ -28,14 +28,12 @@
             <groupId>com.ghb</groupId>
             <artifactId>flash-sale-infra</artifactId>
         </dependency>
-        <!-- 实时目录数据（在售商品 + 活动场次） -->
+        <!-- 跨进程调用（P4 Day 5）：实时目录（在售商品 / 活动场次）改走**服务公开读接口**，
+             因此不再依赖 product / activity 的库，也不再有 mapper（见 ai.port.CatalogQueryPort）。
+             活动状态枚举仍在 domain-model，无需额外依赖。 -->
         <dependency>
             <groupId>com.ghb</groupId>
-            <artifactId>flash-sale-product-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.ghb</groupId>
-            <artifactId>flash-sale-activity-core</artifactId>
+            <artifactId>flash-sale-remote</artifactId>
         </dependency>
 
         <!-- ========== Web / 校验 ========== -->
@@ -48,15 +46,10 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- ========== 持久层 ========== -->
-        <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.mysql</groupId>
-            <artifactId>mysql-connector-j</artifactId>
-        </dependency>
+        <!-- ========== 持久层：本服务**刻意没有** ==========
+             P4 Day 5「ai 无库」：没有自己的表（旧库也没有 ai 的表），目录改走服务接口后
+             mybatis-plus / MySQL 驱动一律摘掉 —— 没有 DataSource 就读不到任何库，
+             这是"ai 不再依赖旧库"的结构性证明（启动类同时 exclude 了 DataSourceAutoConfiguration）。 -->
 
         <!-- ========== Redis / Redisson（infra 的配置 Bean 需要） ========== -->
         <dependency>
