@@ -13,6 +13,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
@@ -27,11 +28,13 @@ import java.util.HexFormat;
 
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(prefix = "module.auth", name = "mode", havingValue = "db")
 public class UserSessionService {
     public static final String AUTH_SESSION_ATTRIBUTE = "authenticatedSession";
     public static final String AUTHENTICATED_USER_ID = "authenticatedUserId";
     public static final String CSRF_HEADER = "X-CSRF-Token";
-    private static final String CSRF_COOKIE = "FLASH_CSRF";
+    /** CSRF cookie 名（P4 Day 7：SessionGuard 也要比对它，故放开可见性） */
+    public static final String CSRF_COOKIE = "FLASH_CSRF";
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final UserSessionMapper sessionMapper;

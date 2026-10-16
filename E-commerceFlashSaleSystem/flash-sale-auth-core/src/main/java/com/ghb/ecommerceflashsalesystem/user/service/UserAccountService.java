@@ -15,6 +15,7 @@ import com.ghb.ecommerceflashsalesystem.user.mapper.UserAccountMapper;
 import com.ghb.ecommerceflashsalesystem.user.mapper.UserSessionMapper;
 import com.ghb.ecommerceflashsalesystem.user.mirror.AuthMirror;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(prefix = "module.auth", name = "mode", havingValue = "db")
 public class UserAccountService {
     private static final int ACTIVE = 1;
     private static final int DISABLED = 0;

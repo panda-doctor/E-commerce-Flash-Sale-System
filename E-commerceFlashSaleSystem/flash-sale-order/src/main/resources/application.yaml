@@ -17,9 +17,9 @@ spring:
     # P4 Day 4「库拆分」：order 自己的 schema 是**权威源**（读 + 写都在这）；旧库 flash_sale 降级为副本，
     # 由 OrderMirror 反向镜像保鲜 —— 副本的读者是**单体侧 analytics**（OrderQueryAdapter 给榜单/指标补订单号）。
     # 回滚 = 把本行换回 flash_sale + 关镜像（1 分钟，数据无代价）。
-    # 键名用 jdbc-url：主数据源由 order.config.AuthDataSourceConfig 显式声明（双数据源），
+    # P4 Day 7：键名回到 url —— 双数据源桥删除后由 Boot 自动配置建 DataSource（jdbc-url 只对显式 DataSourceBuilder 生效）。
     # HikariDataSource 只有 setJdbcUrl，写 url 会静默绑不上。
-    jdbc-url: jdbc:mysql://localhost:3306/flash_sale_order?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3306/flash_sale_order?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
     password: ${MYSQL_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -48,6 +48,13 @@ security:
   allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
 
 module:
+  # P4 Day 7：会话校验跨服务化 → 本应用作为**调用方**需要内部令牌（X-Internal-Token）
+  internal:
+    token: ${INTERNAL_TOKEN:dev-internal-token}
+  # P4 Day 7：本应用不提供"活动缓存"能力 —— activity-core 的 SeckillCacheService 会随
+  # flash-sale-remote -> activity-core 被扫进来，而它要 activity.mapper（本应用没有）。
+  activity:
+    cache-service: false
   # P4 Day 4：权威 = 本应用 datasource（flash_sale_order）；**副本 = 旧库 flash_sale**。
   # 本应用是副本的唯一维护者 → **默认开启**（关掉 = 单体侧 analytics 读到凝固的副本，
   # 对账脚本的 order.* 检查会立刻报 DIFF）。单体/ai 不配这一段（它们没有 order 写路径）。
@@ -57,15 +64,9 @@ module:
       legacy-order-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
       username: root
       password: ${MYSQL_PASSWORD:123456}
-  # auth 域**尚未服务化**：user_account / user_session 两张表只在旧库 flash_sale，
-  # 而本应用的权威数据源是 flash_sale_order → auth 的 4 个 mapper 单开这条通道
-  # （装配见 order.config.AuthDataSourceConfig；auth 域服务化后整段删除）
-  auth-db:
-    jdbc-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-    username: root
-    password: ${MYSQL_PASSWORD:123456}
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    maximum-pool-size: 4
+  # 【P4 Day 7 已删除 auth-db 段】会话校验跨服务化后，本应用不再需要 auth 的 mapper ——
+  # 双数据源桥（order.config.DataSourceConfig + module.auth-db）整体删除，
+  # 会话校验改由 SessionGuard -> HTTP -> flash-sale-auth 的内部接口承担。
 
 flash:
   stream:

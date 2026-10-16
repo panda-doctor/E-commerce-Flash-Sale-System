@@ -3,6 +3,7 @@ package com.ghb.ecommerceflashsalesystem.unit;
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.user.web.ApiAccessInterceptor;
+import com.ghb.ecommerceflashsalesystem.user.web.SessionGuard;
 import com.ghb.ecommerceflashsalesystem.user.config.SecurityProperties;
 import com.ghb.ecommerceflashsalesystem.user.config.UserTokenRegistry;
 import com.ghb.ecommerceflashsalesystem.user.service.UserSessionService;
@@ -35,7 +36,7 @@ public class ApiAccessInterceptorTokenTest {
         props.setUserTokens("user-a:1001");
         props.setLegacyUserTokensEnabled(true);
         registry = new UserTokenRegistry(props);
-        interceptor = new ApiAccessInterceptor(registry, props, mock(UserSessionService.class));
+        interceptor = new ApiAccessInterceptor(registry, props, mock(SessionGuard.class));
     }
 
     private HttpServletRequest requestWithToken(String token) {

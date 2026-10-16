@@ -17,8 +17,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  *
  * <p><b>刻意不加 {@code @EnableScheduling}</b>：定时任务只存在于 order 域的 Stream 消费调度（单体）。</p>
  */
-@MapperScan({"com.ghb.ecommerceflashsalesystem.activity.mapper",
-        "com.ghb.ecommerceflashsalesystem.user.mapper"})
+@MapperScan("com.ghb.ecommerceflashsalesystem.activity.mapper")
+// P4 Day 7：**user.mapper 已从扫描面移除** —— 会话校验跨服务化（SessionGuard ->
+// SessionValidationPort -> auth 内部接口），本应用不再需要 auth 的两张表；
+// 同时数据源从旧库切到**活动权威库 flash_sale_activity**（本应用只读活动）。
 @SpringBootApplication
 public class SeckillServiceApplication {
 

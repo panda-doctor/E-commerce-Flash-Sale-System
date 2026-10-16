@@ -19,6 +19,11 @@ import java.util.stream.Collectors;
  * 同一端口、两种装配 —— 这正是端口与适配器模式要表达的东西。</p>
  */
 @Component
+// P4 Day 7：本应用新增了 flash-sale-remote（为了会话校验的 HTTP 适配器），它同时带来
+// HttpProductCatalogAdapter（activity 服务用的跨进程目录实现）→ 同一端口出现两个 Bean。
+// 单体有自己的本地实现（读自己的库，行为不变），因此标 @Primary 显式压过远端实现；
+// 这也是"共享模块的 Bean 会被宿主扫到"的又一次现身（Day 5：ai 的 SeckillCacheService）。
+@org.springframework.context.annotation.Primary
 @RequiredArgsConstructor
 public class LocalProductCatalogAdapter implements ProductCatalogPort {
 

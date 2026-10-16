@@ -24,6 +24,11 @@ import org.springframework.stereotype.Component;
  *   <li>用户端：从会话解析 userId 并写入 request attribute {@value #AUTHENTICATED_USER_ID}；
  *       旧 {@code X-User-Token} 仅在显式打开兼容配置时接受。</li>
  * </ul>
+ *
+ * <p><b>P4 Day 7（会话校验跨服务化）</b>：会话解析收敛到 {@link SessionGuard} + contracts 的
+ * {@code SessionValidationPort} —— auth 应用查自己的库（{@code module.auth.mode=db}），
+ * 其余运行时调 auth 的内部接口（默认 remote）。本类因此不再依赖 auth 的 mapper，
+ * 三个宿主运行时也就能摘掉 user.mapper 扫描与 order 的双数据源桥。</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -36,7 +41,12 @@ public class ApiAccessInterceptor {
 
     private final UserTokenRegistry userTokenRegistry;
     private final SecurityProperties securityProperties;
-    private final UserSessionService userSessionService;
+    /**
+     * P4 Day 7：会话校验改走 {@link SessionGuard}（内部只依赖 contracts 的
+     * {@code SessionValidationPort}，**不含任何 mapper**）—— 这是 monolith / seckill / order
+     * 三个运行时得以摘掉 auth 表的根因改造；写侧（登录/登出/CSRF 轮换）仍在 auth 应用。
+     */
+    private final SessionGuard sessionGuard;
 
     public boolean requireAdmin(HttpServletRequest request, HttpServletResponse response, Object handler) {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) return true;
@@ -52,9 +62,9 @@ public class ApiAccessInterceptor {
 
     public boolean requireUser(HttpServletRequest request, HttpServletResponse response, Object handler) {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) return true;
-        AuthenticatedSession session = userSessionService.authenticate(request);
+        AuthenticatedSession session = sessionGuard.authenticate(request);
         if (session != null) {
-            if (isMutation(request.getMethod())) userSessionService.requireCsrf(request, session);
+            if (isMutation(request.getMethod())) sessionGuard.requireCsrf(request, session);
             request.setAttribute(AUTHENTICATED_USER_ID, session.getUserId());
             request.setAttribute(UserSessionService.AUTH_SESSION_ATTRIBUTE, session);
             return true;
@@ -73,9 +83,9 @@ public class ApiAccessInterceptor {
 
     public boolean requireSessionUser(HttpServletRequest request, HttpServletResponse response, Object handler) {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) return true;
-        AuthenticatedSession session = userSessionService.authenticate(request);
+        AuthenticatedSession session = sessionGuard.authenticate(request);
         if (session == null) throw new BusinessException(ResultCode.UNAUTHORIZED, "请先登录");
-        if (isMutation(request.getMethod())) userSessionService.requireCsrf(request, session);
+        if (isMutation(request.getMethod())) sessionGuard.requireCsrf(request, session);
         request.setAttribute(AUTHENTICATED_USER_ID, session.getUserId());
         request.setAttribute(UserSessionService.AUTH_SESSION_ATTRIBUTE, session);
         return true;

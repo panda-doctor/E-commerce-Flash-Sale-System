@@ -23,18 +23,30 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * {@code analytics.mapper}（`seckill_activity_snapshot`，analytics 的 `SeckillRankService` 与
  * `MetricsServiceImpl` 在消费链路上被用到）、{@code user.mapper}（auth-core 的用户表）。</p>
  *
- * <p>数据源暂指**旧库 flash_sale**：order 的三张表尚未拆独立 schema，且 auth 的用户表也只在那里
- * —— order 的「库」拆分是后续独立的一天。</p>
+ * <p>数据源 = **权威库 {@code flash_sale_order}**（P4 Day 4 拆分），写后反向镜像到旧库副本。
+ * P4 Day 7 会话校验跨服务化后，本应用不再读写 auth 的两张表。</p>
+ *
+ * <p><b>为什么收窄 {@code scanBasePackages}（P4 Day 7）</b>：本应用为了拿会话校验的 HTTP 适配器
+ * 引入 {@code flash-sale-remote}，而 remote 依赖 {@code flash-sale-activity-core}（为了端口接口）
+ * —— 默认扫描会把 activity-core 的 {@code @Service}（如 {@code SeckillCacheService}、
+ * {@code SeckillActivityServiceImpl}）一并实例化，它们要 {@code activity.mapper}（本应用没有）
+ * → **启动即失败**。这是"域库的 Bean 会被任何扫描它的运行时实例化"的第三次现身
+ * （Day 5 是 ai 的 {@code SeckillCacheService}，Day 7 是单体与 order）—— 解法同：**收窄扫描面**。</p>
  */
 @MapperScan(basePackages = {"com.ghb.ecommerceflashsalesystem.order.mapper",
-        "com.ghb.ecommerceflashsalesystem.analytics.mapper"},
-        sqlSessionFactoryRef = "sqlSessionFactory")
-// 注意：① user.mapper **不在这里扫** —— 它绑定 auth 专用数据源（旧库，auth 域尚未拆分），
-//          见 order.config.DataSourceConfig；
-//       ② 这里显式写 sqlSessionFactoryRef：本应用有两个 SqlSessionFactory（主 + auth），
-//          不指定会按类型注入而二义（P4 Day 4 实测踩过"静默连错库"）。
+        "com.ghb.ecommerceflashsalesystem.analytics.mapper"})
+// P4 Day 7（会话校验跨服务化）：本应用**不再需要 auth 的 mapper**，user.mapper 已从扫描面移除，
+// 双数据源过渡桥（order.config.DataSourceConfig + module.auth-db）随之删除 ——
+// 回到"单数据源 + 单 SqlSessionFactory（自动配置）"，Day 4 的 sqlSessionFactoryRef 也不再需要。
+// 会话校验现在由 flash-sale-auth 的内部接口承担（remote 适配器 + SessionGuard）。
 @EnableScheduling
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {
+        "com.ghb.ecommerceflashsalesystem.order",
+        "com.ghb.ecommerceflashsalesystem.analytics",
+        "com.ghb.ecommerceflashsalesystem.user",
+        "com.ghb.ecommerceflashsalesystem.infra",
+        "com.ghb.ecommerceflashsalesystem.remote"
+})
 public class OrderServiceApplication {
 
     public static void main(String[] args) {

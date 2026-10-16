@@ -36,6 +36,13 @@
             <groupId>com.ghb</groupId>
             <artifactId>flash-sale-auth-core</artifactId>
         </dependency>
+        <!-- P4 Day 7：会话校验跨服务化 —— 需要 remote 里的 HttpSessionValidationAdapter
+             （SessionGuard -> SessionValidationPort -> auth 的内部接口），
+             因此单体不再需要 user.mapper。 -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-remote</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.ghb</groupId>
             <artifactId>flash-sale-product-core</artifactId>

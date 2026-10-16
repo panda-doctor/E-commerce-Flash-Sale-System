@@ -18,8 +18,14 @@
 		<!-- P2 Day 2 过渡：auth 域实现已迁至 flash-sale-auth-core；
      本模块仅暂留 controller，Step 2 迁出后整个模块删除 -->
 		<dependency>
-			<groupId>com.ghb</groupId>
-			<artifactId>flash-sale-common</artifactId>
+		    <groupId>com.ghb</groupId>
+		    <artifactId>flash-sale-common</artifactId>
+		</dependency>
+		<!-- P4 Day 7：会话校验端口（contracts.auth.SessionValidationPort）住在契约层，
+		     HTTP 实现方（flash-sale-remote）不能反依赖 auth-core，见该接口的 javadoc。 -->
+		<dependency>
+		    <groupId>com.ghb</groupId>
+		    <artifactId>flash-sale-contracts</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>com.ghb</groupId>

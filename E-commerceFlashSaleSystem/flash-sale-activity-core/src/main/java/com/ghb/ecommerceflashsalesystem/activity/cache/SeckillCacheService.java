@@ -35,6 +35,12 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Service
+// P4 Day 7：本服务是"活动缓存预热/重置"的域能力，**只有提供该能力的运行时**才该实例化它
+// —— order 应用为了拿会话校验的 HTTP 适配器引入 flash-sale-remote，而 remote 依赖 activity-core，
+// 于是本类被扫进 order（它既没有 activity.mapper 也不需要预热能力）→ 启动即失败。
+// 用显式开关表达"谁提供这个能力"（默认 true：单体与 activity 应用行为不变；order 关掉）。
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        prefix = "module.activity", name = "cache-service", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class SeckillCacheService {
 

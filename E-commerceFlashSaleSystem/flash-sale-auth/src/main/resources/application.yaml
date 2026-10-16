@@ -58,6 +58,16 @@ spring:
 # 单体与其它应用不配这一段（它们没有 auth 写路径）。
 # =====================================================
 module:
+  # P4 Day 7：本应用现在**服务**内部接口 /internal/auth/sessions/validate，
+  # 由 infra 的 InternalAccessWebConfig 用 X-Internal-Token 守护（fail-closed）——
+  # 调用方（monolith / order / seckill）必须配同一个值。
+  internal:
+    token: ${INTERNAL_TOKEN:dev-internal-token}
+  auth:
+    # P4 Day 7：本应用是 auth 权威 → 会话校验走**本地查库**实现（LocalSessionValidationAdapter）
+    # 且实例化账号/会话写服务；其余运行时（monolith / seckill / order）不配此项 = 默认 remote，
+    # 走 POST /internal/auth/sessions/validate。
+    mode: db
   db:
     dual-write:
       enabled: ${DUAL_WRITE_ENABLED:true}

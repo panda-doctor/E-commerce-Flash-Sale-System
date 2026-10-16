@@ -34,6 +34,11 @@
             <groupId>com.ghb</groupId>
             <artifactId>flash-sale-auth-core</artifactId>
         </dependency>
+        <!-- P4 Day 7：会话校验跨服务化（HTTP 适配器在 remote），双数据源桥随之删除 -->
+        <dependency>
+            <groupId>com.ghb</groupId>
+            <artifactId>flash-sale-remote</artifactId>
+        </dependency>
         <!-- 订单域库：SeckillOrderConsumer（建单/ACK/重试/死信）+ OrderQueryService + DeadLetterReplayService
              + OrderQueryAdapter（analytics 的订单读取端口的实现） -->
         <dependency>
