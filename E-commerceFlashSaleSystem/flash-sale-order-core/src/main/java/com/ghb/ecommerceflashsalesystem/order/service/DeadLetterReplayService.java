@@ -10,6 +10,7 @@ import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillOrder;
 import com.ghb.ecommerceflashsalesystem.domain.enums.MessageLogStatusEnum;
 import com.ghb.ecommerceflashsalesystem.order.mapper.SeckillMessageLogMapper;
 import com.ghb.ecommerceflashsalesystem.order.mapper.SeckillOrderMapper;
+import com.ghb.ecommerceflashsalesystem.order.mirror.OrderMirror;
 import com.ghb.ecommerceflashsalesystem.infra.messaging.SeckillOrderStreamProducer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +45,8 @@ public class DeadLetterReplayService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final RedisScript<Long> seckillExecuteScript;
     private final SeckillOrderStreamProducer streamProducer;
+    /** P4 Day 4：order 权威库在 flash_sale_order，写日志后镜像到旧库副本供单体侧 analytics 读 */
+    private final OrderMirror orderMirror;
 
     /**
      * 人工回放一条死信：从死信流找回原消息快照 → 校验 DEAD 状态与订单幂等 →
@@ -118,6 +121,7 @@ public class DeadLetterReplayService {
                     deadRecord.getId().getValue());
             deadLog.setErrorMessage("已人工回放，新消息ID=" + recordId.getValue());
             messageLogMapper.updateById(deadLog);
+            orderMirror.upsertMessageLog(deadLog); // P4 Day 4：回放标记同步副本
             log.warn("死信已人工回放，originalMessageId={}, replayMessageId={}", originalMessageId,
                     recordId.getValue());
             return recordId.getValue();

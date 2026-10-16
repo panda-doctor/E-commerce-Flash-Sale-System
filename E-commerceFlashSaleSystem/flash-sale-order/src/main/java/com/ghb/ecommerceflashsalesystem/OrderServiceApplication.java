@@ -26,9 +26,13 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * <p>数据源暂指**旧库 flash_sale**：order 的三张表尚未拆独立 schema，且 auth 的用户表也只在那里
  * —— order 的「库」拆分是后续独立的一天。</p>
  */
-@MapperScan({"com.ghb.ecommerceflashsalesystem.order.mapper",
-        "com.ghb.ecommerceflashsalesystem.analytics.mapper",
-        "com.ghb.ecommerceflashsalesystem.user.mapper"})
+@MapperScan(basePackages = {"com.ghb.ecommerceflashsalesystem.order.mapper",
+        "com.ghb.ecommerceflashsalesystem.analytics.mapper"},
+        sqlSessionFactoryRef = "sqlSessionFactory")
+// 注意：① user.mapper **不在这里扫** —— 它绑定 auth 专用数据源（旧库，auth 域尚未拆分），
+//          见 order.config.DataSourceConfig；
+//       ② 这里显式写 sqlSessionFactoryRef：本应用有两个 SqlSessionFactory（主 + auth），
+//          不指定会按类型注入而二义（P4 Day 4 实测踩过"静默连错库"）。
 @EnableScheduling
 @SpringBootApplication
 public class OrderServiceApplication {

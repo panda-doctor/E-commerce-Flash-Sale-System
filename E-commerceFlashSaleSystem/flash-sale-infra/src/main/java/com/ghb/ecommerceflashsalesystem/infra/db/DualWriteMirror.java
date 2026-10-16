@@ -74,6 +74,17 @@ public class DualWriteMirror {
         mirror("activity", properties.getLegacyActivityUrl(), sql, params);
     }
 
+    /**
+     * 把 order 域写操作（订单 / 消息日志）镜像到**副本库**（旧库 {@code flash_sale}）。
+     *
+     * <p>副本的读者是**单体侧的 analytics**（`OrderQueryAdapter` 经 `SeckillOrderMapper` 读
+     * {@code seckill_order} 给榜单/指标补订单号）—— 它还没服务化，所以 order 也必须走
+     * 「权威 → 副本」这条反向镜像（P4 Day 4，与 product/activity 同法）。</p>
+     */
+    public void mirrorOrder(String sql, Object... params) {
+        mirror("order", properties.getLegacyOrderUrl(), sql, params);
+    }
+
     private void mirror(String target, String url, String sql, Object... params) {
         if (!properties.isEnabled()) {
             return;

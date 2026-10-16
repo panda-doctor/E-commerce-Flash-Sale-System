@@ -14,16 +14,19 @@ spring:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
   datasource:
-    # 本日只搬入口与定时任务，不动数据：order 的 schema 拆分是后续独立的一天。
-    url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    # P4 Day 4「库拆分」：order 自己的 schema 是**权威源**（读 + 写都在这）；旧库 flash_sale 降级为副本，
+    # 由 OrderMirror 反向镜像保鲜 —— 副本的读者是**单体侧 analytics**（OrderQueryAdapter 给榜单/指标补订单号）。
+    # 回滚 = 把本行换回 flash_sale + 关镜像（1 分钟，数据无代价）。
+    # 键名用 jdbc-url：主数据源由 order.config.AuthDataSourceConfig 显式声明（双数据源），
+    # HikariDataSource 只有 setJdbcUrl，写 url 会静默绑不上。
+    jdbc-url: jdbc:mysql://localhost:3306/flash_sale_order?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
     password: ${MYSQL_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
-    hikari:
-      maximum-pool-size: 8
-      minimum-idle: 2
-      connection-timeout: 10000
-      max-lifetime: 1800000
+    maximum-pool-size: 8
+    minimum-idle: 2
+    connection-timeout: 10000
+    max-lifetime: 1800000
   data:
     # 必须与单体同一个 Redis 库：订单 Stream、消费组/PEL、实时榜 ZSet 都在 database=1
     # （榜单读端在单体，写端在本应用 —— 不同库就静默不更新）
@@ -43,6 +46,26 @@ security:
   session-cookie-secure: ${SESSION_COOKIE_SECURE:false}
   session-ttl-hours: ${SESSION_TTL_HOURS:168}
   allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+
+module:
+  # P4 Day 4：权威 = 本应用 datasource（flash_sale_order）；**副本 = 旧库 flash_sale**。
+  # 本应用是副本的唯一维护者 → **默认开启**（关掉 = 单体侧 analytics 读到凝固的副本，
+  # 对账脚本的 order.* 检查会立刻报 DIFF）。单体/ai 不配这一段（它们没有 order 写路径）。
+  db:
+    dual-write:
+      enabled: ${DUAL_WRITE_ENABLED:true}
+      legacy-order-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      username: root
+      password: ${MYSQL_PASSWORD:123456}
+  # auth 域**尚未服务化**：user_account / user_session 两张表只在旧库 flash_sale，
+  # 而本应用的权威数据源是 flash_sale_order → auth 的 4 个 mapper 单开这条通道
+  # （装配见 order.config.AuthDataSourceConfig；auth 域服务化后整段删除）
+  auth-db:
+    jdbc-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: ${MYSQL_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    maximum-pool-size: 4
 
 flash:
   stream:

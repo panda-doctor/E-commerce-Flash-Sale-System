@@ -54,6 +54,11 @@ function Invoke-Scalar([string]$sql) {
 $productFp = "SELECT MD5(GROUP_CONCAT(CONCAT_WS(',', id, name, IFNULL(description,''), IFNULL(image_url,''), original_price, total_stock, available_stock, status) ORDER BY id SEPARATOR '|')) FROM {0}.product"
 $activityFp = "SELECT MD5(GROUP_CONCAT(CONCAT_WS(',', id, product_id, activity_name, start_time, end_time, seckill_price, seckill_stock, limit_per_user, status, preheat_status, version) ORDER BY id SEPARATOR '|')) FROM {0}.seckill_activity"
 $preheatDist = 'SELECT CONCAT(SUM(preheat_status=0),CHAR(45),SUM(preheat_status=1),CHAR(45),SUM(preheat_status=2)) FROM {0}.seckill_activity'
+# P4 Day 4：order 域（seckill_order / seckill_message_log）。指纹只取"末尾 12 行"（按 id 倒序）：
+# 全表指纹会撞 group_concat_max_len(1024) 的静默截断；行数 + SUM 采样 + 小窗口指纹三者互补。
+$orderTailFp = "SELECT MD5(GROUP_CONCAT(CONCAT_WS(',', id, order_no, activity_id, product_id, user_id, seckill_price, status, IFNULL(stream_message_id,''), IFNULL(failure_reason,'')) ORDER BY id SEPARATOR '|')) FROM (SELECT * FROM {0}.seckill_order ORDER BY id DESC LIMIT 12) t"
+$logTailFp = "SELECT MD5(GROUP_CONCAT(CONCAT_WS(',', id, stream_key, stream_message_id, IFNULL(order_no,''), retry_count, status, IFNULL(error_message,'')) ORDER BY id SEPARATOR '|')) FROM (SELECT * FROM {0}.seckill_message_log ORDER BY id DESC LIMIT 12) t"
+$logStatusDist = 'SELECT CONCAT(SUM(status=0),CHAR(45),SUM(status=1),CHAR(45),SUM(status=2),CHAR(45),SUM(status=3)) FROM {0}.seckill_message_log'
 
 $checks = @(
     [pscustomobject]@{ Name = 'product.rows';        Old = 'SELECT COUNT(*) FROM flash_sale.product';                       New = 'SELECT COUNT(*) FROM flash_sale_product.product' }
@@ -64,10 +69,17 @@ $checks = @(
     [pscustomobject]@{ Name = 'activity.stock';      Old = 'SELECT IFNULL(SUM(seckill_stock),0) FROM flash_sale.seckill_activity'; New = 'SELECT IFNULL(SUM(seckill_stock),0) FROM flash_sale_activity.seckill_activity' }
     [pscustomobject]@{ Name = 'activity.preheat';    Old = ($preheatDist -f 'flash_sale');                                      New = ($preheatDist -f 'flash_sale_activity') }
     [pscustomobject]@{ Name = 'activity.fingerprint'; Old = ($activityFp -f 'flash_sale');                                     New = ($activityFp -f 'flash_sale_activity') }
+    # ---- P4 Day 4 新增：order 域（权威 = flash_sale_order）----
+    [pscustomobject]@{ Name = 'order.rows';          Old = 'SELECT COUNT(*) FROM flash_sale.seckill_order';                    New = 'SELECT COUNT(*) FROM flash_sale_order.seckill_order' }
+    [pscustomobject]@{ Name = 'order.price_sum';     Old = 'SELECT IFNULL(SUM(seckill_price),0) FROM flash_sale.seckill_order'; New = 'SELECT IFNULL(SUM(seckill_price),0) FROM flash_sale_order.seckill_order' }
+    [pscustomobject]@{ Name = 'order.tail_fp';       Old = ($orderTailFp -f 'flash_sale');                                     New = ($orderTailFp -f 'flash_sale_order') }
+    [pscustomobject]@{ Name = 'msglog.rows';         Old = 'SELECT COUNT(*) FROM flash_sale.seckill_message_log';              New = 'SELECT COUNT(*) FROM flash_sale_order.seckill_message_log' }
+    [pscustomobject]@{ Name = 'msglog.status_dist';  Old = ($logStatusDist -f 'flash_sale');                                   New = ($logStatusDist -f 'flash_sale_order') }
+    [pscustomobject]@{ Name = 'msglog.tail_fp';      Old = ($logTailFp -f 'flash_sale');                                       New = ($logTailFp -f 'flash_sale_order') }
 )
 
 # ---- 4. run reconciliation ----
-Write-Output '=== P3 Day 3 reconcile: flash_sale vs flash_sale_product / flash_sale_activity ==='
+Write-Output '=== reconcile: flash_sale(副本) vs flash_sale_product / flash_sale_activity / flash_sale_order(权威) ==='
 Write-Output ("{0,-22} {1,-36} {2,-36} {3}" -f 'CHECK', 'LEGACY', 'NEW', 'RESULT')
 
 $diffs = @()
