@@ -21,9 +21,12 @@ spring:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
 
-  # 过渡期共用同一 MySQL（P3 起 schema 隔离）
+  # P4 Day 6「auth 库拆分」：auth 两张表（user_account / user_session）的**权威源**是
+  # flash_sale_auth（读 + 写都在这）；旧库 flash_sale 降级为**副本**，由 AuthMirror 反向镜像保鲜
+  # —— 副本的读者是 monolith / seckill / order 三个运行时的会话校验（ApiAccessInterceptor）。
+  # 回滚 = 把本行换回 flash_sale + 关镜像（1 分钟，数据无代价）。
   datasource:
-    url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://localhost:3306/flash_sale_auth?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
     password: ${MYSQL_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -47,6 +50,20 @@ spring:
           max-idle: 4
           min-idle: 1
           max-wait: 2000ms
+
+# =====================================================
+# P4 Day 6：auth 权威库 = 本应用 datasource（flash_sale_auth）；
+# **副本 = 旧库 flash_sale**。本应用是副本的唯一维护者 → **默认开启**；
+# 关掉 = 另外三个运行时（monolith / seckill / order）的会话校验会读到凝固的副本。
+# 单体与其它应用不配这一段（它们没有 auth 写路径）。
+# =====================================================
+module:
+  db:
+    dual-write:
+      enabled: ${DUAL_WRITE_ENABLED:true}
+      legacy-auth-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+      username: root
+      password: ${MYSQL_PASSWORD:123456}
 
 # 鉴权与令牌配置（与单体保持一致，环境变量驱动）
 security:

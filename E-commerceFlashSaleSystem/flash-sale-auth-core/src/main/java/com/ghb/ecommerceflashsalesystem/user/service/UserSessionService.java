@@ -6,6 +6,7 @@ import com.ghb.ecommerceflashsalesystem.user.config.SecurityProperties;
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserAccount;
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserSession;
 import com.ghb.ecommerceflashsalesystem.user.mapper.UserSessionMapper;
+import com.ghb.ecommerceflashsalesystem.user.mirror.AuthMirror;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -15,7 +16,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
-import org.springframework.scheduling.annotation.Scheduled;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -37,6 +37,8 @@ public class UserSessionService {
     private final UserSessionMapper sessionMapper;
     private final UserAccountService userAccountService;
     private final SecurityProperties securityProperties;
+    /** P4 Day 6：auth 权威库在 flash_sale_auth，会话写入后镜像到旧库副本供另外三个运行时做会话校验 */
+    private final AuthMirror authMirror;
 
     public String create(UserAccount user, HttpServletResponse response) {
         String token = randomToken();
@@ -49,6 +51,7 @@ public class UserSessionService {
         session.setCreatedAt(now);
         session.setExpiresAt(now.plusHours(securityProperties.getSessionTtlHours()));
         sessionMapper.insert(session);
+        authMirror.upsertSession(session); // P4 Day 6：新会话镜像到副本（主键 token_hash）
         addCookie(response, securityProperties.getSessionCookieName(), token, true,
                 securityProperties.getSessionTtlHours() * 3600L);
         addCookie(response, CSRF_COOKIE, csrf, false, securityProperties.getSessionTtlHours() * 3600L);
@@ -67,10 +70,13 @@ public class UserSessionService {
 
     public String rotateCsrf(AuthenticatedSession session, HttpServletResponse response) {
         String csrf = randomToken();
-        if (sessionMapper.rotateCsrf(session.getTokenHash(), sha256(csrf), LocalDateTime.now()) != 1) {
+        String csrfHash = sha256(csrf);
+        LocalDateTime now = LocalDateTime.now();
+        if (sessionMapper.rotateCsrf(session.getTokenHash(), csrfHash, now) != 1) {
             throw new BusinessException(ResultCode.UNAUTHORIZED, "登录会话已失效");
         }
-        session.setCsrfTokenHash(sha256(csrf));
+        authMirror.rotateCsrf(session.getTokenHash(), csrfHash, now); // P4 Day 6：CSRF 轮换镜像
+        session.setCsrfTokenHash(csrfHash);
         addCookie(response, CSRF_COOKIE, csrf, false, securityProperties.getSessionTtlHours() * 3600L);
         return csrf;
     }
@@ -87,14 +93,33 @@ public class UserSessionService {
 
     public void revoke(HttpServletRequest request, HttpServletResponse response) {
         String token = cookieValue(request, securityProperties.getSessionCookieName());
-        if (token != null && !token.isBlank()) sessionMapper.revoke(sha256(token), LocalDateTime.now());
+        if (token != null && !token.isBlank()) {
+            String tokenHash = sha256(token);
+            LocalDateTime now = LocalDateTime.now();
+            sessionMapper.revoke(tokenHash, now);
+            authMirror.revokeSession(tokenHash, now); // P4 Day 6：登出吊销镜像到副本
+        }
         addCookie(response, securityProperties.getSessionCookieName(), "", true, 0);
         addCookie(response, CSRF_COOKIE, "", false, 0);
     }
 
-    @Scheduled(cron = "0 17 3 * * *")
-    public void purgeExpiredSessions() {
-        sessionMapper.deleteExpired(LocalDateTime.now());
+    /**
+     * 清理过期/已吊销会话（权威 + 副本两侧）。
+     *
+     * <p><b>P4 Day 6 起：调度入口在 auth 应用</b>（{@code flash-sale-auth} 的
+     * {@code user.scheduler.AuthSessionCleanupScheduler}），本方法**刻意不带 {@code @Scheduled}**
+     * —— 这个类活在 auth-core 共享库里，而带 {@code @EnableScheduling} 且宿主 auth-core 的
+     * 运行时有一共三个（monolith / order / seckill），注解留在这里会让**三个运行时各自 DELETTE 一次**
+     * （今天都指旧库、幂等所以无害；权威切到 flash_sale_auth 之后就变成"非属主去删副本"）。
+     * 归属用"文件位置"表达，与 Day 3 的 {@code StreamConsumerScheduler} 同一手法。</p>
+     *
+     * @return 权威库删除的行数（观测用）
+     */
+    public int purgeExpiredSessions() {
+        LocalDateTime now = LocalDateTime.now();
+        int deleted = sessionMapper.deleteExpired(now);
+        authMirror.purgeExpired(now); // 副本侧同步清理，否则旧库过期行长期堆积、对账漂移
+        return deleted;
     }
 
     private void addCookie(HttpServletResponse response, String name, String value, boolean httpOnly, long maxAge) {

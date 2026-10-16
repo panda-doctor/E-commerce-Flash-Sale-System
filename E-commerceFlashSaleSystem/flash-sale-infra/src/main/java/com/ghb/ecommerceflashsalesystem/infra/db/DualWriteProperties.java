@@ -39,6 +39,9 @@ public class DualWriteProperties {
     /** **副本**库（旧库 {@code flash_sale}）里 order 域表（{@code seckill_order} / {@code seckill_message_log}）所在的 schema */
     private String legacyOrderUrl = "jdbc:mysql://localhost:3306/flash_sale";
 
+    /** **副本**库（旧库 {@code flash_sale}）里 auth 域表（{@code user_account} / {@code user_session}）所在的 schema */
+    private String legacyAuthUrl = "jdbc:mysql://localhost:3306/flash_sale";
+
     /** 副本库账号（过渡期与权威库同实例、同账号） */
     private String username = "root";
 

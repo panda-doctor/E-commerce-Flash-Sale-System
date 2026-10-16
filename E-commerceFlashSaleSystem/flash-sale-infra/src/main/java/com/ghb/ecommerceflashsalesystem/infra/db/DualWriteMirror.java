@@ -85,6 +85,18 @@ public class DualWriteMirror {
         mirror("order", properties.getLegacyOrderUrl(), sql, params);
     }
 
+    /**
+     * 把 auth 域写操作（用户账号 / 会话）镜像到**副本库**（旧库 {@code flash_sale}）。
+     *
+     * <p>副本的读者是 **monolith / seckill / order 三个运行时**里的会话校验
+     * （`ApiAccessInterceptor` → `UserSessionService.authenticate` 读 {@code user_session}、
+     * `UserAccountService.getActive` 读 {@code user_account}）—— auth 域尚未服务化，
+     * 它们只能读旧库，所以 auth 也必须走「权威 → 副本」反向镜像（P4 Day 6，与 product/activity/order 同法）。</p>
+     */
+    public void mirrorAuth(String sql, Object... params) {
+        mirror("auth", properties.getLegacyAuthUrl(), sql, params);
+    }
+
     private void mirror(String target, String url, String sql, Object... params) {
         if (!properties.isEnabled()) {
             return;

@@ -3,6 +3,7 @@ package com.ghb.ecommerceflashsalesystem;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * 认证服务启动类（P2 边缘抽取 · Day 1 骨架）。
@@ -17,7 +18,14 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  *
  * <p>启动类必须位于 {@code com.ghb.ecommerceflashsalesystem} 根包下，
  * 组件扫描才能覆盖共享库（infra 的 Redis/MyBatis 配置、user 域的 Bean）。</p>
+ *
+ * <p>P4 Day 6 起本应用是 auth 两张表（{@code user_account} / {@code user_session}）的
+ * **唯一权威写者**：数据源指向 {@code flash_sale_auth}，写后由 {@code AuthMirror} 反向镜像到
+ * 旧库副本（monolith / seckill / order 三个运行时的会话校验读它）。因此**过期会话清理的
+ * 调度入口也收口到本应用**（{@code user.scheduler.AuthSessionCleanupScheduler}），
+ * 本类的 {@code @EnableScheduling} 就是让它生效的开关。</p>
  */
+@EnableScheduling
 @MapperScan("com.ghb.ecommerceflashsalesystem.user.mapper")
 @SpringBootApplication
 public class AuthServiceApplication {
