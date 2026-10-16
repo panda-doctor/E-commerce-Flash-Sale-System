@@ -827,7 +827,7 @@
 | P1 | 基础设施（Nacos / Gateway / Compose / 追踪 / 监控） | 3 天 | M2 基建就绪 | 🔄 P1-1 ✅ / P1-2 进行中（T1 ✅） |
 | P2 | 边缘抽取（auth-service / ai-service / 网关统一鉴权） | 4 天 | M3 首个服务上线 | ⏳ |
 | P3 | 商品与活动（product / activity 独立库与缓存所有权） | 5 天 | M4 主数据域独立 | ⏳ |
-| P4 | 核心交易（seckill / order / `order.created` 事件 / 数据迁移） | 6 天 | M5 跨服务交易闭环 | ⏳（**Day 1 切读 ✅ / Day 2 seckill 服务化 ✅**（2026-10-15）；Day 3+ 待做，卡见第九章末） |
+| P4 | 核心交易（seckill / order / `order.created` 事件 / 数据迁移） | 6 天 | M5 跨服务交易闭环 | ⏳（**Day 1 切读 ✅ / Day 2 seckill ✅**；**Day 3 order（卡见第九章末）**） |
 | P5 | 读模型收口（analytics 事件驱动，CQRS 完成） | 3 天 | M6 读模型分离 | ⏳ |
 | P6 | 质量运维（CI/CD / 告警 / 混沌演练 / Runbook） | 4 天 | M7 可运维交付 | ⏳ |
 
@@ -1362,6 +1362,41 @@ flash-sale-auth-core（新库）                flash-sale-auth（app :8082）
 
 ---
 
+### P4 Day 3 详细任务卡（order 域服务化：应用 :8087 + 消费入口迁移 + 网关精确导流）
+
+> 执行方式：panda 实现 + 导师现场纠偏；预估 3~4 小时。
+
+**目标**：`flash-sale-order` → `flash-sale-order-core`；新建 `flash-sale-order` 应用（:8087）承载三个订单查询入口 + 死信回放 + **Stream 消费调度**；网关精确导流。**数据源仍指旧库**（`seckill_order` / `seckill_message_log` 尚未拆 schema，本日不碰数据）。
+
+**P4 Day 3 侦察结论（决定动作面与两处关键取舍）**：
+
+- **order 只有 11 个文件**：`controller/OrderController`（3 个查询入口）、`consumer/SeckillOrderConsumer`、`scheduler/StreamConsumerScheduler`、`service/{OrderQueryService, DeadLetterReplayService}`、`adapter/OrderQueryAdapter`、2 个 mapper + 1 个 XML、1 个 request DTO。
+- **HTTP 入口（本日迁出 4 条）**：`GET /api/seckill/orders/{orderNo}`、`GET /api/seckill/users/{userId}/orders`、`GET /api/seckill/users/me/orders`（都取 `AUTHENTICATED_USER_ID` ✓ 与 seckill 应用同一机制 → **应用要带 auth-core**）+ `POST /api/admin/seckill/dead-letters/replay`（现居 bootstrap 的 `AdminMessageController` ✗ 属 order 域 → 随域迁走）。
+- **⚠️ 消费入口的取舍（本日最关键的一刀）**：`SeckillOrderConsumer`（建单 + ACK + 死信）被 **4 个集成测试注入**（`SeckillConsumerIntegrationTest` / `SeckillMessageReliabilityTest` / `SeckillMetricsTest` / `SeckillRankTest`）→ **消费者必须留在 `order-core`**；真正要迁的是**调度入口** `StreamConsumerScheduler`（`@Scheduled` 两个：新消息 150ms、PEL 重试 5s，`@ConditionalOnProperty(flash.stream.auto-poll=true)`）。
+  → 单体失掉调度器后**不可能再自动消费**（类不在 classpath 上，配置也改成 `false`，双保险）；应用侧 `@EnableScheduling` + `auto-poll=true` 接管。
+  → **重复消费 = 重复建单**，这是本日唯一的高危点（守卫断言会把它钉住）。
+- **依赖闭包（决定了应用 POM）**：`SeckillOrderConsumer` 经 `analytics.service.SeckillRankService` 写榜单 ZSet ✗ → order-core **必须带 `flash-sale-analytics`**；而 analytics 只依赖 common/contracts/domain-model/infra（**不碰 activity-core** ✓ 因此不需要库存端口 stub ✓），其唯一 mapper 是 `SeckillActivitySnapshotMapper`（`seckill_activity_snapshot` 表在旧库 ✓）→ 应用 `@MapperScan` = `order.mapper` + `analytics.mapper` + `user.mapper`（auth-core 的用户表 ✓）。
+- `OrderQueryAdapter`（analytics 的 `OrderQueryPort` 实现，解 order→analytics 环）**留在 order-core**：单体（analytics 在单体）与 order 应用同用 ✓ 不冲突（analytics 不在两个运行时之外的地方 ✓）。
+- `StreamConsumerScheduler` 与 `OrderController` 的 import 只涉及 common / auth-core 常量 / 域实体与服务 → **搬迁零代码改动**（只换模块）。
+- 网关当前 order 域路径靠**单体兜底** ✓ → 本日必须精确切开（否则停 `:8087` 不会 503、搬运无从验证）。
+
+| 步骤 | 内容 | 要点 |
+|---|---|---|
+| Step 0 前置 | 停 7 服务；工作区 clean；记录基线（对账 8/8 + 订单/日志表行数） | 停服务再构建 |
+| Step 1 改名 | `git mv flash-sale-order flash-sale-order-core`；POM 坐标；父 POM（module + dependencyManagement）；bootstrap 引用面 | 引用面只有 2 处 |
+| Step 2 新应用 | 新建 `flash-sale-order`（:8087）：POM = order-core + **analytics** + **auth-core** + common/domain-model/infra + web/validation/mybatis-plus/mysql/redis/redisson/dotenv/actuator/micrometer/nacos + boot 插件；启动类根包 + `@MapperScan({order,analytics,user}.mapper)` + **`@EnableScheduling`**；yaml（8087 / **datasource = 旧库 flash_sale**（表还没拆，且 auth 用户表也只在那里）/ Redis database=1（榜单 ZSet 与单体共用）/ security.* / `flash.stream.auto-poll: true` / 不配 dual-write（零跨域写）） | 库模块 POM 四条自查 |
+| Step 3 入口迁移 | `git mv` 三个文件进应用：`order/scheduler/StreamConsumerScheduler`、`order/controller/OrderController`、bootstrap 的 `controller/admin/AdminMessageController`（包名改 `order.controller`，类名保持）→ 零代码改动；单体 yaml `flash.stream.auto-poll: false`（+ 注释说明调度器已随域迁走） | **消费者本体留在 order-core**（测试要用） |
+| Step 4 网关 | 在 `flash-sale-seckill` 之后、单体兜底之前插入 `flash-sale-order` → `Path=/api/seckill/orders/*,/api/seckill/users/*/orders,/api/seckill/users/me/orders,/api/admin/seckill/dead-letters/replay` | 全前缀 `/api/seckill/**` 会抢走 seckill 域（Day 2 的反向教训） |
+| Step 5 验证 + 回归 + 文档 + 提交 | `install`（**20 模块**）→ 起 **8 服务** → 判据表（含"消费只在应用侧发生"的双向证据）→ 全量回归 → plan.md P4 Day 3 ✅ → 3 条原子提交 | 回退点：网关路由 + `git revert` |
+
+**验收判据**：① 构建绿线（reactor **20 模块**）；② Nacos **8 服务** + `:8087/actuator/health` UP；③ **消费链路迁到应用（正向）**：经网关执行秒杀 → **新应用日志** `订单落库成功并ACK` + `seckill_order` 命中 1 行 + **榜单更新**（`GET :8090/api/rank/top10` 含该用户，读的是同一个 Redis）；④ **单体不再消费（反向，本日最关键）**：单体日志**无** `订单落库成功`/消费行；守卫断言钉住 `StreamConsumerScheduler` **不在单体 classpath**；⑤ **路由精确性**：三条 order 路径经网关由新应用提供；停 `:8087` → 三条路径 **503**，而 `/api/seckill/execute`、`/api/seckill/activities` 仍 **200**；⑥ 死信回放：经网关 `POST /api/admin/seckill/dead-letters/replay` 带 admin 令牌 → 业务码（证明过了 `/api/admin/**` 护栏）；无令牌 → `40100`；⑦ 直连对照：直连单体 `GET /api/seckill/orders/{no}` → `200 + 40100`（**拦截器先拒**，同 Day 2 说明）；`GET /api/admin/seckill/dead-letters/replay` 直连单体 → **404**（公开读路径可直接判）；⑧ 对账 **8/8** + 行数一致；⑨ 其它域不变（products / rank / support / metrics）；⑩ 全量回归绿线（130 + 新增守卫断言）。
+
+**坑**：① **重复消费**（调度器必须走、单体配置必须关，双保险）；② 消费者本体**不能搬**（4 个测试注入）；③ 应用 `@MapperScan` 要含 `analytics.mapper`（`SeckillActivitySnapshotMapper`）与 `user.mapper`（auth-core）；④ 应用必须带 auth-core（否则 order 查询恒 40100）；⑤ 数据源指旧库（表未拆）→ 旧库下线要等 order schema 拆分日；⑥ 榜单 ZSet 在同一个 Redis database=1（否则榜单静默不更新）；⑦ 网关四条精确 Path，别用整段前缀；⑧ 单体 yaml 的 `auto-poll` 改 false 后，**集成测试自行驱动消费**的既有约定不变。
+
+**提交计划**：① `refactor(p4-day3): order 模块改名 flash-sale-order-core`；② `feat(p4-day3): 新建 flash-sale-order 应用（:8087）+ 消费入口迁移 + 网关精确导流`；③ `test+docs(p4-day3): 归属守卫断言 + plan.md Day 3 完成`。
+
+---
+
 *文档创建日期：2026-07-29*
 *上次更新：2026-10-14（**P1-2 收尾完成：T1~T5 + 全量绿线**：Nacos 2.5.4 本机 standalone（单体注册 `flash-sale-monolith`，healthy）；网关 `lb://` 服务发现路由；**T5 观测栈**（WSL `redis` 发行版 Docker，Prometheus v2.53.0 + Grafana 11.1.0，targets 3/3 UP、数据源与看板 provisioning、6 面板出图，提交 `289e7e3`）；**停应用后全量回归 `mvnw clean test` → 113 用例 0 失败 BUILD SUCCESS（1.1 分钟，14 模块全绿）**；环境级结论：观测栈须 `network_mode: host`、Windows 侧访问须 `127.0.0.1`、观测栈归属 WSL `redis` 发行版且重启后需唤醒；`deploy/README.md` 含完整观测栈说明与排查。另修复阻塞性环境问题：Maven 镜像 `http → https`；**P2 Day 1 完成**（`flash-sale-auth` 可启动骨架：`:8082` health UP、Nacos 服务列表 3 个、零行为变更）；**P2 Day 2 完成**（`flash-sale-auth-core` 库抽取 + 单体摘除 auth 域 + 网关精确路由；经网关 auth 链路 `code=0`、带有效凭证直连单体 404、其余业务仍自持鉴权；install exit=0 / core 单测 13/13 / ArchitectureTest 16/16）；**P2 Day 3~4 完成并收口**（ai 服务化 :8083 + 网关准入鉴权 + 全量 **124 用例**绿线 + `p2-done` 标签；提交 `1014a8e`/`7db07eb`/`4275ba2`）；**P3 Day 1 完成**（product 域拆为 `flash-sale-product-core` 库 + `flash-sale-product` 应用 :8084；零行为变更 —— 网关路由未改、停 8084 后经网关商品接口仍 200；Nacos 5 服务；全量 124 用例绿线；改名提交 `3afc88b`）；**P3 Day 2 完成**（product 接口迁入应用 + 网关导流含 `/uploads/**`；单体 404 / 新服务 200 / **停 8084 经网关 503**；上传→回读 200；全量 **125 用例**绿线）；**P3 Day 3 完成**（product / activity 独立 schema + 幂等迁移 + 双写镜像（默认关）+ 对账脚本；新库外键归零、列/索引逐项一致；双写开 8/8 一致、关时新库不动；脚本正/负向双向验证；全量 125 用例绿线）；**P3 Day 4 完成**（activity 库改名 `flash-sale-activity-core` + 新应用 `:8085` + 控制器一分为二（路径不变）+ 网关精确三条 Path；停 :8085 → 三条 activity 路径 **503** 而 metrics 仍 200；双写 22/22 + 对账 8/8；全量 **126 用例**绿线）；**P3 Day 5 完成（P3 收口）**（库存权属收口：seckill 内部接口 + 端口化委托，activity 不再写 `seckill:stock:*`；`/internal/**` 与 `/api/admin/**` 双护栏 fail-closed（直连两应用无令牌 → 40100）；去跨域直读：activity 不再依赖 product-core，商品校验改调商品服务接口（停 :8084 → `50000` 且零写入）；双写 22/22 + 对账 8/8；全量 **129 用例**绿线）；**P4 Day 1 完成（切读：翻转权威源）**（两应用数据源 → 新 schema，镜像语义反转为"写副本旧库"且应用侧默认开启；门禁 + 切换后对账均 8/8；镜像日志 `target=*(db=flash_sale)`；未拆模块经旧库读到新数据；决定性判定用"新 id 探针"证明读权威、不读副本；全量 **129 用例**绿线）；**P4 Day 2 完成（seckill 域服务化）**（改名 seckill-core + 共享 HTTP 适配器模块 flash-sale-remote + 新应用 `flash-sale-seckill` :8086（带 auth-core、数据源指旧库）+ 网关四条精确 Path；**execute 端到端**：`code=0 QUEUED` + 重复 `40901 DUPLICATED` + 无令牌 `40100` + 订单经 Stream 在单体落库（`seckill_order`/`seckill_message_log` 命中）；停 :8086 → activities 503 而 order 域路径仍 200；直连单体公开读 404；对账 8/8；全量 **130 用例**绿线））*
-*下次开始位置：①**P4 Day 3 — order 域服务化**（任务卡待写）：`orders` / `seckill_order` / `seckill_message_log` 表归属 + 新建 `flash-sale-order` 应用（**定时任务随域迁走**：Stream 消费者 + `@EnableScheduling`）+ 网关精确导流（`/api/seckill/orders/*`、`/api/seckill/users/*/orders`、`/api/admin/seckill/dead-letters/replay`）+ `order.created` 事件契约与版本化；②**P4 Day 4 — ai 目录改走服务接口**（把 `LocalProductCatalogAdapter` / `LocalSeckillStockAdapter` 换成 `flash-sale-remote` 的 HTTP 适配器；注意 activity-core 端口的本地实现与 HTTP 装配的**同类型 Bean 冲突**问题）→ **然后：删除反向镜像、旧库 `flash_sale` 下线**（三阶段迁移收官）；③**P4 收尾待办（Day 2 遗留）**：把 seckill 应用的数据源从旧库切回权威库（前置：auth 域服务化 或 "瘦用户会话守卫" 下沉 infra）；④可选 T6 — OTel/Zipkin 替换自研 traceId；⑤图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
+*下次开始位置：①**P4 Day 3 — order 域服务化（任务卡已写入第九章末，待实施）**：改名 `flash-sale-order-core` + 新建 `:8087` 应用（**带 auth-core + analytics**）+ **只搬调度入口**（消费者本体留库，4 个集成测试注入）+ 三个查询入口与死信回放随域迁入 + 网关四条精确 Path + **重复消费**双向证据（本日唯一高危点）；②**P4 Day 4 — ai 目录改走服务接口**（把 `LocalProductCatalogAdapter` / `LocalSeckillStockAdapter` 换成 `flash-sale-remote` 的 HTTP 适配器；注意 activity-core 端口的本地实现与 HTTP 装配的**同类型 Bean 冲突**问题）→ **然后：删除反向镜像、旧库 `flash_sale` 下线**（三阶段迁移收官）；③**P4 收尾待办（Day 2 遗留）**：把 seckill 应用的数据源从旧库切回权威库（前置：auth 域服务化 或 "瘦用户会话守卫" 下沉 infra）；④可选 T6 — OTel/Zipkin 替换自研 traceId；⑤图片上传「文件内容与图片格式不匹配」合法图片误拒复现排查仍挂起*
