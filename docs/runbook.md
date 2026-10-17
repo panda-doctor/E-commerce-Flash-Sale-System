@@ -164,6 +164,26 @@ curl.exe -s http://127.0.0.1:8081/actuator/health     # 无 DEGRADED
 
 ---
 
+## 8. 混沌演练记录（P6，2026-10-17 首次）
+
+**演练 1：auth 服务缺席时的会话保护路径**（只起单体 8081，auth 8082 / order 8087 均未起）
+
+| 请求 | 实测 | 期望 | 判定 |
+|---|---|---|---|
+| `GET /api/seckill/users/me/orders`（**无** Cookie） | `40100 请先登录` | 短路、不打下游 | ✅ 符合 |
+| 同上（**带** `Cookie: FLASH_SESSION=deadbeef`） | `40100 请先登录` | **拒绝**（fail-closed） | ✅ 拒绝正确，但**错误码无法区分"依赖不可用"** ⚠️ |
+| `GET /api/rank/top10?activityId=…`（公开读投影） | `code=0` | 不受 auth/order 影响 | ✅ 符合 |
+
+**结论与待办**
+1. **安全语义正确**：下游校验不可用时一律拒绝，绝不放行；
+2. **可诊断性缺口**（已登记）：会话校验的 transport 失败本应在
+   `HttpSessionValidationAdapter` 抛 `BusinessException(50000)`，但实测被上层统一成了 `40100 ⇒
+   排障时会把"auth 挂了"误读成"用户没登录"。修法：拦截器/守卫区分 `Optional.empty()`（→40100）
+   与异常（→50000），与适配器注释里写的约定一致；
+3. 演练 2（停 order 看读侧降级）此前已实测通过：`metrics/rank` 在 order 缺席时仍正确返回（见 `plan.md` 的 M6 运行时证据）。
+
+---
+
 ## 7. 附录：本次迁移的关键不变量（回归会守住）
 
 1. 单体**没有** `@MapperScan`，装配面不含 `product/activity/order/seckill` 域包；
