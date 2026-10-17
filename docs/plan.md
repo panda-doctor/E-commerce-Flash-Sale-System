@@ -1976,6 +1976,39 @@ required a bean of type 'javax.sql.DataSource' that could not be found.
 2. 起 `flash-sale-order` → 对 20 个活动逐个 `POST /internal/orders/activities/{id}/rebuild-projection`（带 `X-Internal-Token`）；
 3. `.\scripts\reconcile-analytics-projection.ps1` → 期望 **0 差异**；随后把 `module.analytics.metrics-source` 默认切 `projection`、跑回归、`git tag p5-done`。
 
+**已按此收口（2026-10-17，`a0fcc5d` + `tag p5-done`）**：purge 删 4028 个幂等键 → 回填 4028 单（失败日志 0）→ **对账 20/20 零差异** → 默认切 `projection` → 回归 143/0/0。
+
+### M6 运行时证据（P5 完成判据的实测，2026-10-17）
+
+**只起单体、order 服务不启动**：
+
+| 检查 | 结果 |
+|---|---|
+| `GET /api/admin/seckill/activities/90173201268736/metrics` | `code=0`，`orderCount=1` ✅（投影值，与库一致） |
+| 同上（1000 单活动） | `code=0`，`orderCount=1000` ✅ |
+| `GET /api/rank/top10?activityId=…` | `code=0`，1 条，`orderNo=SK202610161302501540000` ✅（来自投影 Hash） |
+| 日志"订单查询服务不可用" | **0 次** ✅ |
+
+> **一条运维规律（已踩）**：`mvnw spring-boot:run -pl <app>` 只编译该 app 的源码，其余模块用 `~/.m2` 的产物 ⇒ **改了被依赖模块必须先 `install`**，否则验的是旧代码（本次就这样误报过一次 50000）。
+
+---
+
+## 十一、第 5 阶段 · P6：质量与运维（进行中）
+
+### P6 Day 1 ✅（2026-10-17）：一条命令的门禁脚本
+
+`scripts/ci-verify.ps1`（纯 ASCII，规避 PowerShell 5.1 的 ANSI 读取问题）：
+
+| 阶段 | 判据 |
+|---|---|
+| 1) `install`（skipTests） | `BUILD SUCCESS` —— 顺带杜绝"旧 jar 误验" |
+| 2) `clean test` | **用例数 ≥ 143** 且 `failures=0 / errors=0`（数量下限本身就是门禁：防用例被删/未执行） |
+| 3) 数据检查（`-WithDataChecks`，可选） | `reconcile-analytics-projection.ps1` 退出码 0（投影与权威库一致） |
+
+**实测**：`install PASS` → `TOTAL=143 failures=0 errors=0 PASS` → `reconcile 20 activities / 0 mismatches PASS` → **`RESULT: GREEN`，exit 0** ✅
+
+**脚本踩坑留档**：`$ErrorActionPreference='Stop'` 会让 **Maven 写到 stderr 的 WARNING** 变成终止性错误、直接打断脚本 ⇒ 门禁脚本一律用退出码判定，不用 `Stop`。
+
 ---
 
 *文档创建日期：2026-07-29*
