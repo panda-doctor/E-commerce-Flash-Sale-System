@@ -21,22 +21,48 @@
     @apply text-pretty;
   }
 
+  ::selection {
+    @apply bg-brand/15 text-ink-900;
+  }
+
   /* 数字类展示统一等宽，价格/库存/倒计时不抖动 */
   .tnum {
     @apply tabular-nums;
+  }
+
+  /* 尊重系统"减少动态效果"偏好：关闭过渡与动画，不影响布局 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
 @layer components {
   .container-page {
-    @apply mx-auto w-full max-w-[1200px] px-4 sm:px-6;
+    @apply mx-auto w-full max-w-[1200px] px-4 sm:px-6 lg:px-8;
   }
 
   .card {
     @apply rounded-xl border border-state-line bg-page-card shadow-card;
   }
 
+  /* 可点击卡片：仅动 transform / 颜色 / 阴影，遵循 200ms 反馈上限 */
+  .card-hover {
+    @apply transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-card-hover motion-reduce:transform-none motion-reduce:transition-none;
+  }
+
   .focus-ring {
     @apply outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-white;
+  }
+
+  /* 胶囊信息块：阶段、限购、库存提示等轻量元信息 */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-state-line bg-page-subtle px-2.5 py-1 text-xs font-medium text-ink-600;
   }
 }

@@ -30,11 +30,21 @@ export default function OrdersPage() {
     [orders, filter],
   )
 
+  // 各状态真实计数（不臆造）：只统计后端已返回的订单
+  const counts = useMemo(() => {
+    const result: Record<string, number> = { ALL: orders.length }
+    for (const order of orders) {
+      result[order.status] = (result[order.status] ?? 0) + 1
+    }
+    return result
+  }, [orders])
+
   return (
     <div className="container-page py-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-heading text-ink-900">我的订单</h1>
+          <span className="chip">账户中心</span>
+          <h1 className="mt-2 text-heading text-ink-900">我的订单</h1>
           <p className="mt-1.5 text-sm text-ink-600">
             共 {orders.length} 笔秒杀订单，排队中的订单会自动刷新结果。
           </p>
@@ -42,6 +52,7 @@ export default function OrdersPage() {
         <Button
           variant="secondary"
           size="sm"
+          className="rounded-full"
           icon={<RefreshCw className="size-4" aria-hidden />}
           loading={ordersQuery.isFetching}
           onClick={() => ordersQuery.refetch()}
@@ -60,22 +71,34 @@ export default function OrdersPage() {
       ) : null}
 
       <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="订单筛选">
-        {FILTERS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            role="tab"
-            aria-selected={filter === item.key}
-            onClick={() => setFilter(item.key)}
-            className={
-              filter === item.key
-                ? 'cursor-pointer rounded-full bg-brand px-4 py-1.5 text-sm font-semibold text-white'
-                : 'cursor-pointer rounded-full border border-state-line bg-white px-4 py-1.5 text-sm text-ink-600 transition-colors duration-150 hover:border-brand hover:text-brand'
-            }
-          >
-            {item.label}
-          </button>
-        ))}
+        {FILTERS.map((item) => {
+          const count = counts[item.key] ?? 0
+          return (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={filter === item.key}
+              onClick={() => setFilter(item.key)}
+              className={
+                filter === item.key
+                  ? 'cursor-pointer rounded-full bg-brand px-4 py-1.5 text-sm font-semibold text-white'
+                  : 'cursor-pointer rounded-full border border-state-line bg-white px-4 py-1.5 text-sm text-ink-600 transition-colors duration-150 hover:border-brand hover:text-brand'
+              }
+            >
+              {item.label}
+              <span
+                className={
+                  filter === item.key
+                    ? 'tnum ml-1.5 text-xs font-medium text-white/80'
+                    : 'tnum ml-1.5 text-xs font-medium text-ink-400'
+                }
+              >
+                {count}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       <div className="mt-6">
@@ -104,20 +127,23 @@ export default function OrdersPage() {
               <li key={order.orderNo}>
                 <Link
                   to={`/orders/${encodeURIComponent(order.orderNo)}`}
-                  className="card flex flex-col gap-3 p-4 transition-colors duration-150 hover:border-brand/40 sm:flex-row sm:items-center"
+                  className="card card-hover flex flex-col gap-3 p-4 focus-ring sm:flex-row sm:items-center sm:gap-5 sm:p-5"
                 >
                   <div className="flex-1">
                     <p className="tnum text-sm font-semibold text-ink-900">{order.orderNo}</p>
-                    <p className="tnum mt-1 text-xs text-ink-600">
-                      活动 {order.activityId} · 商品 {order.productId}
-                    </p>
-                    <p className="tnum mt-0.5 text-xs text-ink-400">
+                    <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-600">
+                      <span className="tnum">活动 {order.activityId}</span>
+                      <span className="tnum">商品 {order.productId}</span>
+                    </div>
+                    <p className="tnum mt-1 text-xs text-ink-400">
                       下单时间 {formatDateTime(order.createdAt)}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <OrderStatusBadge status={order.status} />
-                    <ArrowRight className="size-4 text-ink-400" aria-hidden />
+                    <span className="flex size-8 items-center justify-center rounded-full bg-page text-ink-400">
+                      <ArrowRight className="size-4" aria-hidden />
+                    </span>
                   </div>
                 </Link>
               </li>

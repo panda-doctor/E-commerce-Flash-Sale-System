@@ -28,11 +28,21 @@ export default function ActivityListPage() {
     return items.filter((item) => phaseOfItem(item) === filter)
   }, [items, filter])
 
+  const counts = useMemo(() => {
+    const result: Record<string, number> = { ALL: items.length }
+    for (const item of items) {
+      const phase = phaseOfItem(item)
+      result[phase] = (result[phase] ?? 0) + 1
+    }
+    return result
+  }, [items])
+
   return (
     <div className="container-page py-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-heading text-ink-900">秒杀活动</h1>
+          <span className="chip">秒杀专场</span>
+          <h1 className="mt-2 text-heading text-ink-900">秒杀活动</h1>
           <p className="mt-1.5 text-sm text-ink-600">
             共 {items.length} 场活动，库存与阶段均由服务端数据实时推导。
           </p>
@@ -40,6 +50,7 @@ export default function ActivityListPage() {
         <Button
           variant="secondary"
           size="sm"
+          className="rounded-full"
           loading={activitiesQuery.isFetching}
           onClick={() => activitiesQuery.refetch()}
         >
@@ -62,6 +73,15 @@ export default function ActivityListPage() {
             }
           >
             {item.label}
+            <span
+              className={
+                filter === item.key
+                  ? 'tnum ml-1.5 text-xs font-medium text-white/80'
+                  : 'tnum ml-1.5 text-xs font-medium text-ink-400'
+              }
+            >
+              {counts[item.key] ?? 0}
+            </span>
           </button>
         ))}
       </div>

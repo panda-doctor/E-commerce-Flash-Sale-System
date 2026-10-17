@@ -14,7 +14,7 @@ export function AuthLayout({
   footer?: ReactNode
 }) {
   return (
-    <div className="container-page py-12">
+    <div className="container-page py-10 sm:py-14">
       <div className="mx-auto grid max-w-4xl overflow-hidden rounded-2xl border border-state-line bg-white shadow-card md:grid-cols-[1fr_1.1fr]">
         <aside className="hidden flex-col justify-between bg-ink-900 p-8 text-white md:flex">
           <div className="flex items-center gap-2">
@@ -23,7 +23,7 @@ export function AuthLayout({
           </div>
           <div className="space-y-4">
             <h2 className="text-2xl font-bold leading-9 text-balance">
-              抢到就是赚到，
+              抢到就是赚到
               <br />
               库存实时可见
             </h2>
@@ -46,7 +46,7 @@ export function AuthLayout({
         </aside>
 
         <div className="p-6 sm:p-9">
-          <h1 className="text-2xl font-bold text-ink-900">{title}</h1>
+          <h1 className="text-2xl font-extrabold text-ink-900">{title}</h1>
           <p className="mt-1.5 text-sm text-ink-600">{subtitle}</p>
           <div className="mt-6">{children}</div>
           {footer ? <div className="mt-5 text-sm text-ink-600">{footer}</div> : null}

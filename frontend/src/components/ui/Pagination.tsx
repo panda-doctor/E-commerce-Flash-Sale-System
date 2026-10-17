@@ -26,8 +26,8 @@ export function Pagination({
       disabled={disabled}
       onClick={() => onChange(target)}
       className={cn(
-        'flex size-9 items-center justify-center rounded-md border border-state-line bg-white text-ink-600 transition-colors duration-150',
-        disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-brand hover:text-brand',
+        'flex size-9 items-center justify-center rounded-full border border-state-line bg-white text-ink-600 transition-colors duration-150 focus-ring',
+        disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:border-brand hover:text-brand',
       )}
     >
       {icon}
@@ -35,7 +35,7 @@ export function Pagination({
   )
 
   return (
-    <nav className="flex items-center justify-center gap-2" aria-label="分页">
+    <nav className="flex items-center justify-center gap-1.5 sm:gap-2" aria-label="分页">
       {navButton(page - 1, page <= 1, '上一页', <ChevronLeft className="size-4" aria-hidden />)}
       {items.map((item) => (
         <button
@@ -44,7 +44,7 @@ export function Pagination({
           aria-current={item === page ? 'page' : undefined}
           onClick={() => onChange(item)}
           className={cn(
-            'size-9 cursor-pointer rounded-md border text-sm font-medium transition-colors duration-150',
+            'tnum size-9 cursor-pointer rounded-full border text-sm font-semibold transition-colors duration-150 focus-ring',
             item === page
               ? 'border-brand bg-brand text-white'
               : 'border-state-line bg-white text-ink-600 hover:border-brand hover:text-brand',

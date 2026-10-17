@@ -24,11 +24,11 @@ export function Input({ label, error, hint, className, id, ...rest }: InputProps
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         className={cn(
-          'h-11 w-full rounded-md border bg-white px-3 text-sm text-ink-900 shadow-none outline-none transition-colors duration-150',
-          'placeholder:text-ink-400',
+          'h-11 w-full rounded-lg border bg-white px-3.5 text-sm text-ink-900 outline-none transition-[border-color,box-shadow] duration-150',
+          'placeholder:text-ink-400 disabled:cursor-not-allowed disabled:bg-page disabled:text-ink-400',
           error
-            ? 'border-state-danger focus:border-state-danger'
-            : 'border-state-line focus:border-brand',
+            ? 'border-state-danger focus:border-state-danger focus:ring-2 focus:ring-state-danger/15'
+            : 'border-state-line hover:border-ink-400/40 focus:border-brand focus:ring-2 focus:ring-brand/15',
           className,
         )}
         {...rest}

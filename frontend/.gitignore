@@ -9,3 +9,6 @@ coverage
 .DS_Store
 *.log
 .vite
+
+# 本地 UI 核查截图（scripts/ui-check.mjs 产物）
+ui-shots
