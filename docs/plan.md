@@ -39,8 +39,9 @@
 ✅ 第 4 阶段：排行榜、前端与全链路压测（Day 1 ~ Day 5 完成，另含增强①图片存储、增强② AI 客服，59 用例）
 ✅ 第 4 阶段收尾：全量代码审计整改（R1~R5 / C1~C6 / E1~E6）+ E 卡收尾 + F/G 多账号 + S2/M 交付前收尾 + Day 6 复盘学习收口（《Redis 实战总结》/ notework 笔记；HEAD `c035ca8`，92 用例 BUILD SUCCESS）—— 4 个阶段全部完成
 🔄 第 5 阶段：微服务架构演进（P0 ~ P6，进行中，方案与任务卡见 `docs/microservices-plan.md`）
-  ✅ P0 边界治理（模块化单体，M1 达成 2026-10-13）  🔄 P1 基础设施（P1-1 ✅；P1-2 T1~T4 ✅）  ⏳ P2 边缘抽取  ⏳ P3 商品与活动
-  ⏳ P4 核心交易链路  ⏳ P5 读模型收口  ⏳ P6 质量与运维
+  ✅ P0 边界治理（M1，2026-10-13）  ✅ P1 基础设施（P1-1 + P1-2 T1~T5 全收口）  ✅ P2 边缘抽取（auth / ai / 网关统一鉴权，`p2-done`）
+  ✅ P3 商品与活动（独立库 + 应用 :8083/:8084/:8085 + 网关精确导流）  ✅ P4 核心交易链路（seckill/order 服务化 + 四权威库 + **旧库 `flash_sale` 已 DROP**）
+  📋 P5 读模型收口（analytics 事件驱动，CQRS 完成）← **下一里程碑 M6**  ⏳ P6 质量与运维
 ```
 
 ---
@@ -813,7 +814,7 @@
 
 ---
 
-## 八、第 5 阶段：微服务架构演进（规划中 · 未开工）
+## 八、第 5 阶段：微服务架构演进（P0~P4 已完成 · P5 规划中）
 
 > 方案与 P0 详细任务卡：**`docs/microservices-plan.md`**（2026-10-12 落档：迁移策略 / 服务划分 / 技术选型 / 阶段规划 / 质量运维 / 风险 / 时间线 + P0 逐日步骤）。
 >
@@ -1853,6 +1854,49 @@ required a bean of type 'javax.sql.DataSource' that could not be found.
 | 回归基线 | **143/0/0**（140 + 3 条缓存语义） |
 
 **一条排障留档**：`flash-sale-auth-core` 的测试 classpath 里 Mockito 的 `verify/times/anyString` 静态导入不可用（`mock`/`when` 可用），且该模块**没有 `spring-test`**（`ReflectionTestUtils` 不可用）→ 新测试请用"手写替身 + 原生反射"，并把编译错误**落盘后再读**（控制台是 GBK，`符号: …` 那行会被乱码吞掉）。
+
+---
+
+## 十、第 5 阶段 · P5：读模型收口（analytics 事件驱动，CQRS 完成）—— 规划卡（2026-10-17）
+
+> **为什么是它**：P4 收官后**写侧**已全部就位（五个服务各持权威库、单体无库、镜像与旧库都已清除）；还剩**读侧**一处"查询时跨服务取数"——`MetricsServiceImpl` 每次请求都要调 order 服务的 `/internal/orders/activities/{id}/count` 与 `/order-nos`（Day 8 的过渡实现）。P5 把它换成**事件驱动投影**，真正的 CQRS 读侧，目标里程碑 **M6 读模型分离**。
+
+**当前读侧取数现状（待 Day 1 零假设复核）**：
+
+| 端点 | 当前来源 | P5 后来源 |
+|---|---|---|
+| `GET /api/admin/seckill/activities/{id}/metrics` | Redis 计数（Lua 写入）+ **HTTP 调 order 取订单数** | Redis 投影（订单数由事件累加） |
+| `GET /api/rank/top10?activityId=` | Redis ZSet `seckill:rank:<id>`（消费成功时 `ZADD`）✅ 已是投影 | 不变（补回填/对账） |
+| 快照 `POST .../snapshot` | order 应用落库 `seckill_activity_snapshot` | 不变（写侧已归属 order） |
+
+**Day 1 — 现状盘点 + 事件契约（零假设，不写业务代码）**
+- 盘点：`MetricsServiceImpl` / `SeckillRankService` / `AdminMetricsController` 的每条取数路径（Redis / 跨服务 / 读库）逐条列清；
+- 盘点写侧事件：`seckill:order:stream` 消息字段、`seckill_message_log` 状态机、榜单 `ZADD` 的写入点；
+- 产出：**事件契约冻结**（复用既有 Stream 消息还是新增 `order.created`；字段落 `contracts`）+ 投影键设计（`seckill:metrics:<activityId>` Hash）+ 幂等键（messageId / orderNo）；
+- 判据：一份"读侧取数矩阵"（端点 → 当前来源 → P5 后来源）入档。
+
+**Day 2 — 投影器 + 回填（可回退：旧路径保留，开关切换）**
+- 投影写入点：消费者落单成功后累加（`HINCRBY` 订单数/成功数），与既有 `ZADD` 同处，保证**同一事务语义内**；
+- **幂等**：以 messageId 去重（Redis `SETNX` 或投影内 `lastMessageId`），重复投递不重复计数；
+- **回填**：从权威库 `flash_sale_order.seckill_order` 重建某活动投影（脚本或内部端点），用于上线与漂移修复；
+- 判据：用例覆盖"重复消息不重复计数""回填后与权威库一致"。
+
+**Day 3 — 切读 + 对账 + 收口**
+- `MetricsServiceImpl` 改读投影：开关 `module.analytics.metrics-source=projection|order`（默认 projection，回退即切回 order）；
+- 对账脚本：投影 vs 权威库逐活动比对（输出差异表；沿 `reconcile-*.ps1` 的既有风格）；
+- 全量回归（基线 **143**）+ 经网关实测（orderCount 与库一致）+ 文档 + `git tag p5-done`；
+- 判据：读端点**不再有**到 order 的同步调用（结构证据）+ 对账 **0 差异** + 回归绿。
+
+**风险与回退**
+
+| 风险 | 处置 |
+|---|---|
+| 投影漂移（丢消息 / 重复投递） | 幂等键 + 回填工具 + 对账脚本（发布前/每日跑） |
+| 切读口径与旧实现不一致 | **双读观察期**：投影与 order 计数同时取、差异打日志观察一轮，再切默认值 |
+| 事件契约变更牵连 seckill/order | 契约放 `contracts`（与既有事件 record 同处）、字段版本化 |
+| 回退 | 开关切回 `order` 即恢复 Day 8 行为（投影侧只增不删） |
+
+**M6 完成判据**：① 指标与榜单全部读投影、查询路径零跨服务调用；② 投影可从权威库重建；③ 对账 0 差异；④ 回归绿（143 基线，新增用例后更高）；⑤ 文档 + 回退开关齐备。
 
 ---
 
