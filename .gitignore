@@ -11,3 +11,7 @@ mymodule/
 .env.*
 !.env.example
 _legacy-backup/
+
+# 历史资料目录（非工程代码，勿误提交）
+面试1.0/
+

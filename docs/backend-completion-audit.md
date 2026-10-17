@@ -231,11 +231,11 @@ private void compensateDeadMessage(SeckillOrderMessage message) {
 
 | 编号 | 问题 | 位置 |
 |---|---|---|
-| P3-1 | 运维脚本硬编码 `D:\MySQL\...`、`D:\JDK\...` 路径 | `scripts/*.ps1` |
+| ~~P3-1~~ | **撤销（误判）**：`scripts/*.ps1` 全部 6 个脚本中**没有任何** `D:\MySQL`/`D:\JDK`/`C:\Users` 硬编码（逐文件计数均为 0）。我看到的路径来自**我自己在 shell 里敲的内联命令**，不是仓库脚本 | `scripts/` |
 | P3-2 | 无每服务 Dockerfile，仅 `deploy/docker-compose.yml`（用于中间件/监控） | `deploy/` |
 | P3-3 | 无托管 CI（仅本地 `ci-verify.ps1`） | 仓库根 |
 | P3-4 | 未见 OpenAPI/Swagger 依赖，契约以 `docs/*.md` + `postman/` 承载 | `pom.xml`、`docs/` |
-| P3-5 | 根目录存在 `_legacy-backup`（已 gitignore）与历史目录 `面试1.0`，易误纳入 | 仓库根 |
+| P3-5 ✅**已修复** | `_legacy-backup` 已被 gitignore；但 `面试1.0/` **未被忽略**（易被 `git add -A` 误纳入）→ 已补进 `.gitignore` | `.gitignore` |
 
 ---
 
