@@ -1898,6 +1898,42 @@ required a bean of type 'javax.sql.DataSource' that could not be found.
 
 **M6 完成判据**：① 指标与榜单全部读投影、查询路径零跨服务调用；② 投影可从权威库重建；③ 对账 0 差异；④ 回归绿（143 基线，新增用例后更高）；⑤ 文档 + 回退开关齐备。
 
+### P5 Day 1 产出（2026-10-17 · 零假设盘点完成 ✅）
+
+**① 读侧取数矩阵（实测，逐项对应代码位置）**
+
+| 方法 | 数据项 | 当前来源 | 跨服务 | P5 后 |
+|---|---|---|---|---|
+| `MetricsServiceImpl.collectMetrics` | 剩余库存 | `GET seckill:stock:<id>`（Redis VALUE） | 否 | 不变 |
+| 同上 | **订单数** | `OrderQueryPort.countByActivity` → HTTP order `/internal/orders/…/count` | **是 ✗** | Hash `seckill:metric:<id>` 字段 `orderCount` |
+| 同上 | **成功数** | 直接复用订单数（"以 DB 为核对源"） | **是 ✗** | 同上（投影本身就是事件成功数，语义更准） |
+| 同上 | 排队消息数 | `XLEN seckill:order:stream` − 订单数 | 否（但依赖上面那个跨服务值） | `XLEN` − 投影订单数 |
+| 同上 | 拒绝计数（限流/重复/售罄） | Hash `seckill:metric:<id>` 三字段（`SeckillServiceImpl:291` 写入） | 否 | 不变 |
+| `SeckillRankServiceImpl.topN` | 榜单 | ZSet `seckill:rank:<id>`（`recordSuccess` 写入，`addIfAbsent` NX 幂等） | 否 | 不变 |
+| 同上 | **userId → 订单号** | `OrderQueryPort.orderNosOf` → HTTP order | **是 ✗** | Hash `seckill:rank:order:<id>`（写入时同步） |
+
+**结论：全仓读侧只剩 2 个跨服务调用点** —— `countByActivity`（metrics）与 `orderNosOf`（rank），都在 `flash-sale-analytics` 模块内。其余读数据项**已经是 Redis 投影**（榜单 ZSet、拒绝计数 Hash、库存 VALUE）。
+
+**② 事件契约（冻结）**：复用 `contracts.message.SeckillOrderMessage`（已含 `activityId / productId / userId / orderNo / seckillPrice / requestTime / traceId`）—— **不新增主题**：消费者 SUCCESS 分支（`SeckillOrderConsumer:184`）已在同进程内持有该消息，投影写入点与 `recordSuccess` 同位即可。
+
+**③ 投影设计（冻结）**
+
+| 投影 | 键 | 写入点 | 幂等机制 |
+|---|---|---|---|
+| 订单数 | `seckill:metric:<id>` Hash → 字段 `orderCount` | 消费者 SUCCESS 分支（与 `recordSuccess` 同处） | `SETNX seckill:dedupe:order:<orderNo>`（TTL 7 天）成功才 `HINCRBY` |
+| 榜单 | `seckill:rank:<id>` ZSet（**不动**） | 同上 | `addIfAbsent`（NX，已在用） |
+| 订单号映射 | `seckill:rank:order:<id>` Hash（`userId → orderNo`） | 同上 `HSET` | Hash 覆盖写天然幂等 |
+| 拒绝计数 | `seckill:metric:<id>` 三字段（**不动**） | `SeckillServiceImpl:291` | 不变 |
+
+**④ 唯一需要的接口变更**：`SeckillRankService.recordSuccess(activityId, userId, successTime)` **缺 orderNo** → 扩为 `(activityId, userId, successTime, orderNo)`；消费者 3 处调用点（`:184 :205 :211`）都已有 `message.getOrderNo()`，改造成本极小。
+
+**⑤ Day 2 改动清单（由矩阵直接推出，无需再决策）**
+1. `SeckillRankService` + `SeckillRankServiceImpl`：签名加 `orderNo`；`recordSuccess` 内写 ZSet（已有）+ `HSET` 订单号映射 + `SETNX` 去重后 `HINCRBY orderCount`；
+2. `MetricsServiceImpl`：订单数/成功数改读 Hash 投影（`queued` 口径随之用投影值）；加开关 `module.analytics.metrics-source=order|projection`（默认 projection，回退切回 order）；
+3. `SeckillRankServiceImpl.topN`：改 `HMGET` 映射表，**删除 `OrderQueryPort` 依赖**（此后 analytics 不再需要 order 的读接口）；
+4. 新增 `scripts/rebuild-analytics-projection.ps1`（从 `flash_sale_order.seckill_order` 重建 ZSet/Hash/计数，用于上线与漂移修复）；
+5. 新增 `scripts/reconcile-analytics-projection.ps1`（投影 vs 权威库逐活动比对，输出差异表）。
+
 ---
 
 *文档创建日期：2026-07-29*
