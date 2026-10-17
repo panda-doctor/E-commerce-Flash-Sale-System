@@ -1934,6 +1934,29 @@ required a bean of type 'javax.sql.DataSource' that could not be found.
 4. 新增 `scripts/rebuild-analytics-projection.ps1`（从 `flash_sale_order.seckill_order` 重建 ZSet/Hash/计数，用于上线与漂移修复）；
 5. 新增 `scripts/reconcile-analytics-projection.ps1`（投影 vs 权威库逐活动比对，输出差异表）。
 
+### P5 Day 2/3 执行记录（2026-10-17）—— **代码就绪，切读未完成（默认保持 `order`）**
+
+| 提交 | 内容 |
+|---|---|
+| `5ecae78` | 投影写入（`HSET` 订单号映射 + `SETNX seckill:dedupe:order:<orderNo>` 后才 `HINCRBY orderCount`）+ 榜单读路径改 `HMGET`（删掉 `OrderQueryPort`）+ metrics 开关 |
+| `0fb4fb4` | **自拦口径风险**：默认值先留在 `order`（历史订单未回填时切投影会让指标瞬间归零） |
+| `0baaf12` | 三个脚本（rebuild / reconcile / 后续 purge）+ 默认切 `projection` + tag（**随后撤回**） |
+| `09fa21c` | 回退默认值：脚本用 RESP 裸字符串写投影，与应用的 Jackson 序列化不兼容（运行时 `SerializationException` → 500） |
+| `d01d731` | **Java 侧回填**：`SeckillOrderMapper.selectSuccessByActivityId`（`@Select`）+ `ProjectionRebuildService`（逐条复用 `recordSuccess`）+ `POST /internal/orders/activities/{id}/rebuild-projection`（`X-Internal-Token`） |
+| 本轮（未提交代码） | `scripts/purge-analytics-projection.ps1`（清理 metric/幂等键，供干净重建） |
+
+**实测结果（重要）**
+- 回填端点工作正常：20 个活动、**4028 条订单全部回放**（带 `X-Internal-Token`），榜单 ZSet 与订单号映射**对账正确**（1000/1000、1/1）；
+- **但订单数只写进一部分**（1000 条订单的活动只累计到 320）⇒ 根因：`SeckillRankServiceImpl.recordSuccess` 外层是 `catch (Exception)` **兜底吞异常**（只 `log.warn`），投影写入抛错时**静默跳过**，调用方与指标都看不出失败。
+
+**⚠️ 因此 P5 剩余项（按顺序）**
+1. **把投影写入从 catch-all 里拆出来**：榜单 ZSet 维持"非关键路径"的容错语义，但订单数/映射必须**独立 try/catch + 失败计数 + WARN 日志**（或干脆纳入主流程事务语义），杜绝静默漂移；
+2. 失败计数暴露到指标（`seckill:metric:*` 增加 `projectionFailure` 字段）或健康端点；
+3. `purge` → 重建 → `reconcile` **0 差异**（当前 19/20 不一致，全部是 `orderCount` 偏低）；
+4. 对账通过后把 `module.analytics.metrics-source` 默认切回 `projection`，再打 `git tag p5-done`。
+
+**为什么停在这里是安全的**：默认值仍是 `order`（Day 8 的跨服务计数，口径与 DB 一致），排行榜读的是**已正确的 ZSet**；投影写入虽部分失效，但没有任何读路径依赖它 ⇒ 演示与回归（143/0/0）都不受影响。
+
 ---
 
 *文档创建日期：2026-07-29*
