@@ -1,7 +1,7 @@
 package com.ghb.ecommerceflashsalesystem.guard;
 
 import com.ghb.ecommerceflashsalesystem.ECommerceFlashSaleSystemApplication;
-import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteProperties;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mybatis.spring.annotation.MapperScan;
@@ -80,13 +80,18 @@ class PostMigrationInvariantsTest {
         }
     }
 
-    /** 4. 反向镜像默认必须关闭（旧库已 DROP）。 */
+    /** 4. 反向镜像实现类必须已被删除（旧库已 DROP，镜像无处可写）。 */
     @Test
-    @DisplayName("反向镜像默认关闭")
-    void dualWriteDefaultsOff() {
-        assertThat(new DualWriteProperties().isEnabled())
-                .as("DualWriteProperties.enabled 的类内默认必须是 false：旧库 flash_sale 已于 P4 Day 10 下线，"
-                        + "副本维护者身份随之结束；任何启用都必须由环境变量显式声明")
-                .isFalse();
+    @DisplayName("镜像实现类已删除")
+    void mirrorClassesRemoved() {
+        for (String fqcn : new String[]{
+                "com.ghb.ecommerceflashsalesystem.infra.db.DualWriteMirror",
+                "com.ghb.ecommerceflashsalesystem.infra.db.DualWriteProperties",
+                "com.ghb.ecommerceflashsalesystem.order.mirror.OrderMirror",
+                "com.ghb.ecommerceflashsalesystem.user.mirror.AuthMirror"}) {
+            assertThatThrownBy(() -> Class.forName(fqcn))
+                    .as("%s 应已随旧库下线删除（P4 收官）；若需回滚请从 git 历史恢复", fqcn)
+                    .isInstanceOf(ClassNotFoundException.class);
+        }
     }
 }

@@ -1,8 +1,7 @@
 package com.ghb.ecommerceflashsalesystem.integration;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
-import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteMirror;
-import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteProperties;
+
 import com.ghb.ecommerceflashsalesystem.common.constant.CacheKeyConstant;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;

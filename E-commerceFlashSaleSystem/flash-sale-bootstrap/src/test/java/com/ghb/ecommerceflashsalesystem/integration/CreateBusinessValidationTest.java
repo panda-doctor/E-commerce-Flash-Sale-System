@@ -1,8 +1,6 @@
 package com.ghb.ecommerceflashsalesystem.integration;
 
 import com.ghb.ecommerceflashsalesystem.common.api.ResultCode;
-import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteMirror;
-import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteProperties;
 import com.ghb.ecommerceflashsalesystem.common.exception.BusinessException;
 import com.ghb.ecommerceflashsalesystem.activity.dto.request.ActivityRequest;
 import com.ghb.ecommerceflashsalesystem.product.dto.request.ProductRequest;
@@ -71,8 +69,7 @@ public class CreateBusinessValidationTest {
 
     @BeforeEach
     void setUp() {
-        // P3 Day 3：双写镜像以"关闭"状态注入 —— 单测聚焦主库行为，镜像不参与断言
-        DualWriteMirror dualWriteMirror = new DualWriteMirror(new DualWriteProperties());
+        // P4 收官：双写镜像已随旧库下线退役，测试只聚焦主库行为
         productService = new ProductServiceImpl(productMapper, productCacheService, redissonClient);
         // P3 Day 5：商品访问已端口化 —— 用 mock 的 ProductMapper 组装一个"本地端口实现"
         //（等价于单体的 LocalProductCatalogAdapter；activity 应用侧换成 HTTP 适配器）

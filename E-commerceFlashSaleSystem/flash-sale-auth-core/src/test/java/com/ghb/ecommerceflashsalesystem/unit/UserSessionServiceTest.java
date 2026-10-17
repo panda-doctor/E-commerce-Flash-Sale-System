@@ -2,7 +2,6 @@ package com.ghb.ecommerceflashsalesystem.unit;
 
 import com.ghb.ecommerceflashsalesystem.user.config.SecurityProperties;
 import com.ghb.ecommerceflashsalesystem.user.mapper.UserSessionMapper;
-import com.ghb.ecommerceflashsalesystem.user.mirror.AuthMirror;
 import com.ghb.ecommerceflashsalesystem.user.service.UserAccountService;
 import com.ghb.ecommerceflashsalesystem.user.service.UserSessionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,13 +33,13 @@ import static org.mockito.Mockito.when;
 class UserSessionServiceTest {
 
     private UserSessionMapper sessionMapper;
-    private AuthMirror authMirror;
+    // P4 收官：镜像已退役（不再有 authMirror 字段/mock/断言）
     private UserSessionService service;
 
     @BeforeEach
     void setUp() {
         sessionMapper = mock(UserSessionMapper.class);
-        authMirror = mock(AuthMirror.class);
+
         service = new UserSessionService(sessionMapper, mock(UserAccountService.class),
                 new SecurityProperties());
     }
@@ -53,8 +52,6 @@ class UserSessionServiceTest {
 
         assertThat(deleted).isEqualTo(3);
         verify(sessionMapper).deleteExpired(any(LocalDateTime.class));
-        // P4 收官：副本侧清理已随旧库下线退役（authMirror 不再参与），只断言权威库路径
-        verifyNoInteractions(authMirror);
     }
 
     @Test
