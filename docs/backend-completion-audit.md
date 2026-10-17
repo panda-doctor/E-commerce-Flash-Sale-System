@@ -16,7 +16,7 @@
 | 总体评分 | **89 / 100** |
 | P0（阻断） | **0** |
 | P1（高） | **0**（原 3 → P1-2 误判撤销、P1-3 与 P1-1 均已修复） |
-| P2（中） | **10**（原 8 + 由 P1-2 拆出的 2 项） |
+| P2（中） | **7**（原 10 → P2-9 撤销、P2-10 已修复、P2-1/2/3/4/5/6/7/8 中 7 项待办） |
 | P3（低） | **5** |
 | 是否建议进入前端联调 | **建议进入**（契约稳定、CORS 已配 5173），但 P1-2（失败补偿）与 P1-3（默认凭据）应在对外演示前处理 |
 
@@ -225,7 +225,7 @@ private void compensateDeadMessage(SeckillOrderMessage message) {
 | P2-7 | 图片上传 | 合法文件被误拒的历史问题未复现/未修 | `AdminFileController` 校验分支 | 管理端上传失败 | 改用魔数头校验 + 允许格式白名单 |
 | P2-8 | 死信 | 重放接口无批量参数与告警阈值（仅手动触发） | `AdminMessageController` | 故障恢复慢 | 加批量与"死信 > N 告警" |
 | ~~P2-9~~ | 库存补偿 | **撤销（第二次误判）**：`SeckillRequest` 只有 `activityId/userId/productId`，**没有 quantity 字段** ⇒ 系统语义即"一次一件"，`INCR +1` 与原扣减严格对称 | `SeckillRequest.java:20-31` | — | 无需修改；若未来引入 quantity，必须同步改 Lua 扣减与补偿（已记录约束） |
-| P2-10 | 库存一致性 | 补偿是**事件驱动**（仅死信触发），缺周期性对账任务（Redis 已扣 − DB 成功订单） | 缺失 `StockReconcileScheduler` | 丢消息/人工误操作造成的长期漂移无法发现 | 增加每日对账任务 + 差异告警（可复用 `reconcile-analytics-projection.ps1` 风格） |
+| ~~P2-10~~ ✅**已修复**（`5d5180e`） | 库存一致性 | 新增 `activity/scheduler/StockReconcileScheduler`：`期望剩余 = 配置库存 − Redis 投影成交数`，与 Redis 剩余比对；**只告警不改写**（避免掩盖真实缺陷），差异数写 `seckill:stock:reconcile:diff` 供监控采集；每日 04:30（cron 可配、可关闭）；未预热的键跳过 | `flash-sale-activity-core` | — | 已实现；单测 `StockReconcileVerdictTest` **4/0/0** 固化口径（无成交/售罄/部分售出/未预热跳过） |
 
 ### P3（低）—— 5 项
 
