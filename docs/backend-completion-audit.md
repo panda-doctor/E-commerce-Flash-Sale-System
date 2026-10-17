@@ -234,7 +234,7 @@ private void compensateDeadMessage(SeckillOrderMessage message) {
 | ~~P3-1~~ | **撤销（误判）**：`scripts/*.ps1` 全部 6 个脚本中**没有任何** `D:\MySQL`/`D:\JDK`/`C:\Users` 硬编码（逐文件计数均为 0）。我看到的路径来自**我自己在 shell 里敲的内联命令**，不是仓库脚本 | `scripts/` |
 | P3-2 | 无每服务 Dockerfile，仅 `deploy/docker-compose.yml`（用于中间件/监控） | `deploy/` |
 | P3-3 | 无托管 CI（仅本地 `ci-verify.ps1`） | 仓库根 |
-| P3-4 | 未见 OpenAPI/Swagger 依赖（命中 0），契约以 `docs/*.md` + `postman/` 承载 | `pom.xml`、`docs/` |
+| ~~P3-4~~ ✅**已修复**（`403d6e3`） | 根 pom 加 `springdoc-openapi-starter-webmvc-ui:2.6.0`（配 `<properties>` 版本），全模块继承 | `pom.xml` | — | 实测 `/v3/api-docs` = **200**、`/swagger-ui/index.html` = **200**、启动无失败；网关（WebFlux）因 `@ConditionalOnWebApplication(SERVLET)` 不受影响；回归仍 152/0/0 |
 | P3-5 ✅**已修复** | `_legacy-backup` 已被 gitignore；但 `面试1.0/` **未被忽略**（易被 `git add -A` 误纳入）→ 已补进 `.gitignore` | `.gitignore` |
 
 ---
@@ -344,7 +344,7 @@ R11 脚本路径参数化 → R12 每服务 Dockerfile + 托管 CI → R13 OpenA
 
 ---
 
-## 10.1 待应用补丁：P3-4 OpenAPI（未执行，附精确步骤）
+## 10.1 P3-4 OpenAPI（✅ 已应用，`403d6e3` —— 以下保留为实施记录）
 
 > **为什么没直接改**：需要动根 `pom.xml` 的 `<dependencies>` 段。审查过程中我未逐字读取该段的现有写法，
 > 盲目插入第二个 `<dependencies>` 元素会让 **21 个模块全部构建失败** —— 按"不留下半成品/不破坏构建"的纪律，此处只给补丁。
