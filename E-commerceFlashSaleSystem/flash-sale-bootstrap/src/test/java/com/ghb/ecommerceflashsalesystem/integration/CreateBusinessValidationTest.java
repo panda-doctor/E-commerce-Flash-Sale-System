@@ -73,7 +73,7 @@ public class CreateBusinessValidationTest {
     void setUp() {
         // P3 Day 3：双写镜像以"关闭"状态注入 —— 单测聚焦主库行为，镜像不参与断言
         DualWriteMirror dualWriteMirror = new DualWriteMirror(new DualWriteProperties());
-        productService = new ProductServiceImpl(productMapper, productCacheService, redissonClient, dualWriteMirror);
+        productService = new ProductServiceImpl(productMapper, productCacheService, redissonClient);
         // P3 Day 5：商品访问已端口化 —— 用 mock 的 ProductMapper 组装一个"本地端口实现"
         //（等价于单体的 LocalProductCatalogAdapter；activity 应用侧换成 HTTP 适配器）
         seckillActivityService = new SeckillActivityServiceImpl(seckillActivityMapper, seckillCacheService,
