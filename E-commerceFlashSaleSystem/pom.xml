@@ -59,6 +59,8 @@
         <!-- P1 基础设施：Spring Cloud 与 Boot 3.3.x 对齐（2023.0.x 分支） -->
         <spring-cloud.version>2023.0.3</spring-cloud.version>
         <spring-cloud-alibaba.version>2023.0.3.2</spring-cloud-alibaba.version>
+        <!-- P3-4：OpenAPI 文档（与 Boot 3.3.x 对应的是 springdoc 2.6.x） -->
+        <springdoc.version>2.6.0</springdoc.version>
     </properties>
 
     <dependencyManagement>
@@ -231,6 +233,15 @@
 
     <!-- ========== 全模块通用依赖：Lombok + 测试基座 ========== -->
     <dependencies>
+        <!--
+            P3-4：OpenAPI 文档。WebMVC 应用自动暴露 /v3/api-docs 与 /swagger-ui/index.html；
+            网关是 WebFlux，本 starter 带 @ConditionalOnWebApplication(type = SERVLET) ⇒ 在网关不生效。
+        -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
