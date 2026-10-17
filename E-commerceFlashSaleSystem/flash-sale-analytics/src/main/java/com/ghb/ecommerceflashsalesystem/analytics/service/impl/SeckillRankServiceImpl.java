@@ -41,25 +41,52 @@ public class SeckillRankServiceImpl implements SeckillRankService {
                 log.debug("用户已在榜中，activityId={}, userId={}（幂等）", activityId, userId);
             }
             // 榜单键暂不设过期（复盘需要），由业务侧按活动维度清理
-
-            // ---- P5 Day 2：投影写入（与榜单同处，全部幂等）----
-            if (orderNo != null && !orderNo.isBlank()) {
-                // ① 订单号映射：榜单展示直接读它，读侧不再回调 order 服务
-                redisTemplate.opsForHash().put(
-                        CacheKeyConstant.SECKILL_RANK_ORDER_PREFIX + activityId,
-                        String.valueOf(userId), orderNo);
-                // ② 订单数计数：Stream 是至少一次投递 → 以 orderNo 为幂等键（7 天覆盖重投递窗口）
-                Boolean first = redisTemplate.opsForValue().setIfAbsent(
-                        CacheKeyConstant.SECKILL_DEDUPE_ORDER_PREFIX + orderNo, "1",
-                        java.time.Duration.ofDays(7));
-                if (Boolean.TRUE.equals(first)) {
-                    redisTemplate.opsForHash().increment(
-                            CacheKeyConstant.SECKILL_METRIC_PREFIX + activityId,
-                            CacheKeyConstant.METRIC_FIELD_ORDER_COUNT, 1);
-                }
-            }
         } catch (Exception e) {
             log.warn("记录榜单失败，activityId={}, userId={}", activityId, userId, e);
+        }
+
+        // P5：投影写入**独立**处理 —— 不能与榜单共用 catch-all。
+        // 2026-10-17 实测教训：共用 catch 时 HINCRBY 的失败被静默吞掉（1000 单只累计到 320），
+        // 调用方与指标都看不出问题。失败必须计数 + WARN，让漂移可被发现。
+        writeProjection(activityId, userId, orderNo);
+    }
+
+    /**
+     * 写入订单号映射与订单数计数（幂等：映射覆盖写，计数以 orderNo 做 SETNX 去重）。
+     */
+    private void writeProjection(Long activityId, Long userId, String orderNo) {
+        if (orderNo == null || orderNo.isBlank()) {
+            return;
+        }
+        try {
+            // ① 订单号映射：榜单展示直接读它，读侧不再回调 order 服务
+            redisTemplate.opsForHash().put(
+                    CacheKeyConstant.SECKILL_RANK_ORDER_PREFIX + activityId,
+                    String.valueOf(userId), orderNo);
+            // ② 订单数计数：Stream 是至少一次投递 → 以 orderNo 为幂等键（7 天覆盖重投递窗口）
+            Boolean first = redisTemplate.opsForValue().setIfAbsent(
+                    CacheKeyConstant.SECKILL_DEDUPE_ORDER_PREFIX + orderNo, "1",
+                    java.time.Duration.ofDays(7));
+            if (Boolean.TRUE.equals(first)) {
+                redisTemplate.opsForHash().increment(
+                        CacheKeyConstant.SECKILL_METRIC_PREFIX + activityId,
+                        CacheKeyConstant.METRIC_FIELD_ORDER_COUNT, 1);
+            }
+        } catch (Exception e) {
+            log.warn("投影写入失败（可由对账发现），activityId={}, userId={}, orderNo={}",
+                    activityId, userId, orderNo, e);
+            countProjectionFailure(activityId);
+        }
+    }
+
+    /** 投影失败计数（自身失败也不能抛：只打日志，避免掩盖原始异常）。 */
+    private void countProjectionFailure(Long activityId) {
+        try {
+            redisTemplate.opsForHash().increment(
+                    CacheKeyConstant.SECKILL_METRIC_PREFIX + activityId,
+                    CacheKeyConstant.METRIC_FIELD_PROJECTION_FAILURE, 1);
+        } catch (Exception e) {
+            log.error("投影失败计数也无法写入（Redis 可能不可用），activityId={}", activityId, e);
         }
     }
     /**

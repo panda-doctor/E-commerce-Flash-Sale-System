@@ -151,6 +151,9 @@ public class CacheKeyConstant {
      */
     public static final String METRIC_FIELD_ORDER_COUNT = "orderCount";
 
+    /** P5：投影写入失败计数（可观测性 —— catch-all 会静默吞掉漂移，必须有失败痕迹） */
+    public static final String METRIC_FIELD_PROJECTION_FAILURE = "projectionFailure";
+
     /** P5：榜单条目的 userId → orderNo 映射（Hash），随榜单在消费成功时写入 */
     public static final String SECKILL_RANK_ORDER_PREFIX = "seckill:rank:order:";
 
