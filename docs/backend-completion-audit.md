@@ -218,7 +218,7 @@ private void compensateDeadMessage(SeckillOrderMessage message) {
 |---|---|---|---|---|---|
 | P2-1 | 测试 | 集成测试强依赖真实 MySQL/Redis（无 Testcontainers），纯净环境无法跑 | `flash-sale-bootstrap/src/test/resources/application.properties` | CI/换机成本高，验证可移植性差 | 引入 Testcontainers 或 profile 化替身 |
 | ~~P2-2~~ | 参数校验 | **已确认实现（非缺陷）**：`ProductController.listProducts` 入参已带 `@RequestParam(defaultValue="20") @Min(1) @Max(100) long pageSize`，并有 `@Validated` 在类上生效 | `ProductController:36-39` | — | 无需修改 |
-| P2-3 | 安全 | 密码/token 是否脱敏取决于日志实现（未逐条核对） | `GlobalExceptionHandler`、各 Controller 的 `log.info` | 可能记录敏感信息 | 统一脱敏过滤器 |
+| ~~P2-3~~ | 安全 | **撤销（误判，已逐条核对）**：全仓 **138 个日志点**中，含 `password/token/secret` 关键字的仅 3 处 —— ① `UserTokenRegistry:43` 打印的是**令牌条数**；② `SeckillOrderConsumer:422` / ③ `SeckillServiceImpl:283` 打印的是 **Redis 键名**（`seckill:user:<activityId>:<userId>`），均**不含令牌值或口令** | — | — | 余项（P3 级，非缺陷）：两处错误日志含 `userId`，如需更严可改为哈希；不阻塞交付 |
 | P2-4 | 秒杀 | 无防暴破计数（登录/秒杀仅靠 Lua 限流窗口） | `rate_limit.lua` 调用点 | 分布式撞库/刷接口风险 | 增加失败计数与短封禁 |
 | ~~P2-5~~ ✅**已修复（order 侧）** | 读侧 | 消费方（order 应用）新增 `order/health/ProjectionHealthIndicator`：同样输出 `projectionFailureTotal` / `deadLetterCount`，`>0` 即 `DEGRADED`、探测失败 `UNKNOWN` | `flash-sale-order/.../order/health/` | — | **实测** `GET :8087/actuator/health` → `"projection":{"status":"UP","details":{"projectionFailureTotal":0,"deadLetterCount":0}}`；auth 无需投影探针（标准 `db`/`redis` 已覆盖）；余项：seckill 可加 `streamBacklog` |
 | P2-6 ✅**部分修复** | 订单 | 列表响应从 `Map` 拼装改为 **`OrderListItemVO`**（字段名 `orderNo/activityId/productId/status/createdAt` 完全不变 ⇒ 前端无感，但契约可编译核对）；`{userId}` 与 `me` 语义重复**保留**（兼容既有契约，`{userId}` 已有归属强校验，不构成越权） | `order/vo/OrderListItemVO.java`、`OrderController` | — | 余项：若前端只用 `me`，可后续把 `{userId}` 降级为管理端接口 |
