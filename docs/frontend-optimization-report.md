@@ -124,3 +124,41 @@ npm run build                           → ✓ built in 5.56s（按路由分包
 2. 4 处高危缺陷已修复并有单测/实测佐证，其中"渲染期副作用"与"用户缓存串号"属于会随使用时间恶化的隐患；
 3. 工程门禁全绿（tsc / eslint / 52 单测 / 构建），且改动集中在既有分层内，未破坏接口契约与既有页面；
 4. 未验证项与后端限制已如实列出，不存在以假数据或假成功掩盖的缺陷。
+
+---
+
+## 七、第二轮：真实浏览器复检（新增修复 2 类 3 处）
+
+首轮的验证手段是 `curl` + jsdom，覆盖不到浏览器运行期。第二轮补充了基于系统 Chrome 的真实页面核查（`frontend/scripts/browser-check.mjs`、`admin-check.mjs`），采集 `pageerror` / `console.error` / 失败请求 / 响应码，**抓到了两个只在浏览器里暴露的缺陷**。
+
+### 7.1 新增缺陷与修复
+
+| 编号 | 现象 | 根因 | 修复文件 | 验证 |
+|---|---|---|---|---|
+| D5 | 三个管理页整页「页面出现异常」，`pageerror: useAdminToken 必须在 <AdminTokenProvider> 内使用` | Provider 挂在页面内部的 `AdminShell`，而页面在顶部就调用 `useAdminToken()` | `router/index.tsx`（新增 `AdminLayout` 承载 Provider）、`components/admin/AdminShell.tsx`、`pages/admin/AdminDashboardPage.tsx` | `/admin` 显示令牌闸门，`pageErrors=0`；带令牌时指标面板 8 项渲染；路由级回归测试 3 条 |
+| D6a | 管理控制台点「快速选择」→ `TypeError: activityId.trim is not a function` | 后端 13~15 位 `Long` 主键仍是 JSON number，写入了 string 状态 | `lib/id.ts`（新）、`api/{activity,product,order,rank}.ts`、`pages/admin/AdminDashboardPage.tsx` | 选活动 → 指标正常渲染，`pageErrors=0` |
+| D6b | 商品详情**永远**显示「没有进行中的秒杀活动」 | 路由参数 string 与接口 number 用 `===` 比较恒 false | 同上 | `/products/90173199893504` 出现「有秒杀活动」+「去秒杀」 |
+
+**根因归纳**：`http` 层只对 ≥16 位整数转字符串，13~15 位 ID 未覆盖，而 `Id` 被声明为 `string`。现统一在 API 边界归一化，连带修正了 queryKey 数字/字符串两套缓存的问题。
+
+### 7.2 真实浏览器验证（Chrome headless）
+
+首页 `共 10 件商品` → 搜索 `共 1 件` → 清空 `共 10 件`；活动详情「未开始」按钮禁用（时间窗判定）；商品详情关联活动正常；未登录 `/orders` 跳登录；登录后回跳 `/orders` 且导航显示用户；订单 4 条、详情 0 错误；`/admin` 闸门与指标正常；移动端抽屉 5 个入口；无效路由兜底；**接口失败（拦截 `/api/products`）出现错误态 + 重新加载按钮，未白屏**；全程 `pageErrors=0`。
+
+### 7.3 门禁（第二轮修复后）
+
+```
+vitest  59 passed | 5 skipped（真后端 live-smoke，需 VITE_API_BASE_URL 才运行）
+tsc     0 error
+eslint  0 error（6 warnings：Provider 与 hook 同文件，既有）
+build   ✓ 5.72s
+```
+
+### 7.4 遗留（后端数据，非前端可修）
+
+种子商品图片 4 条 404：`/uploads/202609/*` 在磁盘上不存在（`uploads/` 只有 3 个 `202610` 文件），数据库种子 `image_url` 指向了未落盘的文件。前端已按设计降级为「暂无图片」占位，不裂版、不抛错；修复需后端补文件或修正种子数据。
+
+### 7.5 复现方式（可选）
+
+`scripts/*.mjs` 为本地核查脚本，依赖 `playwright-core`（**未写入 package.json**，避免改变工程依赖）：
+`npm i --no-save playwright-core`，然后 `node scripts/browser-check.mjs`（可带 `CHECK_ACCOUNT` / `CHECK_PASSWORD` 环境变量）。

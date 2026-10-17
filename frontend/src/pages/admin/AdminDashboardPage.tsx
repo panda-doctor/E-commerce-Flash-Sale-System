@@ -11,6 +11,7 @@ import { useAdminToken } from '../../stores/adminToken'
 import { useActivities } from '../../hooks/queries/useActivities'
 import { captureSnapshot } from '../../api/admin'
 import { toMessage } from '../../lib/errors'
+import { toId } from '../../lib/id'
 
 /** 管理控制台：选择活动 → 实时指标 + 快照落库 + 死信重放。 */
 export default function AdminDashboardPage() {
@@ -81,7 +82,7 @@ export default function AdminDashboardPage() {
                   <button
                     key={item.activityId}
                     type="button"
-                    onClick={() => setActivityId(item.activityId)}
+                    onClick={() => setActivityId(toId(item.activityId))}
                     className={
                       activityId === item.activityId
                         ? 'cursor-pointer rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white'

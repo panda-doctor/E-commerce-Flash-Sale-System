@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { KeyRound, ShieldCheck, X } from 'lucide-react'
-import { AdminTokenProvider, useAdminToken } from '../../stores/adminToken'
+import { useAdminToken } from '../../stores/adminToken'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 
@@ -66,11 +66,14 @@ function TokenGate({ children }: { children: ReactNode }) {
   )
 }
 
-/** 管理端外壳：令牌闸门 + 内容区。 */
+/**
+ * 管理端外壳：只负责令牌闸门，**不在此挂 Provider**。
+ *
+ * 历史缺陷：Provider 曾挂在这里，而三个管理页在组件顶部就调用 `useAdminToken()`，
+ * 于是首次渲染时 hook 跑在 Provider 之外，直接抛
+ * 「useAdminToken 必须在 <AdminTokenProvider> 内使用」→ 整个 /admin 白屏。
+ * Provider 现由路由层 `AdminLayout` 统一提供（见 router/index.tsx）。
+ */
 export function AdminShell({ children }: { children: ReactNode }) {
-  return (
-    <AdminTokenProvider>
-      <TokenGate>{children}</TokenGate>
-    </AdminTokenProvider>
-  )
+  return <TokenGate>{children}</TokenGate>
 }
