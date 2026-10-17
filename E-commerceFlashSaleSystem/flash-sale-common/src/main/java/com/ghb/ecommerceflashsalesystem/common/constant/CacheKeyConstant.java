@@ -154,6 +154,14 @@ public class CacheKeyConstant {
     /** P5：投影写入失败计数（可观测性 —— catch-all 会静默吞掉漂移，必须有失败痕迹） */
     public static final String METRIC_FIELD_PROJECTION_FAILURE = "projectionFailure";
 
+    /**
+     * P6 Day 2：投影失败的**全局累计**计数（供 {@code ProjectionHealthIndicator} 采集）。
+     *
+     * <p>为什么需要全局键：健康检查不能对账全表，也不该在生产用 {@code KEYS} 扫活动维度；
+     * 一个 O(1) 的累计值足以回答"最近有没有写失败"。</p>
+     */
+    public static final String SECKILL_PROJECTION_FAILURE_TOTAL = "seckill:projection:failure:total";
+
     /** P5：榜单条目的 userId → orderNo 映射（Hash），随榜单在消费成功时写入 */
     public static final String SECKILL_RANK_ORDER_PREFIX = "seckill:rank:order:";
 

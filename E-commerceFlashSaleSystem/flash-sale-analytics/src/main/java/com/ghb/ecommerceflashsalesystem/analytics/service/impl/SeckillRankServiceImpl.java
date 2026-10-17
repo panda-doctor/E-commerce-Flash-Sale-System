@@ -85,6 +85,8 @@ public class SeckillRankServiceImpl implements SeckillRankService {
             redisTemplate.opsForHash().increment(
                     CacheKeyConstant.SECKILL_METRIC_PREFIX + activityId,
                     CacheKeyConstant.METRIC_FIELD_PROJECTION_FAILURE, 1);
+            // P6 Day 2：全局累计（供健康检查 O(1) 采集，避免健康检查去扫活动维度）
+            redisTemplate.opsForValue().increment(CacheKeyConstant.SECKILL_PROJECTION_FAILURE_TOTAL);
         } catch (Exception e) {
             log.error("投影失败计数也无法写入（Redis 可能不可用），activityId={}", activityId, e);
         }
