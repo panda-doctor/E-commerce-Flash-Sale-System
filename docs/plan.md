@@ -1957,6 +1957,25 @@ required a bean of type 'javax.sql.DataSource' that could not be found.
 
 **为什么停在这里是安全的**：默认值仍是 `order`（Day 8 的跨服务计数，口径与 DB 一致），排行榜读的是**已正确的 ZSet**；投影写入虽部分失效，但没有任何读路径依赖它 ⇒ 演示与回归（143/0/0）都不受影响。
 
+#### 根因澄清（2026-10-17 晚，`8acd383` 之后）
+
+把投影写入从 catch-all 拆出并加失败计数后重跑：**一条失败日志都没有**，而 `orderCount` 仍只到 320/1000。于是逐一排除：
+
+| 假设 | 实测 | 结论 |
+|---|---|---|
+| Redis 内存淘汰 | `maxmemory=0`、`policy=noeviction`、`evicted_keys=0` | ✗ 排除 |
+| 序列化不一致（字段名/值） | `HGETALL` 显示字段名就是 `orderCount`、值 `320`（纯数字） | ✗ 排除 |
+| 应用写失败被吞 | 加计数后仍无 WARN，且 ZSet/映射 100% 正确 | ✗ 排除 |
+| **幂等键残留导致"正确跳过"** | 清理脚本 `KEYS` 的回复被 64KB 缓冲区截断，只删掉 **1285/4028** 个 `seckill:dedupe:order:*` | ✅ **真因** |
+
+⇒ 残留的幂等键让 `SETNX` 返回 `false`，`HINCRBY` **按设计跳过**（这正是幂等语义），表现得像"写丢了"。
+**这不是应用缺陷，而是我的运维脚本读回复不完整**；已修 `scripts/purge-analytics-projection.ps1`（循环读到无数据为止）。
+
+**恢复步骤（下次 3 条命令即可收口）**
+1. `.\scripts\purge-analytics-projection.ps1`（应报告 `seckill:dedupe:order:*` ≈ **4028** 个，而不是 1285）；
+2. 起 `flash-sale-order` → 对 20 个活动逐个 `POST /internal/orders/activities/{id}/rebuild-projection`（带 `X-Internal-Token`）；
+3. `.\scripts\reconcile-analytics-projection.ps1` → 期望 **0 差异**；随后把 `module.analytics.metrics-source` 默认切 `projection`、跑回归、`git tag p5-done`。
+
 ---
 
 *文档创建日期：2026-07-29*

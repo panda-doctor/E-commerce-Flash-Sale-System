@@ -41,9 +41,32 @@ function RedisCommand([string[]]$command) {
 }
 
 function RedisKeys([string]$pattern) {
-    $reply = RedisCommand @('KEYS', $pattern)
+    # 注意：KEYS 的回复可能远超单次 Read 的缓冲区（实测 4028 个键时只读到 1285 个 →
+    # 幂等键残留 → 回填时 SETNX 返回 false、计数被正确跳过，看起来像"写丢了"）。
+    # 因此必须**循环读干净**再关闭连接。
+    $client = New-Object Net.Sockets.TcpClient($RedisHost, $RedisPort)
+    $sb = New-Object Text.StringBuilder
+    try {
+        $stream = $client.GetStream()
+        $payload = '*2' + "`r`n" + (Bulk 'SELECT') + (Bulk "$RedisDb")
+        $payload += '*2' + "`r`n" + (Bulk 'KEYS') + (Bulk $pattern)
+        $bytes = [Text.Encoding]::UTF8.GetBytes($payload)
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush()
+        $deadline = (Get-Date).AddSeconds(10)
+        $buf = New-Object byte[] 262144
+        do {
+            Start-Sleep -Milliseconds 60
+            while ($stream.DataAvailable) {
+                $n = $stream.Read($buf, 0, $buf.Length)
+                if ($n -gt 0) { [void]$sb.Append([Text.Encoding]::UTF8.GetString($buf, 0, $n)) }
+            }
+        } while ($stream.DataAvailable -and ((Get-Date) -lt $deadline))
+    } finally {
+        $client.Close()
+    }
     $keys = New-Object System.Collections.ArrayList
-    foreach ($line in ($reply -split "`r`n")) {
+    foreach ($line in ($sb.ToString() -split "`r`n")) {
         $t = $line.Trim()
         if ($t -ne '' -and $t -notmatch '^[*+:-]' -and $t -notmatch '^\$') { [void]$keys.Add($t) }
     }
