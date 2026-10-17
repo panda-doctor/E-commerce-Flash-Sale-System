@@ -38,7 +38,8 @@ describe('ProductListPage 冒烟', () => {
                     productId: '90173199893504',
                     name: '静音机械键盘 K8',
                     description: '热插拔轴体',
-                    imageUrl: null,
+                    // 后端真实返回内网绝对地址，组件必须归一化为同源路径后再渲染
+                    imageUrl: 'http://172.21.112.1:8084/uploads/202610/kb.png',
                     originalPrice: 39900,
                     totalStock: 20,
                     availableStock: 12,
@@ -64,6 +65,11 @@ describe('ProductListPage 冒烟', () => {
     expect(screen.getByText('¥399.00')).toBeInTheDocument()
     expect(screen.getByText('共 1 件商品')).toBeInTheDocument()
     expect(screen.getByText(/剩余 12/)).toBeInTheDocument()
+    // 图片走同源代理，不能直连内网 8084
+    expect(screen.getByAltText('静音机械键盘 K8')).toHaveAttribute(
+      'src',
+      '/uploads/202610/kb.png',
+    )
     expect(screen.getByText('当前没有进行中的活动，先看看在售好物。')).toBeInTheDocument()
   })
 

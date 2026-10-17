@@ -59,7 +59,9 @@ spring:
           predicates:
             # P4 Day 10：快照落库端点按守卫归属搬到 order 应用（权威库 flash_sale_order 是它），
             # 所以这里补一条**精确** Path —— 不加会落到 monolith 的 /api/** 兜底上（先匹配先赢）。
-            - Path=/api/seckill/orders/*,/api/seckill/users/*/orders,/api/seckill/users/me/orders,/api/admin/seckill/dead-letters/replay,/api/admin/seckill/activities/*/snapshot
+            # 联调整改：补 replay-batch（死信批量重放，处理器同样只在 order 的 AdminMessageController；
+            # 旧配置只登记了单条 /replay，批量路径会掉到单体兜底 → 单体不扫 order 包 → 404）。
+            - Path=/api/seckill/orders/*,/api/seckill/users/*/orders,/api/seckill/users/me/orders,/api/admin/seckill/dead-letters/replay,/api/admin/seckill/dead-letters/replay-batch,/api/admin/seckill/activities/*/snapshot
         # 单体（P0 模块化单体）已注册为 flash-sale-monolith；
         # lb:// 走服务发现 + 客户端负载均衡（多实例时自动轮询），不再写死 IP:端口
         - id: flash-sale-monolith

@@ -1,8 +1,12 @@
 import { useState } from 'react'
 import { ImageOff } from 'lucide-react'
 import { cn } from '../../lib/cn'
+import { toSameOriginPath } from '../../lib/asset'
 
-/** 商品图：`/uploads/**` 由网关代理到 product 应用；加载失败退化为占位块。 */
+/**
+ * 商品图：`/uploads/**` 由网关代理到 product 应用；加载失败退化为占位块。
+ * 后端可能返回内网绝对地址，这里统一归一化为同源路径（见 lib/asset.ts）。
+ */
 export function ProductImage({
   src,
   alt,
@@ -15,7 +19,8 @@ export function ProductImage({
   ratio?: string
 }) {
   const [failed, setFailed] = useState(false)
-  const showFallback = !src || failed
+  const resolved = toSameOriginPath(src)
+  const showFallback = !resolved || failed
 
   return (
     <div className={cn('relative overflow-hidden bg-page-subtle', ratio, className)}>
@@ -26,7 +31,7 @@ export function ProductImage({
         </div>
       ) : (
         <img
-          src={src}
+          src={resolved}
           alt={alt}
           loading="lazy"
           decoding="async"

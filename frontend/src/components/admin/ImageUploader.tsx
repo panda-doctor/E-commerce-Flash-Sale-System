@@ -5,6 +5,7 @@ import { useAdminToken } from '../../stores/adminToken'
 import { Button } from '../ui/Button'
 import { toast } from '../ui/Toast'
 import { toMessage } from '../../lib/errors'
+import { toSameOriginPath } from '../../lib/asset'
 
 const ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,image/bmp,.jfif'
 const MAX_BYTES = 5 * 1024 * 1024
@@ -50,7 +51,8 @@ export function ImageUploader({
       <div className="flex items-center gap-4">
         <div className="size-24 shrink-0 overflow-hidden rounded-lg border border-state-line bg-page">
           {value ? (
-            <img src={value} alt="商品图预览" className="size-full object-cover" />
+            // 预览同样归一化：后端返回的是内网绝对地址，直接渲染在别的机器上会 404
+            <img src={toSameOriginPath(value) ?? ''} alt="商品图预览" className="size-full object-cover" />
           ) : (
             <div className="flex size-full items-center justify-center text-ink-400">
               <ImagePlus className="size-6" aria-hidden />
