@@ -195,6 +195,23 @@ curl.exe -s http://127.0.0.1:8081/actuator/health     # 无 DEGRADED
 
 ---
 
+**演练 2：消费者重启是否重复计数（at-least-once 幂等）**
+
+```
+① 重启前对账：checked 20 activities, mismatches 0  → RESULT: consistent
+② 停掉 order(8087) → 重新启动（消费者重启，Stream 组已存在）
+③ 重启后对账：checked 20 activities, mismatches 0  → RESULT: consistent（exit 0）
+```
+
+结论：**重启不产生重复计数** —— 幂等键 `seckill:dedupe:order:<orderNo>`
+（`SETNX` + 7 天 TTL）与 ZSet 的 `addIfAbsent` 共同保证"至少一次投递"不会把指标写高。
+这也是为什么 P5 用 `orderNo` 而不是 `messageId` 做幂等键：**同一笔订单无论被投递几次，只算一次**。
+
+> 本轮未做：真实积压场景（停 order 期间持续下单 → `XLEN` 增长 → 起回后追平）。
+> 需要同时起 auth/activity/seckill/网关并用压测脚本制造流量，成本较高；判据已写明（`XLEN` 归零 + 对账 0 差异 + `queuedMessageCount` 回落）。
+
+---
+
 ## 7. 附录：本次迁移的关键不变量（回归会守住）
 
 1. 单体**没有** `@MapperScan`，装配面不含 `product/activity/order/seckill` 域包；
