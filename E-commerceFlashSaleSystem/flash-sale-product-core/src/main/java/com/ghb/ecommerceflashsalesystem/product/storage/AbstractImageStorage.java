@@ -23,7 +23,9 @@ public abstract class AbstractImageStorage implements ImageStorageService {
 
     protected static final long MAX_IMAGE_SIZE = 5 * 1024 * 1024L; // 5MB
 
-    private static final Set<String> ALLOWED_EXT = Set.of("jpg", "jpeg", "png", "gif", "webp", "bmp");
+    // P2-7：补 jfif —— 它是标准 JPEG 的常见扩展名（同一组魔数 FF D8 FF），
+    // 此前不在白名单，导致"合法 JPEG 被误拒"。
+    private static final Set<String> ALLOWED_EXT = Set.of("jpg", "jpeg", "jfif", "png", "gif", "webp", "bmp");
 
     /** 统一校验：非空 / 扩展名白名单 / 文件头匹配 / 大小上限 */
     protected void validate(MultipartFile file) {
@@ -65,7 +67,7 @@ public abstract class AbstractImageStorage implements ImageStorageService {
             case "png" -> length >= 8
                     && bytes[0] == (byte) 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
                     && bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A;
-            case "jpg", "jpeg" -> length >= 3
+            case "jpg", "jpeg", "jfif" -> length >= 3
                     && bytes[0] == (byte) 0xFF && bytes[1] == (byte) 0xD8 && bytes[2] == (byte) 0xFF;
             case "gif" -> length >= 6
                     && bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F'
@@ -81,7 +83,7 @@ public abstract class AbstractImageStorage implements ImageStorageService {
     /** 根据已验证的扩展名生成响应头，不能信任客户端提交的 Content-Type。 */
     protected String mediaTypeOf(String filename) {
         return switch (extOf(filename)) {
-            case "jpg", "jpeg" -> "image/jpeg";
+            case "jpg", "jpeg", "jfif" -> "image/jpeg";
             case "png" -> "image/png";
             case "gif" -> "image/gif";
             case "webp" -> "image/webp";
