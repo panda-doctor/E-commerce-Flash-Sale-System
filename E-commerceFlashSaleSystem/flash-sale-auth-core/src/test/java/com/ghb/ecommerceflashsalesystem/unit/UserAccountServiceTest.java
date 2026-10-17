@@ -34,7 +34,7 @@ class UserAccountServiceTest {
         sessionMapper = mock(UserSessionMapper.class);
         passwordEncoder = new BCryptPasswordEncoder(12);
         authMirror = mock(AuthMirror.class);
-        service = new UserAccountService(accountMapper, sessionMapper, passwordEncoder, authMirror);
+        service = new UserAccountService(accountMapper, sessionMapper, passwordEncoder);
     }
 
     @Test

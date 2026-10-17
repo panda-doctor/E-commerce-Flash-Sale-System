@@ -13,7 +13,7 @@ import com.ghb.ecommerceflashsalesystem.user.dto.response.UserProfileResponse;
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserAccount;
 import com.ghb.ecommerceflashsalesystem.user.mapper.UserAccountMapper;
 import com.ghb.ecommerceflashsalesystem.user.mapper.UserSessionMapper;
-import com.ghb.ecommerceflashsalesystem.user.mirror.AuthMirror;
+// P4 收官清理：反向镜像已随旧库下线退役
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DuplicateKeyException;
@@ -37,7 +37,7 @@ public class UserAccountService {
     private final UserSessionMapper userSessionMapper;
     private final PasswordEncoder passwordEncoder;
     /** P4 Day 6：auth 权威库在 flash_sale_auth，写后镜像到旧库副本供另外三个运行时做会话校验 */
-    private final AuthMirror authMirror;
+    // P4 收官清理：authMirror 字段与 6 处镜像调用已删除（旧库已 DROP）
 
     @Transactional
     public UserAccount register(RegisterRequest request) {
@@ -60,7 +60,7 @@ public class UserAccountService {
         } catch (DuplicateKeyException exception) {
             throw new BusinessException(ResultCode.ACCOUNT_NAME_TAKEN, "账号名已被使用");
         }
-        authMirror.upsertAccount(user); // P4 Day 6：权威库写入成功后镜像到旧库副本（id 已由 IdGenerator 赋好）
+
         return user;
     }
 
@@ -125,7 +125,7 @@ public class UserAccountService {
             if (status == DISABLED) {
                 LocalDateTime now = LocalDateTime.now();
                 userSessionMapper.revokeAllForUser(id, now);
-                authMirror.revokeAllForUser(id, now); // P4 Day 6：禁用即踢下线，副本同步吊销
+
             }
         }
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
@@ -133,11 +133,11 @@ public class UserAccountService {
             user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
             LocalDateTime now = LocalDateTime.now();
             userSessionMapper.revokeAllForUser(id, now);
-            authMirror.revokeAllForUser(id, now); // P4 Day 6：改密即踢下线
+
         }
         user.setUpdatedAt(LocalDateTime.now());
         userAccountMapper.updateById(user);
-        authMirror.upsertAccount(user); // P4 Day 6：资料/状态变更后镜像
+
         return UserProfileResponse.from(user);
     }
 
@@ -149,8 +149,7 @@ public class UserAccountService {
         user.setUpdatedAt(user.getDeletedAt());
         userAccountMapper.updateById(user);
         userSessionMapper.revokeAllForUser(id, user.getDeletedAt());
-        authMirror.upsertAccount(user);                          // P4 Day 6：软删（status=2 + deleted_at）镜像
-        authMirror.revokeAllForUser(id, user.getDeletedAt());    // P4 Day 6：账号软删即吊销其全部会话
+
     }
 
     private UserAccount findNotDeleted(Long id) {

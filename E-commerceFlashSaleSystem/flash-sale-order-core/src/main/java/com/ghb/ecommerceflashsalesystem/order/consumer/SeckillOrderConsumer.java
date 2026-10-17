@@ -9,7 +9,7 @@ import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillOrder;
 import com.ghb.ecommerceflashsalesystem.domain.enums.MessageLogStatusEnum;
 import com.ghb.ecommerceflashsalesystem.order.mapper.SeckillMessageLogMapper;
 import com.ghb.ecommerceflashsalesystem.order.mapper.SeckillOrderMapper;
-import com.ghb.ecommerceflashsalesystem.order.mirror.OrderMirror;
+// P4 收官清理：反向镜像已随旧库下线退役
 import com.ghb.ecommerceflashsalesystem.analytics.service.SeckillRankService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -50,7 +50,7 @@ public class SeckillOrderConsumer {
 
     private final SeckillRankService rankService;
     /** P4 Day 4：order 权威库在 flash_sale_order，写订单/日志后镜像到旧库副本供单体侧 analytics 读 */
-    private final OrderMirror orderMirror;
+    // P4 收官清理：orderMirror 字段与 5 处镜像调用已删除（旧库已 DROP）
     private static final String STREAM_KEY = CacheKeyConstant.SECKILL_ORDER_STREAM;
     private static final String GROUP_NAME = CacheKeyConstant.SECKILL_ORDER_GROUP;
     // 【复盘】曾用 System.getenv("HOSTNAME")，Windows 无此环境变量会拼出 consumer-null-xxx；改 UUID 保证唯一
@@ -199,7 +199,7 @@ public class SeckillOrderConsumer {
                     order.setStatus(1); // CREATED
                     order.setStreamMessageId(messageId);
                     seckillOrderMapper.insert(order); // 必须真正落库（曾因重构丢失此句导致只 ACK 不建单）
-                    orderMirror.upsertOrder(order);    // P4 Day 4：权威库写入后镜像到旧库副本（insert 后 id 已回填）
+                    
                 }
                 // 订单成功（首次 insert 或幂等命中已存在单）即入榜；NX 幂等，重复触发不重复加分
                 rankService.recordSuccess(message.getActivityId(), message.getUserId(), message.getRequestTime());
@@ -286,7 +286,7 @@ public class SeckillOrderConsumer {
         entity.setStatus(MessageLogStatusEnum.PENDING.getCode());
         try {
             seckillMessageLogMapper.insert(entity);
-            orderMirror.upsertMessageLog(entity); // P4 Day 4
+
             return entity;
         } catch (DuplicateKeyException e) {
             // 并发已插入，重查返回
@@ -299,7 +299,7 @@ public class SeckillOrderConsumer {
     private void markSuccess(SeckillMessageLog logEntity, String orderNo) {
         logEntity.setStatus(MessageLogStatusEnum.SUCCESS.getCode());
         seckillMessageLogMapper.updateById(logEntity);
-        orderMirror.upsertMessageLog(logEntity); // P4 Day 4：SUCCESS 状态同步副本
+
         log.info("订单落库成功并ACK, orderNo={}", orderNo);
     }
 
@@ -312,14 +312,14 @@ public class SeckillOrderConsumer {
         logEntity.setStatus(MessageLogStatusEnum.FAILED.getCode());
         logEntity.setErrorMessage(truncate(e.getMessage()));
         seckillMessageLogMapper.updateById(logEntity);
-        orderMirror.upsertMessageLog(logEntity); // P4 Day 4：FAILED 状态同步副本
+
 
         if (newRetry >= MAX_RETRY) {
             // 超过最大重试：转死信、日志置 DEAD、ACK 原消息移出 PEL
             sendToDeadLetter(message, messageId, e.getMessage());
             logEntity.setStatus(MessageLogStatusEnum.DEAD.getCode());
             seckillMessageLogMapper.updateById(logEntity);
-            orderMirror.upsertMessageLog(logEntity); // P4 Day 4：DEAD 状态同步副本
+
             ack(record);
             log.warn("消息进入死信流: orderNo={}, messageId={}", message.getOrderNo(), messageId);
             // R5：订单未落库即进死信（用户必然未抢到），补偿回收库存与幂等令牌，避免资源永久悬空；
