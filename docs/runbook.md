@@ -182,9 +182,15 @@ curl.exe -s http://127.0.0.1:8081/actuator/health     # 无 DEGRADED
    事后复核代码：`SessionGuard.authenticate` 不吞异常、`ApiAccessInterceptor` 只把 `null → 40100`、
    `HttpSessionValidationAdapter` 对 transport 失败抛 `BusinessException(SYSTEM_ERROR)`（→ `50000`）——
    **三者语义与文档一致**，无需修复。
-3. **正确演练步骤（待重跑）**：① 起单体 + auth → ② `POST /api/auth/login` 拿真实 Cookie 名与值 →
-   ③ 停 auth → ④ 用该 Cookie 重放用户态请求，**期望 `50000`**（依赖不可用）、且**不得**返回 200。
-   教训：**演练必须先拿到真实凭证再制造故障**，否则测到的是"未登录"而不是"依赖不可用"。
+3. **正确演练（✅ 2026-10-17 已实测通过）**：① 起单体 + auth → ② 直接对 auth 调
+   `POST /api/auth/login`（`p4d6probe`）拿到真实会话 → ③ **停掉 auth** → ④ 用同一会话请求单体
+   `GET /api/seckill/users/me/orders`：
+
+   ```
+   实测：code=50000  message=会话校验服务不可用：No instances available for flash-sale-auth
+   ```
+   ⇒ `40100`（未登录）与 `50000`（校验依赖不可用）**成功区分**，且请求被拒绝（未放行）。fail-closed 语义闭环。
+   教训：**演练必须先拿到真实凭证再制造故障**，否则测到的是"未登录"而不是"依赖不可用"（上表第 2 行就是这么来的）。
 4. 演练 2（停 order 看读侧降级）此前已实测通过：`metrics/rank` 在 order 缺席时仍正确返回（见 `plan.md` 的 M6 运行时证据）。
 
 ---
