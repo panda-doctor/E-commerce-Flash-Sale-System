@@ -29,6 +29,15 @@ public interface SeckillOrderMapper extends BaseMapper<SeckillOrder> {
      */
     List<SeckillOrder> selectByUserIdAndActivityId(@Param("userId") Long userId,
                                                    @Param("activityId") Long activityId);
+
+    /**
+     * P5：投影回填用 —— 取某活动的全部**成功**订单（按创建时间升序，保证重建后的榜单相对顺序稳定）。
+     *
+     * <p>只给内部回填端点用；正常查询路径不走它。</p>
+     */
+    @org.apache.ibatis.annotations.Select(
+            "SELECT * FROM seckill_order WHERE activity_id = #{activityId} AND status = 1 ORDER BY created_at")
+    List<SeckillOrder> selectSuccessByActivityId(@Param("activityId") Long activityId);
 }
 
 
