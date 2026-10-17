@@ -54,6 +54,35 @@ public class DeadLetterReplayService {
      * @param originalMessageId 原主 Stream 消息 ID（消费者转死信时写入死信体 originalMessageId 字段）
      * @return 回放后新消息的 Stream messageId
      */
+    /**
+     * 批量重放（P2-8）：按给定的 originalMessageId 列表逐条重放。
+     *
+     * <p>语义：**单条失败不影响其余**，最终返回 尝试/成功/失败 统计与失败原因列表 ——
+     * 便于运维在修完数据后一次性补投，并直接看到哪几条仍需人工处理。</p>
+     */
+    public java.util.Map<String, Object> replayBatch(java.util.List<String> originalMessageIds) {
+        int succeeded = 0;
+        java.util.List<String> failures = new java.util.ArrayList<>();
+        int attempted = originalMessageIds == null ? 0 : originalMessageIds.size();
+        if (originalMessageIds != null) {
+            for (String originalMessageId : originalMessageIds) {
+                try {
+                    replay(originalMessageId);
+                    succeeded++;
+                } catch (Exception e) {
+                    log.warn("死信批量重放中单条失败，originalMessageId={}", originalMessageId, e);
+                    failures.add(originalMessageId + "：" + e.getMessage());
+                }
+            }
+        }
+        java.util.Map<String, Object> summary = new java.util.LinkedHashMap<>();
+        summary.put("attempted", attempted);
+        summary.put("succeeded", succeeded);
+        summary.put("failed", failures.size());
+        summary.put("failures", failures);
+        return summary;
+    }
+
     public String replay(String originalMessageId) {
         // 1. 日志校验：只有 DEAD 状态的消息才允许人工回放
         SeckillMessageLog deadLog = messageLogMapper.selectOne(new LambdaQueryWrapper<SeckillMessageLog>()

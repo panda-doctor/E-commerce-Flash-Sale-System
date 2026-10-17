@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -39,5 +40,15 @@ public class AdminMessageController {
         return Result.success(Map.of(
                 "originalMessageId", request.getOriginalMessageId(),
                 "replayMessageId", replayMessageId));
+    }
+
+    /**
+     * POST /api/admin/seckill/dead-letters/replay-batch（P2-8）
+     * 按 id 列表批量重放；单条失败不影响其余，返回 attempted/succeeded/failed/failures。
+     * 请求体：{"originalMessageIds": ["...", "..."]}
+     */
+    @PostMapping("/dead-letters/replay-batch")
+    public Result<Map<String, Object>> replayDeadLetters(@RequestBody Map<String, List<String>> body) {
+        return Result.success(deadLetterReplayService.replayBatch(body.get("originalMessageIds")));
     }
 }
