@@ -224,7 +224,7 @@ private void compensateDeadMessage(SeckillOrderMessage message) {
 | P2-6 | 订单 | `/users/{userId}/orders` 与 `/users/me/orders` 语义重复（前者仅本人可用） | `OrderController` | 契约冗余，易误用 | 保留 `me`，`{userId}` 改为管理端 |
 | P2-7 | 图片上传 | 合法文件被误拒的历史问题未复现/未修 | `AdminFileController` 校验分支 | 管理端上传失败 | 改用魔数头校验 + 允许格式白名单 |
 | P2-8 | 死信 | 重放接口无批量参数与告警阈值（仅手动触发） | `AdminMessageController` | 故障恢复慢 | 加批量与"死信 > N 告警" |
-| P2-9 | 库存补偿 | 补偿固定 `INCR +1`，若 `SeckillRequest.quantity > 1` 会**少回补** | `SeckillOrderConsumer:415` | 大数量下单场景库存失真 | 补偿改为 `INCRBY <quantity>`，或显式约束 `quantity == 1`（秒杀语义） |
+| ~~P2-9~~ | 库存补偿 | **撤销（第二次误判）**：`SeckillRequest` 只有 `activityId/userId/productId`，**没有 quantity 字段** ⇒ 系统语义即"一次一件"，`INCR +1` 与原扣减严格对称 | `SeckillRequest.java:20-31` | — | 无需修改；若未来引入 quantity，必须同步改 Lua 扣减与补偿（已记录约束） |
 | P2-10 | 库存一致性 | 补偿是**事件驱动**（仅死信触发），缺周期性对账任务（Redis 已扣 − DB 成功订单） | 缺失 `StockReconcileScheduler` | 丢消息/人工误操作造成的长期漂移无法发现 | 增加每日对账任务 + 差异告警（可复用 `reconcile-analytics-projection.ps1` 风格） |
 
 ### P3（低）—— 5 项
