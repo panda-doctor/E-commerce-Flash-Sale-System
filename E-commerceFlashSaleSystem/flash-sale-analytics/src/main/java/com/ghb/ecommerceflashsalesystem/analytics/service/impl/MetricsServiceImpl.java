@@ -42,8 +42,8 @@ public class MetricsServiceImpl implements MetricsService {
      * <p>为什么保留回退：投影与"DB 订单数"存在**延迟窗口**（消息尚未消费），切换默认值前
      * 需要一段双读观察期；出问题一行配置即可切回，不必回滚代码。</p>
      */
-    @org.springframework.beans.factory.annotation.Value("${module.analytics.metrics-source:projection}")
-    private String metricsSource = "projection";
+    @org.springframework.beans.factory.annotation.Value("${module.analytics.metrics-source:order}")
+    private String metricsSource = "order";
 
     private long orderCount(Long activityId) {
         if ("order".equalsIgnoreCase(metricsSource)) {
