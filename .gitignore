@@ -10,3 +10,4 @@ mymodule/
 .env
 .env.*
 !.env.example
+_legacy-backup/

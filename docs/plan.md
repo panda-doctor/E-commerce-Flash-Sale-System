@@ -827,7 +827,7 @@
 | P1 | 基础设施（Nacos / Gateway / Compose / 追踪 / 监控） | 3 天 | M2 基建就绪 | 🔄 P1-1 ✅ / P1-2 进行中（T1 ✅） |
 | P2 | 边缘抽取（auth-service / ai-service / 网关统一鉴权） | 4 天 | M3 首个服务上线 | ⏳ |
 | P3 | 商品与活动（product / activity 独立库与缓存所有权） | 5 天 | M4 主数据域独立 | ⏳ |
-| P4 | 核心交易（seckill / order / `order.created` 事件 / 数据迁移） | 6 天 | M5 跨服务交易闭环 | ⏳（**Day 1 切读 ✅ / Day 2 seckill ✅ / Day 3 order ✅ / Day 4 order 库拆分 ✅ / Day 5 ai 摘出旧库 + 测试隔离 ✅ / Day 6 auth 库拆分 + 清理归属收口 ✅ / Day 7 会话校验跨服务化 ✅ / Day 8 analytics 订单读路径跨服务化 ✅ / Day 9 Redis 隔离 ✅**（2026-10-16）；**旧库下线检查表已清零，收官日见第九章末**） |
+| P4 | 核心交易（seckill / order / `order.created` 事件 / 数据迁移） | 6 天 | M5 跨服务交易闭环 | ✅（**Day 1 切读 / Day 2 seckill / Day 3 order / Day 4 order 库拆分 / Day 5 ai 摘出旧库 + 测试隔离 / Day 6 auth 库拆分 + 清理归属收口 / Day 7 会话校验跨服务化 / Day 8 analytics 订单读路径跨服务化 / Day 9 Redis 隔离 / Day 10 收官（旧库 `flash_sale` 已 DROP）**（2026-10-16~17）；检查表清零；剩余仅"删镜像死代码"一项卫生工作） |
 | P5 | 读模型收口（analytics 事件驱动，CQRS 完成） | 3 天 | M6 读模型分离 | ⏳ |
 | P6 | 质量运维（CI/CD / 告警 / 混沌演练 / Runbook） | 4 天 | M7 可运维交付 | ⏳ |
 
@@ -1799,6 +1799,33 @@ required a bean of type 'javax.sql.DataSource' that could not be found.
 ⇒ 去数据源必须与"健康检查改为可选依赖"**一起做**：把 `HealthController` 的 `DataSource` 改成 `ObjectProvider<DataSource>`（无库时该组件报 `db: absent/unknown`，有库时照旧），然后才能 `exclude` 并删 yaml 的 datasource 段。**已回退**（保持可启动），并在启动类留了注释指针。**Step C 剩余顺序**：① 健康检查可选化（1 处）→ ② `exclude` + 删 datasource 段 + 单跑单体验证 health 无 `db` → ③ 停镜像（三个应用的 `module.db.dual-write.enabled=false`）观察一轮回归 → ④ 删镜像代码（`DualWriteMirror`/`OrderMirror`/`AuthMirror`/`DualWriteProperties` + 18 个写点）→ ⑤ `mysqldump flash_sale` 备份 → ⑥ `DROP DATABASE flash_sale` + 对账脚本退役（改权威四库自检）→ ⑦ 守卫断言（单体无 `@MapperScan`、生产上下文无死链 Bean）。
 
 **Step A 的准确范围（改由下一单元承载）**：① 单体收窄 `scanBasePackages` + `@MapperScan` 只留必要；② **测试套件搬迁/替身化**（上面点名的两个测试 + 约十个 autowire 域 Bean 的用例）—— 这一项必须作为一个完整单元推进，且要在 Step B 完成后进行（那时快照已不在单体侧）。
+
+---
+
+## 🎯 P4 收官记录（2026-10-16 ~ 10-17）—— 三阶段迁移终点
+
+**旧库 `flash_sale` 已 `DROP DATABASE` 下线。现存 schema：`flash_sale_product` / `flash_sale_activity` / `flash_sale_order` / `flash_sale_auth` + 测试库 `flash_sale_test`。**
+
+### 收官执行顺序（实测走完，含两次红）
+
+| 步 | 内容 | 判据/证据 |
+|---|---|---|
+| **A 单体瘦身** | `scanBasePackages` 收窄 + **`@MapperScan` 整段删除** + `@Import(SeckillStockService.class)`（精确引入，避开同域下要 `activity.mapper` 的 `SeckillServiceImpl`）+ 测试侧 `analytics/TestDomainContextConfig`（`@ComponentScan` 域包 + `@MapperScan` 四包 + `@Import(LocalProductCatalogAdapter)`，放在**被扫描的包**里让 `@SpringBootTest` 自动拾取） | 回归 **136/0/0**（测试**零改动**）；生产单体能真起（rank code=0） |
+| **B 快照搬家** | ① `flash_sale_order` 建同构 `seckill_activity_snapshot`（10 列/2 索引/0 行）；② 写端点按归属搬到 order 应用（`AdminMetricsCaptureController`，网关补精确 Path），analytics 控制器只留读；③ `MetricsServiceImpl` 的快照依赖改 `ObjectProvider`（无 mapper 的宿主也能装配） | build ✓ / 定向用例 ✓ / 回归 136/0/0 ✓ / 签名逐表不变 ✓ |
+| **C-①② 单体去数据源** | 健康检查改 `ObjectProvider<DataSource>`（无库报 `mysql=ABSENT`）+ **属性化**排除 `DataSourceAutoConfiguration`（`spring.autoconfigure.exclude`，测试 properties 置空即恢复） | 单跑单体：`8081` UP、`actuator.health` **无 `db` 组件**、`/api/health` = `{"application":"UP","mysql":"ABSENT","redis":"UP"}`；回归 **136/0/0** |
+| **C-③ 停镜像** | activity/auth/order/product 四处 `dual-write.enabled` 默认 `true → false` | 回归 136/0/0 |
+| **C-⑤ 备份** | `_legacy-backup/flash_sale_20261016.sql`（1.6 MB，`CREATE DATABASE` + 7 表 + 数据），目录进 `.gitignore` | 文件大小/内容校验 ✓ |
+| **C-⑥ 下线** | ① 测试库脚本**自足化**：源=四权威库逐表映射（7 表行数全 ✓）、**外键改为脚本内显式声明 5 条**（原从源库 `information_schema` 反查 —— 权威库零外键 + 旧库消失后无源可查）；② 对账脚本**退役**（12 处旧库查询，文件头写明原因、保留 18 项定义作迁移史档案）；③ 守卫：备份 >1MB 才 `DROP DATABASE flash_sale` | 快照脚本退出码 0、`test.fk=5`、FK 相关用例 **3/0/0**；**DROP 已执行**；终态 schema 清单确认旧库消失 |
+| **C-⑦ 守卫断言** | 新增 `guard/PostMigrationInvariantsTest`（纯 JUnit，4 条）：单体无 `@MapperScan`、装配面不含 domain 包、数据源排除必须走**属性**（类级 `exclude` 不许用 —— 它测试撤销不了，正是首轮红掉的原因）、`DualWriteProperties.enabled` 类内默认必须 `false` | **4/0/0（0.1 秒）** |
+
+### 两个必须记住的教训
+
+1. **"可被测试覆盖"是配置机制的一等公民**：同样是"排除数据源"，类级 `@SpringBootApplication(exclude=…)` 编译进 classpath、测试撤销不了 → 集成测试全红；属性 `spring.autoconfigure.exclude` 可被测试 properties 置空覆盖 → 生产无库、测试有库，两者并存。**选机制时先问"谁能覆盖它"。**
+2. **下线一个数据库 = 先找出所有"以它为唯一来源"的工具链**：测试库快照脚本（源库）、外键恢复（从源库反查）、对账脚本（12 处对比查询）—— 这三处都不是业务代码，`grep` 业务代码找不到它们。**DROP 前必须清点 scripts/ 与运维侧，而不只是 src/。**
+
+### 遗留（唯一一项，卫生性质）
+
+`DualWriteMirror` / `DualWriteProperties` / `OrderMirror` / `AuthMirror` 及 ~18 处写点调用仍在代码里（**开关默认已关** ✓，`DualWriteProperties` 的 `legacy*Url` 默认值仍指向已消失的旧库 —— 启用会立刻失败，属"响亮失败"而非静默）。删除它们是一次纯删除式重构，建议单独一个提交完成（涉及 13 个文件，需跑一轮全量回归）。
 
 ---
 
