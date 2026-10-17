@@ -33,6 +33,29 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class SessionGuard {
 
+    /**
+     * P4 收官后优化①：会话校验结果的**本机短 TTL 缓存**（默认 {@code 0s} = 关闭，行为与之前完全一致）。
+     *
+     * <p><b>为什么</b>：跨服务化后每个受保护请求都要打一次 auth 的内部校验接口。{@code 1s~2s} 的 TTL
+     * 足以把同一页面连续请求（列表 + 详情 + 轮询）的往返压掉大半。</p>
+     *
+     * <p><b>代价（必须显式接受才启用）</b>：吊销（登出 / 改密 / 禁用）的**生效延迟 ≤ TTL**，且各运行时
+     * 各自缓存、互不同步。故默认 0（关闭）；启用请配**短**值。</p>
+     *
+     * <p><b>只缓存"有效"结果</b>：查无此会话不缓存（刚登录可能马上有效），校验失败必须每次重试
+     * （fail-closed，异常不落缓存）。</p>
+     */
+    @org.springframework.beans.factory.annotation.Value("${module.auth.session-cache-ttl:0s}")
+    private java.time.Duration sessionCacheTtl = java.time.Duration.ZERO;
+
+    /** 缓存条目上限（超限整体清空：会话是短生命周期对象，简单策略足够）。 */
+    private static final int CACHE_MAX_ENTRIES = 10_000;
+
+    private final java.util.Map<String, CachedView> viewCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private record CachedView(SessionValidationPort.SessionView view, long expiresAtNanos) {
+    }
+
     private final SessionValidationPort sessionValidationPort;
     private final SecurityProperties securityProperties;
 
@@ -48,7 +71,13 @@ public class SessionGuard {
             return null;
         }
         String hash = sha256(token);
-        Optional<SessionValidationPort.SessionView> view = sessionValidationPort.validate(hash);
+        Optional<SessionValidationPort.SessionView> view;
+        SessionValidationPort.SessionView cached = cachedView(hash);
+        if (cached != null) {
+            return new AuthenticatedSession(cached.userId(), hash, cached.csrfTokenHash());
+        }
+        view = sessionValidationPort.validate(hash);
+        view.ifPresent(v -> cacheView(hash, v));
         return view.map(v -> new AuthenticatedSession(v.userId(), hash, v.csrfTokenHash())).orElse(null);
     }
 
@@ -63,6 +92,31 @@ public class SessionGuard {
                         session.getCsrfTokenHash().getBytes(StandardCharsets.UTF_8))) {
             throw new BusinessException(ResultCode.CSRF_INVALID, "安全校验已失效，请刷新后重试");
         }
+    }
+
+    private SessionValidationPort.SessionView cachedView(String hash) {
+        if (sessionCacheTtl.isZero() || sessionCacheTtl.isNegative()) {
+            return null;
+        }
+        CachedView entry = viewCache.get(hash);
+        if (entry == null) {
+            return null;
+        }
+        if (entry.expiresAtNanos() <= System.nanoTime()) {
+            viewCache.remove(hash, entry);
+            return null;
+        }
+        return entry.view();
+    }
+
+    private void cacheView(String hash, SessionValidationPort.SessionView view) {
+        if (sessionCacheTtl.isZero() || sessionCacheTtl.isNegative()) {
+            return;
+        }
+        if (viewCache.size() >= CACHE_MAX_ENTRIES) {
+            viewCache.clear();
+        }
+        viewCache.put(hash, new CachedView(view, System.nanoTime() + sessionCacheTtl.toNanos()));
     }
 
     private static String cookieValue(HttpServletRequest request, String name) {
