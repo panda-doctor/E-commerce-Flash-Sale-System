@@ -39,9 +39,13 @@ export function ActivityCard({ item, onRefresh }: { item: ActivityItem; onRefres
           <span className="tnum text-lg font-extrabold leading-none text-brand sm:text-xl">
             {formatPrice(item.seckillPrice)}
           </span>
-          <span className="tnum text-[11px] text-ink-400 line-through sm:text-xs">
-            {formatPrice(item.originalPrice)}
-          </span>
+          {item.seckillPrice != null &&
+          item.originalPrice != null &&
+          item.seckillPrice < item.originalPrice ? (
+            <span className="tnum text-[11px] text-ink-600 line-through sm:text-xs">
+              {formatPrice(item.originalPrice)}
+            </span>
+          ) : null}
         </div>
 
         <StockBar stock={item.stock} totalStock={item.totalStock} />
@@ -54,7 +58,7 @@ export function ActivityCard({ item, onRefresh }: { item: ActivityItem; onRefres
               onFinish={onRefresh}
             />
           </span>
-          <span className="tnum truncate text-[11px] text-ink-400">
+          <span className="tnum truncate text-[11px] text-ink-600">
             {formatDateTime(item.startTime)} 起
           </span>
         </div>

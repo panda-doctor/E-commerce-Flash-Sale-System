@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '../../lib/cn'
 
-/** 分页器：页码窗口最多 5 个，避免长列表把导航撑爆。 */
+/** 分页器：页码窗口最多 5 个；选中态用深色实心，避免与秒杀红争夺注意力。 */
 export function Pagination({
   page,
   pages,
@@ -26,8 +26,8 @@ export function Pagination({
       disabled={disabled}
       onClick={() => onChange(target)}
       className={cn(
-        'flex size-9 items-center justify-center rounded-full border border-state-line bg-white text-ink-600 transition-colors duration-150 focus-ring',
-        disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:border-brand hover:text-brand',
+        'flex size-9 items-center justify-center rounded-full border border-state-line bg-page-card text-ink-600 transition-colors duration-150 focus-ring',
+        disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:border-state-line-strong hover:text-ink-900',
       )}
     >
       {icon}
@@ -46,8 +46,8 @@ export function Pagination({
           className={cn(
             'tnum size-9 cursor-pointer rounded-full border text-sm font-semibold transition-colors duration-150 focus-ring',
             item === page
-              ? 'border-brand bg-brand text-white'
-              : 'border-state-line bg-white text-ink-600 hover:border-brand hover:text-brand',
+              ? 'border-ink-900 bg-ink-900 text-white'
+              : 'border-state-line bg-page-card text-ink-600 hover:border-state-line-strong hover:text-ink-900',
           )}
         >
           {item}

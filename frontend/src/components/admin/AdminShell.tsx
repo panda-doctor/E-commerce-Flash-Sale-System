@@ -12,7 +12,7 @@ function TokenGate({ children }: { children: ReactNode }) {
   if (token) {
     return (
       <div className="space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-state-line bg-white px-4 py-2.5 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-state-line bg-page-card px-4 py-2.5 text-sm">
           <span className="flex items-center gap-2 text-ink-600">
             <ShieldCheck className="size-4 text-state-success" aria-hidden />
             已载入管理令牌（仅本标签页有效）
@@ -32,9 +32,9 @@ function TokenGate({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="mx-auto max-w-md rounded-xl border border-state-line bg-white p-6 shadow-card">
+    <div className="mx-auto max-w-md rounded-xl border border-state-line bg-page-card p-6 shadow-card">
       <div className="flex items-center gap-2">
-        <KeyRound className="size-5 text-brand" aria-hidden />
+        <KeyRound className="size-5 text-ink-600" aria-hidden />
         <h1 className="text-lg font-bold text-ink-900">需要管理令牌</h1>
       </div>
       <p className="mt-2 text-sm leading-6 text-ink-600">

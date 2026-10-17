@@ -6,9 +6,10 @@ type Size = 'sm' | 'md' | 'lg'
 
 const VARIANT: Record<Variant, string> = {
   primary: 'bg-brand text-white hover:bg-brand-dark active:bg-brand-dark',
-  secondary: 'border border-state-line bg-white text-ink-900 hover:border-ink-400 hover:bg-page',
+  secondary:
+    'border border-state-line bg-page-card text-ink-900 hover:border-state-line-strong hover:bg-page active:bg-page-subtle',
   ghost: 'text-ink-600 hover:bg-page hover:text-ink-900',
-  danger: 'bg-state-danger text-white hover:opacity-90',
+  danger: 'bg-state-danger text-white hover:bg-state-danger/90 active:bg-state-danger',
 }
 
 const SIZE: Record<Size, string> = {
@@ -44,8 +45,9 @@ export function Button({
       disabled={isDisabled}
       aria-busy={loading}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-md font-semibold transition-all duration-150 focus-ring',
-        'disabled:cursor-not-allowed disabled:opacity-60',
+        'inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors duration-150 focus-ring',
+        // 禁用态保留可辨识的灰化，而不是继续显示可点击的饱和色
+        'disabled:cursor-not-allowed disabled:opacity-45',
         VARIANT[variant],
         SIZE[size],
         block && 'w-full',

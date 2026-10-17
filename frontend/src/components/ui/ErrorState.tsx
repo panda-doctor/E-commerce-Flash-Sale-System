@@ -14,8 +14,10 @@ export function ErrorState({
   const requestId = requestIdOf(error)
 
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-state-danger/20 bg-brand-soft/40 px-6 py-14 text-center">
-      <AlertTriangle className="size-8 text-state-danger" aria-hidden />
+    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-state-line bg-page-card px-6 py-14 text-center">
+      <span className="flex size-12 items-center justify-center rounded-full bg-state-danger/10">
+        <AlertTriangle className="size-6 text-state-danger" aria-hidden />
+      </span>
       <h3 className="text-subheading text-ink-900">{title}</h3>
       <p className="max-w-md text-sm text-ink-600">{toMessage(error)}</p>
       {requestId ? (

@@ -24,7 +24,7 @@ export function Input({ label, error, hint, className, id, ...rest }: InputProps
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         className={cn(
-          'h-11 w-full rounded-lg border bg-white px-3.5 text-sm text-ink-900 outline-none transition-[border-color,box-shadow] duration-150',
+          'h-11 w-full rounded-lg border bg-page-card px-3.5 text-sm text-ink-900 outline-none transition-[border-color,box-shadow] duration-150',
           'placeholder:text-ink-400 disabled:cursor-not-allowed disabled:bg-page disabled:text-ink-400',
           error
             ? 'border-state-danger focus:border-state-danger focus:ring-2 focus:ring-state-danger/15'
@@ -38,7 +38,7 @@ export function Input({ label, error, hint, className, id, ...rest }: InputProps
           {error}
         </p>
       ) : hint ? (
-        <p id={`${inputId}-hint`} className="text-xs text-ink-400">
+        <p id={`${inputId}-hint`} className="text-xs text-ink-600">
           {hint}
         </p>
       ) : null}

@@ -70,10 +70,10 @@ export default function ProductListPage() {
 
   return (
     <div className="pb-12">
-      <section className="border-b border-state-line bg-white">
+      <section className="border-b border-state-line bg-page-card">
         <div className="container-page grid gap-8 py-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:py-12">
           <div>
-            <span className="chip border-brand/20 bg-brand-soft text-brand">
+            <span className="chip border-brand/20 bg-brand-soft text-brand-ink">
               <Flame className="size-3.5" aria-hidden />
               整点开抢 · 限时秒杀
             </span>
@@ -86,15 +86,15 @@ export default function ProductListPage() {
             </p>
             <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-xs text-ink-600">
               <li className="flex items-center gap-1.5">
-                <ShieldCheck className="size-3.5 text-state-success" aria-hidden />
+                <ShieldCheck className="size-3.5 text-ink-400" aria-hidden />
                 库存由服务端实时校验
               </li>
               <li className="flex items-center gap-1.5">
-                <Timer className="size-3.5 text-brand" aria-hidden />
+                <Timer className="size-3.5 text-ink-400" aria-hidden />
                 倒计时以服务端时间为准
               </li>
               <li className="flex items-center gap-1.5">
-                <ReceiptText className="size-3.5 text-state-info" aria-hidden />
+                <ReceiptText className="size-3.5 text-ink-400" aria-hidden />
                 排队结果随时可查
               </li>
             </ul>
@@ -106,7 +106,7 @@ export default function ProductListPage() {
               className="group block rounded-xl border border-brand/20 bg-brand-soft p-5 transition-colors duration-150 hover:border-brand/50 focus-ring sm:p-6"
             >
               <div className="flex items-center justify-between gap-3">
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand">
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-ink">
                   <span className="size-1.5 rounded-full bg-brand" aria-hidden />
                   正在进行
                 </span>
@@ -158,7 +158,7 @@ export default function ProductListPage() {
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder="搜索商品名称，例如：耳机、咖啡机"
               aria-label="搜索商品"
-              className="h-11 w-full rounded-full border border-state-line bg-white pl-10 pr-10 text-sm text-ink-900 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-400 hover:border-ink-400/40 focus:border-brand focus:ring-2 focus:ring-brand/15"
+              className="h-11 w-full rounded-full border border-state-line bg-page-card pl-10 pr-10 text-sm text-ink-900 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-400 hover:border-ink-400/40 focus:border-brand focus:ring-2 focus:ring-brand/15"
             />
             {keyword ? (
               <button
@@ -189,9 +189,9 @@ export default function ProductListPage() {
         <div className="mb-4 flex items-baseline justify-between gap-3">
           <h2 className="text-subheading text-ink-900">在售好物</h2>
           {debouncedKeyword ? (
-            <span className="truncate text-xs text-ink-400">“{debouncedKeyword}” 的搜索结果</span>
+            <span className="truncate text-xs text-ink-600">“{debouncedKeyword}” 的搜索结果</span>
           ) : (
-            <span className="text-xs text-ink-400">实时库存 · 售完即止</span>
+            <span className="text-xs text-ink-600">实时库存 · 售完即止</span>
           )}
         </div>
 

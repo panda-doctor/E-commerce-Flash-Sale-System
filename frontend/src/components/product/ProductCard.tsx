@@ -22,6 +22,9 @@ export function ProductCard({ product, activity }: { product: Product; activity?
   const target = activity ? `/activities/${activity.activityId}` : `/products/${product.productId}`
   const seckillPrice = activity?.seckillPrice ?? null
   const discount = discountLabel(seckillPrice, product.originalPrice)
+  // 只有"活动价确实低于原价"时才展示划线原价，避免出现活动价比原价还贵的荒谬对照
+  const showOriginalPrice =
+    seckillPrice != null && product.originalPrice != null && seckillPrice < product.originalPrice
 
   return (
     <article className="card card-hover group flex flex-col overflow-hidden">
@@ -30,19 +33,19 @@ export function ProductCard({ product, activity }: { product: Product; activity?
         <div className="pointer-events-none absolute inset-x-2.5 top-2.5 flex items-start justify-between gap-1.5">
           <div className="flex flex-col items-start gap-1.5">
             {activity ? (
-              <Badge tone="brand" className="border-transparent bg-white/95 shadow-sm backdrop-blur-[2px]">
+              <Badge tone="brand" className="border-brand/20 bg-brand-soft/95 shadow-sm">
                 限时秒杀
               </Badge>
             ) : null}
           </div>
           {soldOut ? (
-            <Badge tone="neutral" className="border-transparent bg-ink-900/75 text-white shadow-sm">
+            <Badge tone="neutral" className="border-state-line bg-page-card/95 text-ink-600 shadow-sm">
               已售罄
             </Badge>
           ) : null}
         </div>
         {discount ? (
-          <span className="tnum pointer-events-none absolute bottom-2.5 left-2.5 rounded-md border border-brand/20 bg-white/95 px-1.5 py-0.5 text-[11px] font-semibold text-brand shadow-sm">
+          <span className="tnum pointer-events-none absolute bottom-2.5 left-2.5 rounded-md border border-brand/20 bg-brand-soft/95 px-1.5 py-0.5 text-[11px] font-semibold text-brand-ink shadow-sm">
             {discount}
           </span>
         ) : null}
@@ -51,7 +54,7 @@ export function ProductCard({ product, activity }: { product: Product; activity?
       <div className="flex flex-1 flex-col gap-2 p-3 sm:gap-2.5 sm:p-4">
         <Link
           to={target}
-          className="line-clamp-2 min-h-[2.75rem] text-sm font-semibold leading-[1.375rem] text-ink-900 transition-colors duration-150 hover:text-brand focus-ring sm:text-[15px] sm:leading-6"
+          className="line-clamp-2 min-h-[2.75rem] text-sm font-semibold leading-[1.375rem] text-ink-900 focus-ring sm:text-[15px] sm:leading-6"
         >
           {product.name}
         </Link>
@@ -62,9 +65,11 @@ export function ProductCard({ product, activity }: { product: Product; activity?
               <span className="tnum text-lg font-extrabold leading-none text-brand sm:text-xl">
                 {formatPrice(seckillPrice)}
               </span>
-              <span className="tnum text-[11px] text-ink-400 line-through sm:text-xs">
-                {formatPrice(product.originalPrice)}
-              </span>
+              {showOriginalPrice ? (
+                <span className="tnum text-[11px] text-ink-600 line-through sm:text-xs">
+                  {formatPrice(product.originalPrice)}
+                </span>
+              ) : null}
             </>
           ) : (
             <span className="tnum text-lg font-extrabold leading-none text-ink-900 sm:text-xl">
@@ -88,7 +93,7 @@ export function ProductCard({ product, activity }: { product: Product; activity?
               ? 'bg-page text-ink-400 hover:bg-page'
               : activity
                 ? 'bg-brand text-white hover:bg-brand-dark'
-                : 'border border-state-line bg-white text-ink-900 hover:border-brand hover:text-brand',
+                : 'border border-state-line bg-page-card text-ink-900 hover:border-state-line-strong hover:bg-page',
           )}
         >
           {soldOut ? '已售罄' : activity ? '去抢购' : '查看详情'}

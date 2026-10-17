@@ -58,7 +58,7 @@ export default function ActivityDetailPage() {
     <div className="container-page py-8">
       <Link
         to="/activities"
-        className="mb-5 inline-flex items-center gap-1.5 text-sm text-ink-600 transition-colors duration-150 hover:text-brand focus-ring"
+        className="mb-5 inline-flex items-center gap-1.5 rounded-full text-sm text-ink-600 transition-colors duration-150 hover:text-ink-900 focus-ring"
       >
         <ArrowLeft className="size-4" aria-hidden />
         返回活动列表
@@ -89,7 +89,7 @@ export default function ActivityDetailPage() {
             {product ? (
               <Link
                 to={`/products/${product.productId}`}
-                className="mt-1.5 inline-block text-sm text-ink-600 transition-colors duration-150 hover:text-brand"
+                className="mt-1.5 inline-block text-sm text-ink-600 underline-offset-4 transition-colors duration-150 hover:text-ink-900 hover:underline"
               >
                 {product.name}
               </Link>
@@ -102,7 +102,7 @@ export default function ActivityDetailPage() {
                 {formatPrice(activity.seckillPrice)}
               </span>
               {product?.originalPrice != null ? (
-                <span className="tnum pb-1 text-sm text-ink-400 line-through">
+                <span className="tnum pb-1 text-sm text-ink-600 line-through">
                   {formatPrice(product.originalPrice)}
                 </span>
               ) : null}
@@ -146,7 +146,7 @@ export default function ActivityDetailPage() {
               秒杀一次只成交一件；重复提交会返回「已抢过」，不会重复下单。
             </li>
             <li className="flex items-start gap-1.5">
-              <Info className="mt-0.5 size-3.5 shrink-0 text-state-info" aria-hidden />
+              <Info className="mt-0.5 size-3.5 shrink-0 text-ink-400" aria-hidden />
               提交成功后订单进入排队，本页会自动轮询结果，也可以稍后到「我的订单」查看。
             </li>
           </ul>

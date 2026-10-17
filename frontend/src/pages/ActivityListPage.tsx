@@ -50,7 +50,7 @@ export default function ActivityListPage() {
         <Button
           variant="secondary"
           size="sm"
-          className="rounded-full"
+          className="self-start rounded-full sm:self-auto"
           loading={activitiesQuery.isFetching}
           onClick={() => activitiesQuery.refetch()}
         >
@@ -58,7 +58,7 @@ export default function ActivityListPage() {
         </Button>
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="活动筛选">
+      <div className="mt-5 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible" role="tablist" aria-label="活动筛选">
         {FILTERS.map((item) => (
           <button
             key={item.key}
@@ -66,18 +66,14 @@ export default function ActivityListPage() {
             role="tab"
             aria-selected={filter === item.key}
             onClick={() => setFilter(item.key)}
-            className={
-              filter === item.key
-                ? 'cursor-pointer rounded-full bg-brand px-4 py-1.5 text-sm font-semibold text-white'
-                : 'cursor-pointer rounded-full border border-state-line bg-white px-4 py-1.5 text-sm text-ink-600 transition-colors duration-150 hover:border-brand hover:text-brand'
-            }
+            className={filter === item.key ? 'filter-pill-active' : 'filter-pill'}
           >
             {item.label}
             <span
               className={
                 filter === item.key
-                  ? 'tnum ml-1.5 text-xs font-medium text-white/80'
-                  : 'tnum ml-1.5 text-xs font-medium text-ink-400'
+                  ? 'tnum ml-1.5 text-xs font-medium text-white/70'
+                  : 'tnum ml-1.5 text-xs font-medium text-ink-600'
               }
             >
               {counts[item.key] ?? 0}

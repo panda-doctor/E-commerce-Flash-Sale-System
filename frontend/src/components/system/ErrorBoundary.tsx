@@ -45,7 +45,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 py-16 text-center">
-        <div className="flex size-12 items-center justify-center rounded-full bg-brand-soft">
+        <div className="flex size-12 items-center justify-center rounded-full bg-state-danger/10">
           <AlertTriangle className="size-6 text-state-danger" aria-hidden />
         </div>
         <h1 className="text-subheading text-ink-900">页面出现异常</h1>

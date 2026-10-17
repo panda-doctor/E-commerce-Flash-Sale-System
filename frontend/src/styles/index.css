@@ -3,6 +3,33 @@
 @tailwind utilities;
 
 @layer base {
+  /* 语义变量从 Tailwind 令牌派生，供内联样式 / 原生 CSS 复用，避免出现第二套色值 */
+  :root {
+    color-scheme: light;
+
+    --color-page-bg: theme('colors.page.DEFAULT');
+    --color-surface: theme('colors.page.card');
+    --color-surface-muted: theme('colors.page.subtle');
+
+    --color-text-primary: theme('colors.ink.900');
+    --color-text-secondary: theme('colors.ink.600');
+    --color-text-muted: theme('colors.ink.400');
+
+    --color-border: theme('colors.state.line');
+    --color-border-strong: theme('colors.state.line-strong');
+
+    --color-primary: theme('colors.brand.DEFAULT');
+    --color-primary-hover: theme('colors.brand.dark');
+    --color-primary-soft: theme('colors.brand.soft');
+
+    --color-success: theme('colors.state.success');
+    --color-warning: theme('colors.state.warning');
+    --color-danger: theme('colors.state.danger');
+
+    --shadow-card: theme('boxShadow.card');
+    --shadow-card-hover: theme('boxShadow.card-hover');
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
   }
@@ -52,9 +79,9 @@
     @apply rounded-xl border border-state-line bg-page-card shadow-card;
   }
 
-  /* 可点击卡片：仅动 transform / 颜色 / 阴影，遵循 200ms 反馈上限 */
+  /* 可点击卡片：只做轻微位移与阴影变化，边框保持中性，不用品牌色抢焦点 */
   .card-hover {
-    @apply transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-card-hover motion-reduce:transform-none motion-reduce:transition-none;
+    @apply transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-state-line-strong hover:shadow-card-hover motion-reduce:transform-none motion-reduce:transition-none;
   }
 
   .focus-ring {
@@ -64,5 +91,24 @@
   /* 胶囊信息块：阶段、限购、库存提示等轻量元信息 */
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-full border border-state-line bg-page-subtle px-2.5 py-1 text-xs font-medium text-ink-600;
+  }
+
+  /* 错误提示：语义色自成一套，复用它处不要再用品牌浅红兜底 */
+  .alert-danger {
+    @apply rounded-lg border border-state-danger/20 bg-state-danger/10 px-3 py-2 text-sm text-state-danger;
+  }
+
+  /* 中性提示条：排队中、轮询停止等"非错误但也需提醒"的信息 */
+  .notice {
+    @apply rounded-lg border border-state-line bg-page px-4 py-2.5 text-xs text-ink-600;
+  }
+
+  /* 筛选胶囊：选中态用深色实心，把红色留给价格与主操作 */
+  .filter-pill {
+    @apply shrink-0 cursor-pointer whitespace-nowrap rounded-full border border-state-line bg-page-card px-4 py-1.5 text-sm font-medium text-ink-600 transition-colors duration-150 hover:border-state-line-strong hover:text-ink-900 focus-ring;
+  }
+
+  .filter-pill-active {
+    @apply shrink-0 cursor-pointer whitespace-nowrap rounded-full border border-ink-900 bg-ink-900 px-4 py-1.5 text-sm font-semibold text-white focus-ring;
   }
 }

@@ -2,12 +2,18 @@ import { cn } from '../../lib/cn'
 
 type Tone = 'brand' | 'success' | 'warning' | 'danger' | 'info' | 'neutral'
 
+/**
+ * 徽标配色：浅底 + 深字 + 同色描边。
+ * - brand 专用于促销标记（秒杀、限时），是全站唯一的红色徽标；
+ * - 其余色调只对应真实业务状态，不用于装饰；
+ * - info 用中性深灰，避免蓝色成为第二个强调色。
+ */
 const TONE: Record<Tone, string> = {
-  brand: 'bg-brand-soft text-brand border-brand/20',
+  brand: 'bg-brand-soft text-brand-ink border-brand/20',
   success: 'bg-state-success/10 text-state-success border-state-success/20',
-  warning: 'bg-state-warning/10 text-[#B26A00] border-state-warning/25',
+  warning: 'bg-state-warning/10 text-state-warning border-state-warning/20',
   danger: 'bg-state-danger/10 text-state-danger border-state-danger/20',
-  info: 'bg-state-info/10 text-state-info border-state-info/20',
+  info: 'bg-page text-ink-600 border-state-line',
   neutral: 'bg-page text-ink-600 border-state-line',
 }
 

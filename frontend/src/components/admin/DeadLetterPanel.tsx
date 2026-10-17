@@ -62,7 +62,7 @@ export function DeadLetterPanel() {
         rows={4}
         aria-label="死信消息 ID 列表"
         placeholder={'a1b2c3d4e5\nf6g7h8i9j0'}
-        className="w-full rounded-md border border-state-line bg-white p-3 text-sm text-ink-900 outline-none transition-colors duration-150 placeholder:text-ink-400 focus:border-brand"
+        className="w-full rounded-md border border-state-line bg-page-card p-3 text-sm text-ink-900 outline-none transition-colors duration-150 placeholder:text-ink-400 focus:border-brand"
       />
       {summary ? (
         <pre className="mt-3 overflow-x-auto rounded-md bg-page p-3 text-xs text-ink-600">

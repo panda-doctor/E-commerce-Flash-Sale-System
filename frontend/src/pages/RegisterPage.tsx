@@ -132,7 +132,7 @@ export default function RegisterPage() {
         />
 
         {error ? (
-          <p role="alert" className="rounded-md bg-brand-soft px-3 py-2 text-sm text-state-danger">
+          <p role="alert" className="alert-danger">
             {error}
           </p>
         ) : null}

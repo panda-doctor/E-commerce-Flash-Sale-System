@@ -81,7 +81,7 @@ export function MetricsPanel({ activityId }: { activityId: string }) {
     <Card
       title={
         <span className="flex items-center gap-2">
-          <Activity className="size-4 text-brand" aria-hidden />
+          <Activity className="size-4 text-ink-400" aria-hidden />
           实时指标
         </span>
       }
@@ -105,7 +105,7 @@ export function MetricsPanel({ activityId }: { activityId: string }) {
           </div>
         ))}
       </div>
-      <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-400">
+      <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-600">
         <Timer className="size-3.5" aria-hidden />
         每 5 秒自动刷新；数据来自管理端指标接口（Redis 投影 + 队列长度）。
       </p>

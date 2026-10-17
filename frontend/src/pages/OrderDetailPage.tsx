@@ -42,7 +42,7 @@ export default function OrderDetailPage() {
     <div className="container-page max-w-2xl py-8">
       <Link
         to="/orders"
-        className="mb-5 inline-flex items-center gap-1.5 text-sm text-ink-600 transition-colors duration-150 hover:text-brand focus-ring"
+        className="mb-5 inline-flex items-center gap-1.5 rounded-full text-sm text-ink-600 transition-colors duration-150 hover:text-ink-900 focus-ring"
       >
         <ArrowLeft className="size-4" aria-hidden />
         返回订单列表
@@ -86,15 +86,15 @@ export default function OrderDetailPage() {
 
         {queuing ? (
           orderQuery.pollingStopped ? (
-            <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg bg-brand-soft px-3 py-2.5 text-xs text-ink-600">
+            <div className="notice mt-5 flex flex-wrap items-center gap-3">
               自动刷新已停止（超时或连续失败），订单可能仍在处理中。
               <Button size="sm" variant="secondary" loading={orderQuery.isFetching} onClick={() => orderQuery.refetch()}>
                 手动刷新状态
               </Button>
             </div>
           ) : (
-            <div className="mt-5 flex items-center gap-2 rounded-lg bg-brand-soft px-3 py-2.5 text-xs text-ink-600">
-              <Loader2 className="size-3.5 animate-spin text-brand" aria-hidden />
+            <div className="notice mt-5 flex items-center gap-2">
+              <Loader2 className="size-3.5 animate-spin text-ink-600" aria-hidden />
               正在排队生成订单，页面会自动刷新（离开本页即停止轮询）。
             </div>
           )

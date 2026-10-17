@@ -68,7 +68,7 @@ export default function ProductDetailPage() {
     <div className="container-page py-6 sm:py-8">
       <Link
         to="/products"
-        className="mb-5 inline-flex items-center gap-1.5 rounded-full text-sm text-ink-600 transition-colors duration-150 hover:text-brand focus-ring"
+        className="mb-5 inline-flex items-center gap-1.5 rounded-full text-sm text-ink-600 transition-colors duration-150 hover:text-ink-900 focus-ring"
       >
         <ArrowLeft className="size-4" aria-hidden />
         返回商品列表
@@ -107,12 +107,12 @@ export default function ProductDetailPage() {
             </p>
           </div>
 
-          <div className="rounded-xl border border-state-line bg-white p-5 shadow-card">
+          <div className="rounded-xl border border-state-line bg-page-card p-5 shadow-card">
             <p className="text-xs text-ink-600">商品原价</p>
             <p className="tnum mt-1 text-3xl font-extrabold leading-none text-ink-900">
               {formatPrice(product.originalPrice)}
             </p>
-            <p className="tnum mt-3 text-xs text-ink-400">
+            <p className="tnum mt-3 text-xs text-ink-600">
               剩余 {product.availableStock ?? '—'} 件 · 数据来自商品服务
             </p>
           </div>
@@ -152,11 +152,11 @@ export default function ProductDetailPage() {
 
           <ul className="grid gap-3 text-sm text-ink-600 sm:grid-cols-2">
             <li className="flex items-center gap-2">
-              <ShieldCheck className="size-4 text-state-success" aria-hidden />
+              <ShieldCheck className="size-4 text-ink-400" aria-hidden />
               库存与订单均由服务端实时校验
             </li>
             <li className="flex items-center gap-2">
-              <Truck className="size-4 text-state-info" aria-hidden />
+              <Truck className="size-4 text-ink-400" aria-hidden />
               秒杀成功后可在「我的订单」查看排队结果
             </li>
           </ul>

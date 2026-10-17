@@ -60,7 +60,7 @@ export function ImageUploader({
           )}
         </div>
         <div className="flex-1 space-y-1.5">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-state-line bg-white px-3 py-2 text-sm text-ink-900 transition-colors duration-150 hover:border-brand focus-within:ring-2 focus-within:ring-brand">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-state-line bg-page-card px-3 py-2 text-sm text-ink-900 transition-colors duration-150 hover:border-state-line-strong focus-within:ring-2 focus-within:ring-brand/30">
             {uploading ? (
               <Loader2 className="size-4 animate-spin" aria-hidden />
             ) : (
@@ -75,11 +75,11 @@ export function ImageUploader({
               onChange={(event) => onFile(event.target.files?.[0])}
             />
           </label>
-          <p className="text-xs text-ink-400">支持 jpg/png/gif/webp/bmp，单张 ≤ 5MB</p>
+          <p className="text-xs text-ink-600">支持 jpg/png/gif/webp/bmp，单张 ≤ 5MB</p>
         </div>
       </div>
       <input
-        className="h-9 w-full rounded-md border border-state-line bg-white px-2 text-xs text-ink-600 outline-none focus:border-brand"
+        className="h-9 w-full rounded-md border border-state-line bg-page-card px-2 text-xs text-ink-600 outline-none focus:border-brand"
         value={value}
         placeholder="或直接粘贴图片地址 /uploads/…"
         onChange={(event) => onChange(event.target.value)}

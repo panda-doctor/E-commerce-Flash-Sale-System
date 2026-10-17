@@ -52,7 +52,7 @@ export default function OrdersPage() {
         <Button
           variant="secondary"
           size="sm"
-          className="rounded-full"
+          className="self-start rounded-full sm:self-auto"
           icon={<RefreshCw className="size-4" aria-hidden />}
           loading={ordersQuery.isFetching}
           onClick={() => ordersQuery.refetch()}
@@ -62,7 +62,7 @@ export default function OrdersPage() {
       </div>
 
       {ordersQuery.pollingStopped ? (
-        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-brand-soft px-4 py-2.5 text-xs text-ink-600">
+        <div className="notice mt-4 flex flex-wrap items-center gap-3">
           自动刷新已停止（超时或连续失败），排队中的订单可能仍在处理。
           <Button size="sm" variant="secondary" loading={ordersQuery.isFetching} onClick={() => ordersQuery.refetch()}>
             手动刷新
@@ -70,7 +70,7 @@ export default function OrdersPage() {
         </div>
       ) : null}
 
-      <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="订单筛选">
+      <div className="mt-5 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible" role="tablist" aria-label="订单筛选">
         {FILTERS.map((item) => {
           const count = counts[item.key] ?? 0
           return (
@@ -80,18 +80,14 @@ export default function OrdersPage() {
               role="tab"
               aria-selected={filter === item.key}
               onClick={() => setFilter(item.key)}
-              className={
-                filter === item.key
-                  ? 'cursor-pointer rounded-full bg-brand px-4 py-1.5 text-sm font-semibold text-white'
-                  : 'cursor-pointer rounded-full border border-state-line bg-white px-4 py-1.5 text-sm text-ink-600 transition-colors duration-150 hover:border-brand hover:text-brand'
-              }
+              className={filter === item.key ? 'filter-pill-active' : 'filter-pill'}
             >
               {item.label}
               <span
                 className={
                   filter === item.key
-                    ? 'tnum ml-1.5 text-xs font-medium text-white/80'
-                    : 'tnum ml-1.5 text-xs font-medium text-ink-400'
+                    ? 'tnum ml-1.5 text-xs font-medium text-white/70'
+                    : 'tnum ml-1.5 text-xs font-medium text-ink-600'
                 }
               >
                 {count}
@@ -135,7 +131,7 @@ export default function OrdersPage() {
                       <span className="tnum">活动 {order.activityId}</span>
                       <span className="tnum">商品 {order.productId}</span>
                     </div>
-                    <p className="tnum mt-1 text-xs text-ink-400">
+                    <p className="tnum mt-1 text-xs text-ink-600">
                       下单时间 {formatDateTime(order.createdAt)}
                     </p>
                   </div>

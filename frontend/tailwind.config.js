@@ -1,34 +1,50 @@
 import animate from 'tailwindcss-animate'
 
-/** @type {import('tailwindcss').Config} */
+/**
+ * 设计令牌（全站唯一色源）。
+ *
+ * 配色原则：
+ * - 中性色承载结构：页面 #F6F7F9、表面 #FFF、次级表面 #F0F2F5、边框 #E5E7EB；
+ * - 文字三级：#202124（主）/ #667085（次）/ #98A2B3（弱，仅非关键信息）；
+ * - 秒杀红 #E5484D 只用于「价格、主操作、促销标记」，不用于导航、分页、普通链接与装饰；
+ * - 语义色只表达真实业务状态：成功 #16865C、警告 #B86E08、危险 #D92D20；
+ *   info 收敛为中性深灰 #475467，避免蓝色成为第二个装饰强调色。
+ *
+ * @type {import('tailwindcss').Config}
+ */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
         brand: {
-          DEFAULT: '#E1251B',
-          dark: '#B81B12',
-          soft: '#FFF1EF',
+          // 与建议色 #E5484D 同色相，下压 1 档使「白字/红底」与「红字/白底」都过 AA（4.5:1）
+          DEFAULT: '#D93A40',
+          dark: '#C22F36',
+          // 浅红底上的小字号文字（徽标/角标），对比度 5.9:1
+          ink: '#B3252B',
+          soft: '#FFF1F0',
         },
         page: {
-          DEFAULT: '#F2F4F6',
+          DEFAULT: '#F6F7F9',
           card: '#FFFFFF',
-          subtle: '#F8F9FB',
+          subtle: '#F0F2F5',
         },
         ink: {
-          900: '#15181D',
-          600: '#5B6470',
-          // 辅助文字对比度 ≈4.8:1（原 #8A919C 仅 3.4:1，小字号不达 AA）
-          400: '#717885',
+          900: '#202124',
+          // 次级文字：在白卡/页面底/次级面上均 ≥5.1:1
+          600: '#5D6675',
+          // 弱化文字：仅占位符、图标与禁用态，不承载关键信息
+          400: '#98A2B3',
           0: '#FFFFFF',
         },
         state: {
-          success: '#0F9D6E',
-          warning: '#F08C00',
-          danger: '#D93A44',
-          info: '#2F6BFF',
-          line: '#E7E9ED',
+          success: '#12724E',
+          warning: '#9A5B08',
+          danger: '#C42A1F',
+          info: '#475467',
+          line: '#E5E7EB',
+          'line-strong': '#D0D5DD',
         },
       },
       fontFamily: {
@@ -47,9 +63,9 @@ export default {
         body: ['14px', { lineHeight: '22px' }],
       },
       boxShadow: {
-        card: '0 1px 2px rgba(21, 24, 29, 0.04), 0 4px 16px -8px rgba(21, 24, 29, 0.10)',
-        'card-hover': '0 2px 4px rgba(21, 24, 29, 0.05), 0 16px 32px -16px rgba(21, 24, 29, 0.20)',
-        float: '0 12px 40px -16px rgba(21, 24, 29, 0.28)',
+        card: '0 2px 10px rgba(16, 24, 40, 0.04)',
+        'card-hover': '0 8px 24px rgba(16, 24, 40, 0.08)',
+        float: '0 12px 32px rgba(16, 24, 40, 0.12)',
       },
       zIndex: {
         nav: '40',

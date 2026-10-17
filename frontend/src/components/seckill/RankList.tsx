@@ -35,10 +35,8 @@ export function RankList({ activityId }: { activityId: string }) {
             className={cn(
               'tnum flex size-7 items-center justify-center rounded-full text-xs font-bold',
               entry.rank === 1
-                ? 'bg-brand text-white'
-                : entry.rank === 2
-                  ? 'bg-brand-soft text-brand'
-                  : 'bg-page text-ink-600',
+                ? 'bg-ink-900 text-white'
+                : 'bg-page text-ink-600',
             )}
           >
             {entry.rank}
@@ -46,7 +44,7 @@ export function RankList({ activityId }: { activityId: string }) {
           <span className="tnum flex-1 truncate text-sm text-ink-900">
             用户 {String(entry.userId).slice(-4).padStart(4, '0')}
           </span>
-          <span className="tnum truncate text-xs text-ink-400">{entry.orderNo ?? '—'}</span>
+          <span className="tnum truncate text-xs text-ink-600">{entry.orderNo ?? '—'}</span>
           {entry.rank === 1 ? <Crown className="size-4 text-state-warning" aria-hidden /> : null}
         </li>
       ))}

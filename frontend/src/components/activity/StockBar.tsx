@@ -23,7 +23,7 @@ export function StockBar({
         </span>
       </div>
       <div
-        className="h-2.5 w-full overflow-hidden rounded-full bg-state-line"
+        className="h-1.5 w-full overflow-hidden rounded-full bg-page-subtle"
         role="progressbar"
         aria-valuenow={percent}
         aria-valuemin={0}

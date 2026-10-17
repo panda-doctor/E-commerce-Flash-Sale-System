@@ -48,7 +48,7 @@ export default function AdminDashboardPage() {
         <Card
           title={
             <span className="flex items-center gap-2">
-              <Gauge className="size-4 text-brand" aria-hidden />
+              <Gauge className="size-4 text-ink-400" aria-hidden />
               选择活动
             </span>
           }
@@ -85,8 +85,8 @@ export default function AdminDashboardPage() {
                     onClick={() => setActivityId(toId(item.activityId))}
                     className={
                       activityId === item.activityId
-                        ? 'cursor-pointer rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white'
-                        : 'cursor-pointer rounded-full border border-state-line bg-white px-3 py-1 text-xs text-ink-600 transition-colors duration-150 hover:border-brand hover:text-brand'
+                        ? 'cursor-pointer rounded-full bg-ink-900 px-3 py-1 text-xs font-semibold text-white'
+                        : 'cursor-pointer rounded-full border border-state-line bg-page-card px-3 py-1 text-xs text-ink-600 transition-colors duration-150 hover:border-state-line-strong hover:text-ink-900'
                     }
                   >
                     {item.activityName ?? item.activityId}
@@ -95,7 +95,7 @@ export default function AdminDashboardPage() {
               </div>
             </div>
           ) : (
-            <p className="mt-3 text-xs text-ink-400">
+            <p className="mt-3 text-xs text-ink-600">
               暂无可选活动（公开活动列表为空时可手动输入活动 ID）。
             </p>
           )}

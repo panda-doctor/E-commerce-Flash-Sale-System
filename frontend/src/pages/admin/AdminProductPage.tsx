@@ -97,7 +97,7 @@ export default function AdminProductPage() {
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
                 placeholder="描述卖点、材质、规格等，会展示在商品详情页"
-                className="w-full rounded-md border border-state-line bg-white p-3 text-sm text-ink-900 outline-none transition-colors duration-150 placeholder:text-ink-400 focus:border-brand"
+                className="w-full rounded-md border border-state-line bg-page-card p-3 text-sm text-ink-900 outline-none transition-colors duration-150 placeholder:text-ink-400 focus:border-brand"
               />
             </div>
 
@@ -135,7 +135,7 @@ export default function AdminProductPage() {
                 id="status"
                 value={status}
                 onChange={(event) => setStatus(event.target.value)}
-                className="h-11 w-full cursor-pointer rounded-md border border-state-line bg-white px-3 text-sm text-ink-900 outline-none focus:border-brand"
+                className="h-11 w-full cursor-pointer rounded-md border border-state-line bg-page-card px-3 text-sm text-ink-900 outline-none focus:border-brand"
               >
                 {STATUS_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>

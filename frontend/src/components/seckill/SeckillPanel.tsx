@@ -130,12 +130,12 @@ export function SeckillPanel({
       </Button>
 
       {hint ? <p className="text-center text-xs text-ink-600">{hint}</p> : null}
-      {!user ? <p className="text-center text-xs text-ink-400">登录后即可参与</p> : null}
+      {!user ? <p className="text-center text-xs text-ink-600">登录后即可参与</p> : null}
 
       <Dialog.Root open={dialogOpen} onOpenChange={setDialogOpen}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-overlay bg-ink-900/40 animate-in fade-in" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-overlay w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border border-state-line bg-white p-6 shadow-card animate-in zoom-in-95">
+          <Dialog.Overlay className="fixed inset-0 z-overlay bg-ink-900/30 animate-in fade-in" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-overlay w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border border-state-line bg-page-card p-6 shadow-card animate-in zoom-in-95">
             <div className="flex items-start justify-between">
               <Dialog.Title className="text-lg font-bold text-ink-900">
                 {errorMessage ? '秒杀未提交成功' : '秒杀结果'}
@@ -152,12 +152,12 @@ export function SeckillPanel({
             </div>
 
             {errorMessage ? (
-              <p className="mt-3 rounded-md bg-brand-soft px-3 py-2 text-sm text-state-danger">
+              <p className="alert-danger mt-3">
                 {errorMessage}
               </p>
             ) : result ? (
               <div className="mt-3 space-y-3">
-                <Badge tone={result.result === 'QUEUED' ? 'info' : 'danger'}>
+                <Badge tone={result.result === 'QUEUED' ? 'warning' : 'danger'}>
                   {SECKILL_RESULT_TEXT[result.result]}
                 </Badge>
 
@@ -171,7 +171,7 @@ export function SeckillPanel({
                     </p>
 
                     {orderQuery.pollingStopped ? (
-                      <div className="mt-2 rounded-md bg-white px-2 py-2">
+                      <div className="mt-2 rounded-md bg-page-card px-2 py-2">
                         <p className="text-xs text-ink-600">
                           自动刷新已停止（超时或连续失败）。订单可能仍在处理中，可手动刷新查看。
                         </p>

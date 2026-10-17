@@ -42,9 +42,9 @@ export const toast = {
 }
 
 const TONE_STYLE: Record<ToastTone, string> = {
-  success: 'border-state-success/30 bg-white text-ink-900',
-  error: 'border-state-danger/30 bg-white text-ink-900',
-  info: 'border-state-info/30 bg-white text-ink-900',
+  success: 'border-state-success/25 bg-page-card text-ink-900',
+  error: 'border-state-danger/25 bg-page-card text-ink-900',
+  info: 'border-state-line bg-page-card text-ink-900',
 }
 
 const TONE_ICON: Record<ToastTone, typeof Info> = {
@@ -56,7 +56,7 @@ const TONE_ICON: Record<ToastTone, typeof Info> = {
 const TONE_COLOR: Record<ToastTone, string> = {
   success: 'text-state-success',
   error: 'text-state-danger',
-  info: 'text-state-info',
+  info: 'text-ink-600',
 }
 
 export function Toaster() {

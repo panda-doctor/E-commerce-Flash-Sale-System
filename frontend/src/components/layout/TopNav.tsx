@@ -49,7 +49,7 @@ export function TopNav() {
   }
 
   return (
-    <header className="fixed inset-x-0 top-0 z-nav border-b border-state-line bg-white/95 backdrop-blur">
+    <header className="fixed inset-x-0 top-0 z-nav border-b border-state-line bg-page-card/95 backdrop-blur">
       <div className="container-page flex h-16 items-center gap-3">
         <button
           type="button"
@@ -79,7 +79,7 @@ export function TopNav() {
                 cn(
                   'flex items-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors duration-150',
                   isActive
-                    ? 'bg-brand-soft font-semibold text-brand'
+                    ? 'bg-page font-semibold text-ink-900'
                     : 'text-ink-600 hover:bg-page hover:text-ink-900',
                 )
               }
@@ -105,7 +105,7 @@ export function TopNav() {
                 to="/profile"
                 className="flex items-center gap-2 rounded-md px-2.5 py-1.5 transition-colors duration-150 hover:bg-page focus-ring"
               >
-                <span className="flex size-7 items-center justify-center rounded-full bg-brand-soft text-brand">
+                <span className="flex size-7 items-center justify-center rounded-full bg-page text-ink-900">
                   <UserRound className="size-4" aria-hidden />
                 </span>
                 <span className="hidden max-w-[7rem] truncate text-sm font-medium text-ink-900 sm:block">
@@ -135,7 +135,7 @@ export function TopNav() {
       <Dialog.Root open={menuOpen} onOpenChange={setMenuOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-overlay bg-ink-900/40 md:hidden" />
-          <Dialog.Content className="fixed inset-y-0 left-0 z-overlay flex w-72 max-w-[85vw] flex-col bg-white p-5 shadow-card md:hidden">
+          <Dialog.Content className="fixed inset-y-0 left-0 z-overlay flex w-72 max-w-[85vw] flex-col bg-page-card p-5 shadow-card md:hidden">
             <div className="flex items-center justify-between">
               <Dialog.Title className="text-lg font-bold text-ink-900">导航</Dialog.Title>
               <Dialog.Close asChild>
@@ -159,7 +159,7 @@ export function TopNav() {
                   className={({ isActive }) =>
                     cn(
                       'flex items-center gap-2 rounded-md px-3 py-2.5 text-sm transition-colors duration-150',
-                      isActive ? 'bg-brand-soft font-semibold text-brand' : 'text-ink-600 hover:bg-page',
+                      isActive ? 'bg-page font-semibold text-ink-900' : 'text-ink-600 hover:bg-page',
                     )
                   }
                 >
@@ -191,7 +191,7 @@ export function TopNav() {
                   <button
                     type="button"
                     onClick={onLogout}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm text-state-danger transition-colors duration-150 hover:bg-brand-soft"
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm text-state-danger transition-colors duration-150 hover:bg-state-danger/10"
                   >
                     <LogOut className="size-4" aria-hidden />
                     退出登录

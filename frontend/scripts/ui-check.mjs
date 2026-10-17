@@ -36,10 +36,26 @@ async function inspect(page, path, name, { fullPage = false, expect } = {}) {
 
   const metrics = await page.evaluate(() => {
     const doc = document.documentElement
+    // 位于横向滚动容器内的元素会正常超出视口右缘，不算布局溢出
+    const inHorizontalScroller = (element) => {
+      let node = element.parentElement
+      while (node && node !== document.body) {
+        const style = getComputedStyle(node)
+        if ((style.overflowX === 'auto' || style.overflowX === 'scroll') && node.scrollWidth > node.clientWidth) {
+          return true
+        }
+        node = node.parentElement
+      }
+      return false
+    }
+
     const overflowing = Array.from(document.querySelectorAll('body *'))
       .filter((element) => {
         const rect = element.getBoundingClientRect()
-        return rect.width > 0 && rect.right > window.innerWidth + 1
+        if (rect.width <= 0 || rect.right <= window.innerWidth + 1) {
+          return false
+        }
+        return !inHorizontalScroller(element)
       })
       .slice(0, 5)
       .map((element) => `${element.tagName.toLowerCase()}.${String(element.className).slice(0, 40)}`)
