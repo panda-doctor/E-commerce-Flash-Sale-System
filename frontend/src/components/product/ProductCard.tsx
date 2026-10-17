@@ -7,12 +7,19 @@ import { cn } from '../../lib/cn'
 import type { Product } from '../../types/product'
 import type { ActivityItem } from '../../types/activity'
 
-/** 折扣角标：只有原价与秒杀价都存在且确实更低时才展示，不臆造优惠。 */
+/**
+ * 折扣角标：只有原价与秒杀价都存在、且优惠幅度 ≥5% 时才展示。
+ * 差价很小（如 19.99 对 20.49）时算出的"0.2 折"会误导用户，因此不显示。
+ */
 function discountLabel(price: number | null | undefined, original: number | null | undefined): string | null {
   if (price == null || original == null || original <= 0 || price >= original) {
     return null
   }
-  const percent = Math.round((1 - price / original) * 10 * 10) / 10
+  const saved = 1 - price / original
+  if (saved < 0.05) {
+    return null
+  }
+  const percent = Math.round(saved * 10 * 10) / 10
   return `${percent % 1 === 0 ? percent.toFixed(0) : percent.toFixed(1)} 折`
 }
 
@@ -27,13 +34,13 @@ export function ProductCard({ product, activity }: { product: Product; activity?
     seckillPrice != null && product.originalPrice != null && seckillPrice < product.originalPrice
 
   return (
-    <article className="card card-hover group flex flex-col overflow-hidden">
+    <article className="group flex flex-col overflow-hidden rounded-2xl border border-state-line bg-page-card shadow-card transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-state-hover hover:shadow-card-hover motion-reduce:transform-none">
       <Link to={target} className="relative block focus-ring" aria-label={`查看 ${product.name}`}>
         <ProductImage src={product.imageUrl} alt={product.name} ratio="aspect-square" />
         <div className="pointer-events-none absolute inset-x-2.5 top-2.5 flex items-start justify-between gap-1.5">
           <div className="flex flex-col items-start gap-1.5">
             {activity ? (
-              <Badge tone="brand" className="border-brand/20 bg-brand-soft/95 shadow-sm">
+              <Badge tone="brand" className="border-brand/25 bg-brand-soft/95 shadow-sm">
                 限时秒杀
               </Badge>
             ) : null}
@@ -45,13 +52,13 @@ export function ProductCard({ product, activity }: { product: Product; activity?
           ) : null}
         </div>
         {discount ? (
-          <span className="tnum pointer-events-none absolute bottom-2.5 left-2.5 rounded-md border border-brand/20 bg-brand-soft/95 px-1.5 py-0.5 text-[11px] font-semibold text-brand-ink shadow-sm">
+          <span className="tnum pointer-events-none absolute bottom-2.5 left-2.5 rounded-lg bg-brand-solid px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
             {discount}
           </span>
         ) : null}
       </Link>
 
-      <div className="flex flex-1 flex-col gap-2 p-3 sm:gap-2.5 sm:p-4">
+      <div className="flex flex-1 flex-col gap-2.5 p-3.5 sm:p-4">
         <Link
           to={target}
           className="line-clamp-2 min-h-[2.75rem] text-sm font-semibold leading-[1.375rem] text-ink-900 focus-ring sm:text-[15px] sm:leading-6"
@@ -62,7 +69,8 @@ export function ProductCard({ product, activity }: { product: Product; activity?
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           {seckillPrice != null ? (
             <>
-              <span className="tnum text-lg font-extrabold leading-none text-brand sm:text-xl">
+              <span className="text-[11px] font-medium text-brand-dark">秒杀价</span>
+              <span className="tnum text-xl font-extrabold leading-none text-brand sm:text-[22px]">
                 {formatPrice(seckillPrice)}
               </span>
               {showOriginalPrice ? (
@@ -72,14 +80,14 @@ export function ProductCard({ product, activity }: { product: Product; activity?
               ) : null}
             </>
           ) : (
-            <span className="tnum text-lg font-extrabold leading-none text-ink-900 sm:text-xl">
+            <span className="tnum text-xl font-extrabold leading-none text-ink-900 sm:text-[22px]">
               {formatPrice(product.originalPrice)}
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1 text-[11px] text-ink-600 sm:text-xs">
-          <Boxes className="size-3.5 shrink-0" aria-hidden />
+        <div className="flex items-center gap-1.5 text-[11px] text-ink-600 sm:text-xs">
+          <Boxes className="size-3.5 shrink-0 text-brand-orange" aria-hidden />
           <span className="tnum truncate">
             剩余 {product.availableStock ?? '—'} / {product.totalStock ?? '—'} 件
           </span>
@@ -88,12 +96,12 @@ export function ProductCard({ product, activity }: { product: Product; activity?
         <Link
           to={target}
           className={cn(
-            'mt-auto flex h-9 items-center justify-center gap-1 rounded-full text-xs font-semibold transition-colors duration-150 focus-ring sm:text-sm',
+            'mt-auto flex h-9 items-center justify-center gap-1 rounded-xl text-xs font-semibold transition-colors duration-150 focus-ring sm:text-sm',
             soldOut
-              ? 'bg-page text-ink-400 hover:bg-page'
+              ? 'cursor-not-allowed bg-page-subtle text-ink-400'
               : activity
-                ? 'bg-brand text-white hover:bg-brand-dark'
-                : 'border border-state-line bg-page-card text-ink-900 hover:border-state-line-strong hover:bg-page',
+                ? 'bg-brand-solid text-white shadow-sm hover:bg-brand-dark'
+                : 'border border-state-line bg-white text-ink-900 hover:border-state-hover hover:bg-brand-tint',
           )}
         >
           {soldOut ? '已售罄' : activity ? '去抢购' : '查看详情'}

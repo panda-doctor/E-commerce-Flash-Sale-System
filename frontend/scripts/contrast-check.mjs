@@ -1,25 +1,30 @@
 /**
- * 配色对比度自检（WCAG 2.1）：验证设计令牌常用前景/背景组合。
+ * 配色对比度自检（WCAG 2.1），验证暖色品牌令牌的前景/背景组合。
  * 纯计算，不依赖浏览器。用法：node scripts/contrast-check.mjs
  *
  * 阈值约定：
- * - 承载信息的文字 ≥4.5:1（AA 正文）；
- * - 弱化文字 #98A2B3 只用于占位符/图标/禁用态，不承载关键信息，阈值按 3:1 记录；
- * - 边框等非文字元素不设对比度阈值。
+ * - 承载正文的文字 ≥4.5:1；
+ * - 大字号（≥24px 或 ≥18.66px 粗体）促销价格 ≥3:1，单独标注；
+ * - 弱化文字 #8A8490 仅用于占位符/图标/禁用态，不承载信息，阈值 0；
+ * - 橙色/珊瑚色只做装饰与渐变，不与白字组合，阈值 0。
  */
 
 const TOKENS = {
-  pageBg: '#F6F7F9',
+  pageBg: '#FFF7F0',
   surface: '#FFFFFF',
-  surfaceMuted: '#F0F2F5',
-  textPrimary: '#202124',
-  textSecondary: '#5D6675',
-  textMuted: '#98A2B3',
-  border: '#E5E7EB',
-  primary: '#D93A40',
-  primaryHover: '#C22F36',
-  primaryInk: '#B3252B',
-  primarySoft: '#FFF1F0',
+  surfaceMuted: '#FFF0E5',
+  brandSoft: '#FFE7E5',
+  textPrimary: '#24202A',
+  textSecondary: '#6B6470',
+  textMuted: '#8A8490',
+  border: '#F0E1DA',
+  brand: '#E53935',
+  brandSolid: '#D32F2F',
+  brandDark: '#C62828',
+  brandOrange: '#FF8A34',
+  footerBg: '#2A1B19',
+  footerText: '#F7E9E4',
+  footerMuted: '#C9B4AC',
   success: '#12724E',
   warning: '#9A5B08',
   danger: '#C42A1F',
@@ -28,23 +33,23 @@ const TOKENS = {
 const PAIRS = [
   ['主文字 / 页面底', TOKENS.textPrimary, TOKENS.pageBg, 4.5],
   ['主文字 / 白卡', TOKENS.textPrimary, TOKENS.surface, 4.5],
-  ['主文字 / 次级面', TOKENS.textPrimary, TOKENS.surfaceMuted, 4.5],
   ['次级文字 / 白卡', TOKENS.textSecondary, TOKENS.surface, 4.5],
   ['次级文字 / 页面底', TOKENS.textSecondary, TOKENS.pageBg, 4.5],
-  ['次级文字 / 次级面', TOKENS.textSecondary, TOKENS.surfaceMuted, 4.5],
-  // 仅用于 placeholder / 图标 / 禁用态，不承载信息，故不设正文阈值
+  ['次级文字 / 浅橙底', TOKENS.textSecondary, TOKENS.surfaceMuted, 4.5],
+  ['次级文字 / 浅红底', TOKENS.textSecondary, TOKENS.brandSoft, 4.5],
   ['弱化文字 / 白卡（仅占位/图标）', TOKENS.textMuted, TOKENS.surface, 0],
-  ['白字 / 秒杀红按钮', TOKENS.surface, TOKENS.primary, 4.5],
-  ['白字 / 红按钮 hover', TOKENS.surface, TOKENS.primaryHover, 4.5],
-  ['秒杀红文字 / 白卡', TOKENS.primary, TOKENS.surface, 4.5],
-  ['浅红底小字 / 浅红底', TOKENS.primaryInk, TOKENS.primarySoft, 4.5],
-  ['成功色 / 白卡', TOKENS.success, TOKENS.surface, 4.5],
-  ['成功色 / 成功浅底(10%)', TOKENS.success, mix(TOKENS.success, 0.1), 4.5],
-  ['警告色 / 白卡', TOKENS.warning, TOKENS.surface, 4.5],
-  ['警告色 / 警告浅底(10%)', TOKENS.warning, mix(TOKENS.warning, 0.1), 4.5],
-  ['危险色 / 白卡', TOKENS.danger, TOKENS.surface, 4.5],
-  ['危险色 / 危险浅底(10%)', TOKENS.danger, mix(TOKENS.danger, 0.1), 4.5],
-  ['白字 / 深色底', TOKENS.surface, TOKENS.textPrimary, 4.5],
+  ['白字 / 品牌实心按钮', TOKENS.surface, TOKENS.brandSolid, 4.5],
+  ['白字 / 品牌按钮 hover', TOKENS.surface, TOKENS.brandDark, 4.5],
+  ['浅红底小字 / 浅红底', TOKENS.brandDark, TOKENS.brandSoft, 4.5],
+  ['深红字 / 浅橙底', TOKENS.brandDark, TOKENS.surfaceMuted, 4.5],
+  ['秒杀价大字 / 白卡（大字阈值）', TOKENS.brand, TOKENS.surface, 3],
+  ['秒杀价大字 / 浅红底（大字阈值）', TOKENS.brand, TOKENS.brandSoft, 3],
+  ['白字 / 橙色（仅装饰，不承载文字）', TOKENS.surface, TOKENS.brandOrange, 0],
+  ['页脚正文 / 深暖底', TOKENS.footerText, TOKENS.footerBg, 4.5],
+  ['页脚次要 / 深暖底', TOKENS.footerMuted, TOKENS.footerBg, 4.5],
+  ['成功 / 白卡', TOKENS.success, TOKENS.surface, 4.5],
+  ['警告 / 白卡', TOKENS.warning, TOKENS.surface, 4.5],
+  ['危险 / 白卡', TOKENS.danger, TOKENS.surface, 4.5],
   ['边框 / 页面底（非文字）', TOKENS.border, TOKENS.pageBg, 0],
 ]
 
@@ -66,18 +71,6 @@ function ratio(a, b) {
   const lb = luminance(b)
   const [high, low] = la > lb ? [la, lb] : [lb, la]
   return (high + 0.05) / (low + 0.05)
-}
-
-/** 模拟「颜色 10% 叠加到白色」后的实际底色 */
-function mix(color, alpha) {
-  const parse = (hex) => {
-    const clean = hex.replace('#', '')
-    return [0, 2, 4].map((index) => parseInt(clean.slice(index, index + 2), 16))
-  }
-  const fg = parse(color)
-  const bg = parse('#FFFFFF')
-  const toHex = (value) => Math.round(value).toString(16).padStart(2, '0')
-  return `#${fg.map((value, index) => toHex(value * alpha + bg[index] * (1 - alpha))).join('')}`
 }
 
 let failed = 0

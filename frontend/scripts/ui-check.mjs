@@ -36,12 +36,12 @@ async function inspect(page, path, name, { fullPage = false, expect } = {}) {
 
   const metrics = await page.evaluate(() => {
     const doc = document.documentElement
-    // 位于横向滚动容器内的元素会正常超出视口右缘，不算布局溢出
-    const inHorizontalScroller = (element) => {
+    // 位于横向滚动/裁剪容器内的元素会正常超出视口右缘，不算页面布局溢出
+    const clippedByAncestor = (element) => {
       let node = element.parentElement
       while (node && node !== document.body) {
         const style = getComputedStyle(node)
-        if ((style.overflowX === 'auto' || style.overflowX === 'scroll') && node.scrollWidth > node.clientWidth) {
+        if (['auto', 'scroll', 'hidden', 'clip'].includes(style.overflowX)) {
           return true
         }
         node = node.parentElement
@@ -55,7 +55,7 @@ async function inspect(page, path, name, { fullPage = false, expect } = {}) {
         if (rect.width <= 0 || rect.right <= window.innerWidth + 1) {
           return false
         }
-        return !inHorizontalScroller(element)
+        return !clippedByAncestor(element)
       })
       .slice(0, 5)
       .map((element) => `${element.tagName.toLowerCase()}.${String(element.className).slice(0, 40)}`)

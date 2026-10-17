@@ -55,13 +55,13 @@ export function TopNav() {
           type="button"
           onClick={() => setMenuOpen(true)}
           aria-label="打开导航菜单"
-          className="cursor-pointer rounded-md p-2 text-ink-600 transition-colors duration-150 hover:bg-page focus-ring md:hidden"
+          className="cursor-pointer rounded-md p-2 text-ink-600 transition-colors duration-150 hover:bg-brand-tint focus-ring md:hidden"
         >
           <Menu className="size-5" aria-hidden />
         </button>
 
         <Link to="/" className="flex items-center gap-2 rounded-md focus-ring">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-brand text-sm font-bold text-white">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-orange to-brand text-sm font-bold text-white">
             闪
           </span>
           <span className="hidden text-lg font-bold tracking-tight text-ink-900 sm:block">
@@ -79,8 +79,8 @@ export function TopNav() {
                 cn(
                   'flex items-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors duration-150',
                   isActive
-                    ? 'bg-page font-semibold text-ink-900'
-                    : 'text-ink-600 hover:bg-page hover:text-ink-900',
+                    ? 'bg-brand-soft font-semibold text-brand-dark'
+                    : 'text-ink-600 hover:bg-brand-tint hover:text-ink-900',
                 )
               }
             >
@@ -93,7 +93,7 @@ export function TopNav() {
         <div className="ml-auto flex items-center gap-1.5">
           <Link
             to="/admin"
-            className="hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-sm text-ink-600 transition-colors duration-150 hover:bg-page hover:text-ink-900 sm:flex focus-ring"
+            className="hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-sm text-ink-600 transition-colors duration-150 hover:bg-brand-tint hover:text-ink-900 sm:flex focus-ring"
           >
             <ShieldCheck className="size-4" aria-hidden />
             管理后台
@@ -103,9 +103,9 @@ export function TopNav() {
             <div className="flex items-center gap-1.5">
               <Link
                 to="/profile"
-                className="flex items-center gap-2 rounded-md px-2.5 py-1.5 transition-colors duration-150 hover:bg-page focus-ring"
+                className="flex items-center gap-2 rounded-md px-2.5 py-1.5 transition-colors duration-150 hover:bg-brand-tint focus-ring"
               >
-                <span className="flex size-7 items-center justify-center rounded-full bg-page text-ink-900">
+                <span className="flex size-7 items-center justify-center rounded-full bg-brand-soft text-brand-dark">
                   <UserRound className="size-4" aria-hidden />
                 </span>
                 <span className="hidden max-w-[7rem] truncate text-sm font-medium text-ink-900 sm:block">
@@ -116,7 +116,7 @@ export function TopNav() {
                 type="button"
                 onClick={onLogout}
                 aria-label="退出登录"
-                className="cursor-pointer rounded-md p-2 text-ink-400 transition-colors duration-150 hover:bg-page hover:text-state-danger focus-ring"
+                className="cursor-pointer rounded-md p-2 text-ink-400 transition-colors duration-150 hover:bg-brand-tint hover:text-state-danger focus-ring"
               >
                 <LogOut className="size-4" aria-hidden />
               </button>
@@ -124,7 +124,7 @@ export function TopNav() {
           ) : (
             <Link
               to="/login"
-              className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-dark focus-ring"
+              className="rounded-md bg-brand-solid px-4 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-dark focus-ring"
             >
               登录 / 注册
             </Link>
@@ -159,7 +159,7 @@ export function TopNav() {
                   className={({ isActive }) =>
                     cn(
                       'flex items-center gap-2 rounded-md px-3 py-2.5 text-sm transition-colors duration-150',
-                      isActive ? 'bg-page font-semibold text-ink-900' : 'text-ink-600 hover:bg-page',
+                      isActive ? 'bg-brand-soft font-semibold text-brand-dark' : 'text-ink-600 hover:bg-brand-tint',
                     )
                   }
                 >
@@ -170,7 +170,7 @@ export function TopNav() {
               <Link
                 to="/admin"
                 onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2 rounded-md px-3 py-2.5 text-sm text-ink-600 transition-colors duration-150 hover:bg-page"
+                className="flex items-center gap-2 rounded-md px-3 py-2.5 text-sm text-ink-600 transition-colors duration-150 hover:bg-brand-tint"
               >
                 <ShieldCheck className="size-4" aria-hidden />
                 管理后台
@@ -183,7 +183,7 @@ export function TopNav() {
                   <Link
                     to="/profile"
                     onClick={() => setMenuOpen(false)}
-                    className="flex items-center gap-2 rounded-md px-3 py-2.5 text-sm text-ink-600 transition-colors duration-150 hover:bg-page"
+                    className="flex items-center gap-2 rounded-md px-3 py-2.5 text-sm text-ink-600 transition-colors duration-150 hover:bg-brand-tint"
                   >
                     <UserRound className="size-4" aria-hidden />
                     {user.displayName ?? user.accountName}
@@ -201,7 +201,7 @@ export function TopNav() {
                 <Link
                   to="/login"
                   onClick={() => setMenuOpen(false)}
-                  className="block rounded-md bg-brand px-4 py-2 text-center text-sm font-semibold text-white"
+                  className="block rounded-md bg-brand-solid px-4 py-2 text-center text-sm font-semibold text-white"
                 >
                   登录 / 注册
                 </Link>

@@ -28,7 +28,7 @@ export function Input({ label, error, hint, className, id, ...rest }: InputProps
           'placeholder:text-ink-400 disabled:cursor-not-allowed disabled:bg-page disabled:text-ink-400',
           error
             ? 'border-state-danger focus:border-state-danger focus:ring-2 focus:ring-state-danger/15'
-            : 'border-state-line hover:border-ink-400/40 focus:border-brand focus:ring-2 focus:ring-brand/15',
+            : 'border-state-line hover:border-state-hover focus:border-brand focus:ring-2 focus:ring-brand/20',
           className,
         )}
         {...rest}

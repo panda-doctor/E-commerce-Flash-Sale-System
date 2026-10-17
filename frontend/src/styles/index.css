@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 @layer base {
-  /* 语义变量从 Tailwind 令牌派生，供内联样式 / 原生 CSS 复用，避免出现第二套色值 */
+  /* 语义变量由 Tailwind 令牌派生，避免出现第二套色值 */
   :root {
     color-scheme: light;
 
@@ -17,10 +17,14 @@
 
     --color-border: theme('colors.state.line');
     --color-border-strong: theme('colors.state.line-strong');
+    --color-border-hover: theme('colors.state.hover');
 
     --color-primary: theme('colors.brand.DEFAULT');
+    --color-primary-solid: theme('colors.brand.solid');
     --color-primary-hover: theme('colors.brand.dark');
     --color-primary-soft: theme('colors.brand.soft');
+    --color-promo-orange: theme('colors.brand.orange');
+    --color-promo-coral: theme('colors.brand.coral');
 
     --color-success: theme('colors.state.success');
     --color-warning: theme('colors.state.warning');
@@ -36,6 +40,9 @@
 
   body {
     @apply bg-page font-sans text-body text-ink-900 antialiased;
+    /* 顶部一层极淡的暖光，避免整页平铺奶油色显得平板 */
+    background-image: radial-gradient(1100px 320px at 50% -160px, #ffe4d3 0%, rgba(255, 228, 211, 0) 70%);
+    background-repeat: no-repeat;
   }
 
   h1,
@@ -49,15 +56,13 @@
   }
 
   ::selection {
-    @apply bg-brand/15 text-ink-900;
+    @apply bg-brand/20 text-ink-900;
   }
 
-  /* 数字类展示统一等宽，价格/库存/倒计时不抖动 */
   .tnum {
     @apply tabular-nums;
   }
 
-  /* 尊重系统"减少动态效果"偏好：关闭过渡与动画，不影响布局 */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -76,39 +81,46 @@
   }
 
   .card {
-    @apply rounded-xl border border-state-line bg-page-card shadow-card;
+    @apply rounded-2xl border border-state-line bg-page-card shadow-card;
   }
 
-  /* 可点击卡片：只做轻微位移与阴影变化，边框保持中性，不用品牌色抢焦点 */
+  /* 卡片悬停：暖色边框 + 暖阴影，轻微抬升，不改背景色 */
   .card-hover {
-    @apply transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-state-line-strong hover:shadow-card-hover motion-reduce:transform-none motion-reduce:transition-none;
+    @apply transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-state-hover hover:shadow-card-hover motion-reduce:transform-none motion-reduce:transition-none;
   }
 
   .focus-ring {
     @apply outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-white;
   }
 
-  /* 胶囊信息块：阶段、限购、库存提示等轻量元信息 */
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-full border border-state-line bg-page-subtle px-2.5 py-1 text-xs font-medium text-ink-600;
   }
 
-  /* 错误提示：语义色自成一套，复用它处不要再用品牌浅红兜底 */
   .alert-danger {
     @apply rounded-lg border border-state-danger/20 bg-state-danger/10 px-3 py-2 text-sm text-state-danger;
   }
 
-  /* 中性提示条：排队中、轮询停止等"非错误但也需提醒"的信息 */
   .notice {
-    @apply rounded-lg border border-state-line bg-page px-4 py-2.5 text-xs text-ink-600;
+    @apply rounded-lg border border-state-line bg-brand-tint px-4 py-2.5 text-xs text-ink-600;
   }
 
-  /* 筛选胶囊：选中态用深色实心，把红色留给价格与主操作 */
+  /* 筛选胶囊：选中态用品牌实心红（白字 4.98:1），与价格形成同一品牌体系 */
   .filter-pill {
-    @apply shrink-0 cursor-pointer whitespace-nowrap rounded-full border border-state-line bg-page-card px-4 py-1.5 text-sm font-medium text-ink-600 transition-colors duration-150 hover:border-state-line-strong hover:text-ink-900 focus-ring;
+    @apply shrink-0 cursor-pointer whitespace-nowrap rounded-full border border-state-line bg-page-card px-4 py-1.5 text-sm font-medium text-ink-600 transition-colors duration-150 hover:border-state-hover hover:bg-brand-tint hover:text-ink-900 focus-ring;
   }
 
   .filter-pill-active {
-    @apply shrink-0 cursor-pointer whitespace-nowrap rounded-full border border-ink-900 bg-ink-900 px-4 py-1.5 text-sm font-semibold text-white focus-ring;
+    @apply shrink-0 cursor-pointer whitespace-nowrap rounded-full border border-brand-solid bg-brand-solid px-4 py-1.5 text-sm font-semibold text-white shadow-sm focus-ring;
+  }
+
+  /* 区块标题：品牌色短线 + 深色标题，建立商品区识别度 */
+  .section-title {
+    @apply flex items-center gap-2.5 text-lg font-extrabold text-ink-900 sm:text-xl;
+  }
+
+  .section-title::before {
+    content: '';
+    @apply block h-5 w-1.5 rounded-full bg-gradient-to-b from-brand-orange to-brand;
   }
 }

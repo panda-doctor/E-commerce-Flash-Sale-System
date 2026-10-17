@@ -51,9 +51,9 @@ export function Countdown({
 
   return (
     <div className={cn('flex items-center gap-1.5', className)}>
-      <Timer className="size-4 text-brand" aria-hidden />
+      <Timer className="size-4 text-brand-dark" aria-hidden />
       <span className="text-xs text-ink-600">{label}</span>
-      <span className="tnum text-sm font-semibold text-brand" role="timer" aria-live="off">
+      <span className="tnum text-sm font-bold text-brand-dark" role="timer" aria-live="off">
         {formatRemaining(target, now)}
       </span>
     </div>

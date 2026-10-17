@@ -40,7 +40,7 @@ export default function ProfilePage() {
 
       <Card className="mt-6" padded={false}>
         <div className="flex items-center gap-4 p-6">
-          <div className="flex size-14 items-center justify-center rounded-full bg-page text-ink-900">
+          <div className="flex size-14 items-center justify-center rounded-full bg-brand-soft text-brand-dark">
             <UserRound className="size-7" aria-hidden />
           </div>
           <div className="flex-1">

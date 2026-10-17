@@ -1,14 +1,13 @@
 import animate from 'tailwindcss-animate'
 
 /**
- * 设计令牌（全站唯一色源）。
+ * 暖色电商品牌令牌（全站唯一色源）。
  *
- * 配色原则：
- * - 中性色承载结构：页面 #F6F7F9、表面 #FFF、次级表面 #F0F2F5、边框 #E5E7EB；
- * - 文字三级：#202124（主）/ #667085（次）/ #98A2B3（弱，仅非关键信息）；
- * - 秒杀红 #E5484D 只用于「价格、主操作、促销标记」，不用于导航、分页、普通链接与装饰；
- * - 语义色只表达真实业务状态：成功 #16865C、警告 #B86E08、危险 #D92D20；
- *   info 收敛为中性深灰 #475467，避免蓝色成为第二个装饰强调色。
+ * 色彩结构：
+ * - 奶油白画布 + 白色内容面 + 浅橙/浅红局部区域，形成"暖色层次"而不是整页灰白；
+ * - 品牌红 #E53935 用于价格等大字号促销信息，实心按钮用 #D32F2F（白字 4.98:1 达 AA）；
+ * - 橙 #FF8A34 / 珊瑚 #FF6548 只做装饰、渐变与局部强调，不承载小字号白字；
+ * - 语义色只表达真实状态（成功/警告/失败），不参与品牌装饰。
  *
  * @type {import('tailwindcss').Config}
  */
@@ -18,33 +17,45 @@ export default {
     extend: {
       colors: {
         brand: {
-          // 与建议色 #E5484D 同色相，下压 1 档使「白字/红底」与「红字/白底」都过 AA（4.5:1）
-          DEFAULT: '#D93A40',
-          dark: '#C22F36',
-          // 浅红底上的小字号文字（徽标/角标），对比度 5.9:1
-          ink: '#B3252B',
-          soft: '#FFF1F0',
+          DEFAULT: '#E53935',
+          // 实心按钮/选中态：白字 4.98:1
+          solid: '#D32F2F',
+          // hover 与小字号强调：白底 5.62:1
+          dark: '#C62828',
+          deep: '#B71C1C',
+          coral: '#FF6548',
+          orange: '#FF8A34',
+          // 浅红底（徽标/价格辅助/状态提示）
+          soft: '#FFE7E5',
+          // 浅橙底（商品区/活动区局部背景）
+          cream: '#FFF0E3',
+          tint: '#FFF1EC',
         },
         page: {
-          DEFAULT: '#F6F7F9',
+          DEFAULT: '#FFF7F0',
           card: '#FFFFFF',
-          subtle: '#F0F2F5',
+          subtle: '#FFF0E5',
         },
         ink: {
-          900: '#202124',
-          // 次级文字：在白卡/页面底/次级面上均 ≥5.1:1
-          600: '#5D6675',
-          // 弱化文字：仅占位符、图标与禁用态，不承载关键信息
-          400: '#98A2B3',
+          900: '#24202A',
+          600: '#6B6470',
+          // 仅占位符/图标/禁用态
+          400: '#8A8490',
           0: '#FFFFFF',
         },
         state: {
           success: '#12724E',
           warning: '#9A5B08',
           danger: '#C42A1F',
-          info: '#475467',
-          line: '#E5E7EB',
-          'line-strong': '#D0D5DD',
+          info: '#5B5560',
+          line: '#F0E1DA',
+          'line-strong': '#E6D0C5',
+          hover: '#FFC7B6',
+        },
+        footer: {
+          DEFAULT: '#2A1B19',
+          text: '#F7E9E4',
+          muted: '#C9B4AC',
         },
       },
       fontFamily: {
@@ -62,10 +73,16 @@ export default {
         subheading: ['16px', { lineHeight: '24px', fontWeight: '700' }],
         body: ['14px', { lineHeight: '22px' }],
       },
+      backgroundImage: {
+        hero: 'linear-gradient(115deg, #B71C1C 0%, #C62828 48%, #E53935 76%, #FF6548 100%)',
+        'hero-card': 'linear-gradient(150deg, #FFF7F1 0%, #FFFFFF 45%, #FFF1EC 100%)',
+        'image-warm': 'linear-gradient(135deg, #FFF4EA 0%, #FFF1EC 55%, #FFE7E5 100%)',
+      },
       boxShadow: {
-        card: '0 2px 10px rgba(16, 24, 40, 0.04)',
-        'card-hover': '0 8px 24px rgba(16, 24, 40, 0.08)',
-        float: '0 12px 32px rgba(16, 24, 40, 0.12)',
+        card: '0 2px 10px rgba(150, 70, 40, 0.06)',
+        'card-hover': '0 12px 28px rgba(180, 70, 40, 0.12)',
+        float: '0 16px 40px rgba(120, 40, 20, 0.18)',
+        'hero-card': '0 18px 44px rgba(80, 20, 10, 0.22)',
       },
       zIndex: {
         nav: '40',

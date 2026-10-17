@@ -96,7 +96,7 @@ export default function ActivityDetailPage() {
             ) : null}
           </div>
 
-          <div className="rounded-xl border border-brand/20 bg-brand-soft p-5">
+          <div className="rounded-2xl border border-brand/25 bg-brand-tint p-5 shadow-card">
             <div className="flex items-end gap-3">
               <span className="tnum text-3xl font-bold text-brand">
                 {formatPrice(activity.seckillPrice)}

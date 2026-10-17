@@ -85,7 +85,7 @@ export default function ProductDetailPage() {
               库存 {product.availableStock ?? '—'} / {product.totalStock ?? '—'} 件
             </span>
             <span className="chip">
-              <ShieldCheck className="size-3.5 text-state-success" aria-hidden />
+              <ShieldCheck className="size-3.5 text-brand-orange" aria-hidden />
               服务端实时校验
             </span>
           </div>
@@ -119,9 +119,10 @@ export default function ProductDetailPage() {
 
           {activity ? (
             <Card
+              className="border-brand/25 bg-brand-tint"
               title={
                 <span className="flex items-center gap-2">
-                  <Timer className="size-4 text-brand" aria-hidden />
+                  <Timer className="size-4 text-brand-dark" aria-hidden />
                   {activity.activityName ?? '限时秒杀'}
                 </span>
               }
