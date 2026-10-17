@@ -16,9 +16,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * Stream 消费调度（{@code StreamConsumerScheduler}，fixedDelay 150ms/5s）；本服务不依赖
  * order 模块，开了无任务可跑，反而有"库里定时任务被重复执行"的风险。</p>
  *
- * <p>本日只承载活动自己的管理端接口（建/改活动、预热、重置库存）；<b>读路径仍指旧库
- * {@code flash_sale}</b>，写路径经 {@code DualWriteMirror} 镜像到 {@code flash_sale_activity}
- * （Day 3 已有的双写开关，默认关闭）。</p>
+ * <p>本应用是活动域（{@code seckill_activity}）的**唯一权威**：读写都指向 {@code flash_sale_activity}。
+ * P4 收官后旧库 {@code flash_sale} 已下线，反向镜像（{@code DualWriteMirror}）与双写开关一并删除。</p>
  */
 // P3 Day 5：只扫活动域自己的 mapper —— 商品存在性校验已改为调用 product 服务的内部接口
 // （ProductCatalogPort + HttpProductCatalogAdapter），应用不再直读 product 表

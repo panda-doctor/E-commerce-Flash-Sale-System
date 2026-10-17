@@ -64,7 +64,7 @@ module:
     # —— 未拆模块（单体 seckill 活动校验/AI 客服/analytics 快照）仍读它，所以本镜像**默认开启**
     # （Day 3 时它只是影子副本、默认关；语义已随切读反转）：关掉 = 未拆模块读到凝固的旧副本。
     dual-write:
-      enabled: ${DUAL_WRITE_ENABLED:false}
+      # P4 收官：镜像类已删除 → 本段为历史遗留（无对应配置类，Spring 忽略）
       legacy-product-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
       legacy-activity-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
       username: root

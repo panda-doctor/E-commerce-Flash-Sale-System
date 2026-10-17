@@ -120,17 +120,8 @@ spring:
   # 下列 datasource 配置随之成为**惰性配置**（没有任何自动配置消费它），待旧库 DROP 后删除。
   autoconfigure:
     exclude: org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-  datasource:
-    url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-    username: root
-    password: ${MYSQL_PASSWORD:123456}   # 默认仅供本地演示；真实口令经 .env 的 MYSQL_PASSWORD 注入，勿明文入库
-    hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
-      idle-timeout: 300000
-      connection-timeout: 10000
-      max-lifetime: 1800000
-    driver-class-name: com.mysql.cj.jdbc.Driver
+  # P4 收官清理：原 datasource 段（url/username/password/hikari/driver）指向旧库 flash_sale，
+  # 旧库已 DROP → 整段删除。单体不再有任何数据库连接（DataSourceAutoConfiguration 已按属性排除）。
 
   # =====================================================
   # Redis 配置

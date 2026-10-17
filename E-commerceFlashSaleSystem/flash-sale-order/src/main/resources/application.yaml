@@ -60,7 +60,7 @@ module:
   # 对账脚本的 order.* 检查会立刻报 DIFF）。单体/ai 不配这一段（它们没有 order 写路径）。
   db:
     dual-write:
-      enabled: ${DUAL_WRITE_ENABLED:false}
+      # P4 收官：镜像类已删除 → 本段为历史遗留（无对应配置类，Spring 忽略）
       legacy-order-url: jdbc:mysql://localhost:3306/flash_sale?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
       username: root
       password: ${MYSQL_PASSWORD:123456}

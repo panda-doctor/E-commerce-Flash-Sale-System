@@ -20,8 +20,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * 组件扫描才能覆盖共享库（infra 的 Redis/MyBatis 配置、user 域的 Bean）。</p>
  *
  * <p>P4 Day 6 起本应用是 auth 两张表（{@code user_account} / {@code user_session}）的
- * **唯一权威写者**：数据源指向 {@code flash_sale_auth}，写后由 {@code AuthMirror} 反向镜像到
- * 旧库副本（monolith / seckill / order 三个运行时的会话校验读它）。因此**过期会话清理的
+ * **唯一权威写者**：数据源指向 {@code flash_sale_auth}，读写皆以它为唯一事实（P4 收官后旧库
+ * {@code flash_sale} 与 {@code AuthMirror} 反向镜像已一并删除，其余运行时的会话校验改走内部 HTTP 接口）。因此**过期会话清理的
  * 调度入口也收口到本应用**（{@code user.scheduler.AuthSessionCleanupScheduler}），
  * 本类的 {@code @EnableScheduling} 就是让它生效的开关。</p>
  */
