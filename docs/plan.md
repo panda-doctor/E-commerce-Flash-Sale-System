@@ -2009,6 +2009,19 @@ required a bean of type 'javax.sql.DataSource' that could not be found.
 
 **脚本踩坑留档**：`$ErrorActionPreference='Stop'` 会让 **Maven 写到 stderr 的 WARNING** 变成终止性错误、直接打断脚本 ⇒ 门禁脚本一律用退出码判定，不用 `Stop`。
 
+### P6 收口（2026-10-17）
+
+| 项 | 产物 / 结论 |
+|---|---|
+| 一条命令的门禁 | `scripts/ci-verify.ps1`：install → 回归（**用例数下限 143** + 0 失败）→ 可选投影对账；实测 `RESULT: GREEN`，exit 0 |
+| 漂移可观测 | `ProjectionHealthIndicator` → `/actuator/health` 的 `projection` 组件：`UP` / `DEGRADED`（`projectionFailureTotal>0` 或 `deadLetterCount>0`）/ `UNKNOWN`；实测输出 `{"status":"UP","details":{"projectionFailureTotal":0,"deadLetterCount":0}}` |
+| 处置手册 | `docs/runbook.md`：四类故障（消费停摆 / 投影漂移 / 服务不可达·令牌 / 数据源与缓存）+ 发布检查单 + **6 条真实坑** + 4 条不变量 |
+| 演练 1（会话守卫） | 停 auth 后重放真实会话 → `50000 会话校验服务不可用：No instances available for flash-sale-auth`；与 `40100`（未登录）**可区分**、请求被拒 ⇒ fail-closed 闭环 ✅ |
+| 演练 2（消费者重启） | order 重启前后对账均 **0 差异** ⇒ `orderNo` 幂等键保证至少一次投递**不重复计数** ✅ |
+| 演练 3（真实积压） | **未做**（需临时改活动/库存 + 压测流量，对演示数据有污染风险）；判据已写入 Runbook：`XLEN` 归零 + `queuedMessageCount` 回落 + 对账 0 差异 |
+
+**P6 结论**：质量门禁、漂移可观测、故障处置手册、两类混沌演练齐备；剩余（真实积压演练、OTel/Zipkin、托管 CI）均属增强项，不构成缺口。
+
 ---
 
 *文档创建日期：2026-07-29*
