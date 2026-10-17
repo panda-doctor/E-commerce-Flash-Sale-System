@@ -176,11 +176,16 @@ curl.exe -s http://127.0.0.1:8081/actuator/health     # 无 DEGRADED
 
 **结论与待办**
 1. **安全语义正确**：下游校验不可用时一律拒绝，绝不放行；
-2. **可诊断性缺口**（已登记）：会话校验的 transport 失败本应在
-   `HttpSessionValidationAdapter` 抛 `BusinessException(50000)`，但实测被上层统一成了 `40100 ⇒
-   排障时会把"auth 挂了"误读成"用户没登录"。修法：拦截器/守卫区分 `Optional.empty()`（→40100）
-   与异常（→50000），与适配器注释里写的约定一致；
-3. 演练 2（停 order 看读侧降级）此前已实测通过：`metrics/rank` 在 order 缺席时仍正确返回（见 `plan.md` 的 M6 运行时证据）。
+2. **上表第 2 行的 `40100` 是演练脚本缺陷，不是产品缺陷**（2026-10-17 更正）：
+   我手写的 `Cookie: FLASH_SESSION=deadbeef` **没有被识别**（cookie 名与实际配置不一致 / 未先登录拿真名），
+   于是 `SessionGuard` 在"取不到 token"处就返回 null → 走到 `40100`，**根本没有触发跨进程校验**。
+   事后复核代码：`SessionGuard.authenticate` 不吞异常、`ApiAccessInterceptor` 只把 `null → 40100`、
+   `HttpSessionValidationAdapter` 对 transport 失败抛 `BusinessException(SYSTEM_ERROR)`（→ `50000`）——
+   **三者语义与文档一致**，无需修复。
+3. **正确演练步骤（待重跑）**：① 起单体 + auth → ② `POST /api/auth/login` 拿真实 Cookie 名与值 →
+   ③ 停 auth → ④ 用该 Cookie 重放用户态请求，**期望 `50000`**（依赖不可用）、且**不得**返回 200。
+   教训：**演练必须先拿到真实凭证再制造故障**，否则测到的是"未登录"而不是"依赖不可用"。
+4. 演练 2（停 order 看读侧降级）此前已实测通过：`metrics/rank` 在 order 缺席时仍正确返回（见 `plan.md` 的 M6 运行时证据）。
 
 ---
 
