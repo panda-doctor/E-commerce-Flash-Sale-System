@@ -1840,6 +1840,20 @@ required a bean of type 'javax.sql.DataSource' that could not be found.
 1. **删字段 = 改构造器**：Lombok `@RequiredArgsConstructor` 的签名随字段变，凡是**手工 `new` 过该服务**的测试都会编译失败 → 必须"服务类 + 其测试"成对改（Day 10 首次尝试就是因此红掉并回退的）。
 2. **删类 = 清导入**：`import` 一个已删除的类会直接编译失败（不只是警告）→ 删类前先做全仓引用清点（本次 6 个测试文件、9 条 import）。
 
+### 收官后优化①：会话校验的短 TTL 本机缓存（2026-10-17，`64d95fe` + `6589a5e`）
+
+| 面 | 内容 |
+|---|---|
+| 位置 | `flash-sale-auth-core/.../user/web/SessionGuard.java`（三个运行时的**唯一**会话入口） |
+| 开关 | `module.auth.session-cache-ttl`，**默认 `0s` = 关闭**（行为与引入前完全一致） |
+| 策略 | 只缓存**有效**结果；`ConcurrentHashMap` 上限 1 万条、超限整体清空；TTL 到期即失效 |
+| 收益 | 同一页面连续请求（列表 + 详情 + 轮询）不再每个都打一次 auth 内部校验接口 |
+| 代价（写进类注释） | 吊销（登出/改密/禁用）**生效延迟 ≤ TTL**，且各运行时各自缓存、互不同步 ⇒ 启用请配短值 |
+| 测试 | `SessionGuardTest` **3/0/0**：关闭=逐次校验、TTL 内只校验一次、过期重新校验（用**手写计数端口**断言"下游被调用几次"，不用 Mockito 的 verify 家族） |
+| 回归基线 | **143/0/0**（140 + 3 条缓存语义） |
+
+**一条排障留档**：`flash-sale-auth-core` 的测试 classpath 里 Mockito 的 `verify/times/anyString` 静态导入不可用（`mock`/`when` 可用），且该模块**没有 `spring-test`**（`ReflectionTestUtils` 不可用）→ 新测试请用"手写替身 + 原生反射"，并把编译错误**落盘后再读**（控制台是 GBK，`符号: …` 那行会被乱码吞掉）。
+
 ---
 
 *文档创建日期：2026-07-29*
