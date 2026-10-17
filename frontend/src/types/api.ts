@@ -1,146 +1,14 @@
-export interface ApiEnvelope<T> {
+/**
+ * 后端统一响应信封与分页结构（依据真实代码：
+ * `Result<T>{code,message,data}`、`PageResponse<T>{records,page,pageSize,total,pages}`）。
+ */
+export interface Result<T> {
   code: number
   message: string
-  data?: T
-  requestId?: string
-  timestamp?: number
+  data: T
 }
 
-export class ApiError extends Error {
-  constructor(
-    public readonly code: number,
-    message: string,
-    public readonly data?: unknown,
-  ) {
-    super(message)
-    this.name = 'ApiError'
-  }
-}
-
-export type ActivityStatus = 'NOT_STARTED' | 'RUNNING' | 'ENDED' | 'SOLD_OUT' | 'CANCELLED'
-export type PreheatStatus = 'NOT_PREHEATED' | 'PREHEATED' | 'PREHEAT_FAILED'
-export type ProductStatus = 'ON_SHELF' | 'OFF_SHELF'
-
-export interface ActivityItem {
-  activityId: string
-  productId: string
-  productName: string
-  productImage?: string | null
-  activityName: string
-  startTime: string
-  endTime: string
-  seckillPrice: number
-  originalPrice: number
-  status: ActivityStatus
-  stock: number
-  preheated?: boolean | null
-  totalStock: number
-  limitPerUser: number
-}
-
-export interface ActivityDetail {
-  activityId: string
-  productId: string
-  activityName: string
-  startTime: string
-  endTime: string
-  status: ActivityStatus
-  seckillPrice: number
-  stock: number
-  totalStock: number
-  limitPerUser: number
-}
-
-export interface ActivityPayload {
-  activityId?: string
-  productId: string
-  activityName: string
-  startTime: string
-  endTime: string
-  seckillPrice: number
-  seckillStock: number
-  limitPerUser: 1
-}
-
-export interface ProductDetail {
-  productId: string
-  name: string
-  description?: string | null
-  imageUrl?: string | null
-  originalPrice: number
-  totalStock: number
-  availableStock: number
-  status: ProductStatus
-  cacheHit: boolean
-}
-
-export interface ProductPayload {
-  productId?: string
-  name: string
-  description?: string
-  imageUrl?: string
-  originalPrice: number
-  totalStock: number
-  status: ProductStatus
-}
-
-export interface ActivityMetrics {
-  activityId: string
-  redisStock: number | null
-  orderCount: number
-  queuedMessageCount: number
-  successCount: number
-  duplicateRejectCount: number
-  rateLimitRejectCount: number
-  soldOutRejectCount: number
-}
-
-export interface UploadResult {
-  url: string
-  storageType: string
-}
-
-export interface CreatedActivity {
-  activityId: string
-  status: ActivityStatus
-}
-
-export interface SavedProduct {
-  productId: string
-}
-
-export interface PreheatResult {
-  activityId: string
-  activityKey: string
-  stockKey: string
-  stock: number
-}
-
-export interface StockResetResult {
-  activityId: string
-  stockKey: string
-  stock: number
-}
-
-export interface DeadLetterReplayResult {
-  originalMessageId: string
-  replayMessageId: string
-}
-
-export interface UserProfile {
-  id: string
-  accountName: string
-  displayName: string | null
-  status: number
-  createdAt: string
-}
-
-export interface AuthResponse {
-  user: UserProfile
-  csrfToken: string
-}
-
-export interface UserPage<T = UserProfile> {
+export interface PageResponse<T> {
   records: T[]
   page: number
   pageSize: number
@@ -148,16 +16,14 @@ export interface UserPage<T = UserProfile> {
   pages: number
 }
 
-export interface SeckillOrderSummary {
-  orderNo: string
-  activityId: string
-  productId: string
-  status: 'QUEUING' | 'CREATED' | 'FAILED' | 'CANCELLED' | string
-  createdAt?: string
-}
+/**
+ * 后端 `Long` 以 JSON number 返回，JavaScript 安全整数上限为 2^53-1。
+ * `http` 层会把 16 位以上的整数字面量转成字符串，因此这里统一用 string 承载 ID，
+ * 请求时再 `String(id)` 传回，避免历史大 ID（如 1788829276582000000）精度丢失。
+ */
+export type Id = string
 
-export interface SeckillOrderStatus extends SeckillOrderSummary {
-  statusDesc?: string
-  userId?: string
-  seckillPrice?: number
+export interface PageQuery {
+  page?: number
+  pageSize?: number
 }

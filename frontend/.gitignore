@@ -1,9 +1,11 @@
-node_modules/
-dist/
-*.log
+node_modules
+dist
+dist-ssr
+coverage
+*.local
+.env
+.env.*
+!.env.example
 .DS_Store
-
-# 过程产物与工具缓存（不入库）
-*.png
-.playwright-cli/
-.workbuddy/
+*.log
+.vite
