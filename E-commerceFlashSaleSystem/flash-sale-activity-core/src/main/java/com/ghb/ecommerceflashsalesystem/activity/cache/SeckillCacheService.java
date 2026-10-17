@@ -22,7 +22,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import com.ghb.ecommerceflashsalesystem.activity.port.SeckillStockPort;
-import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteMirror;
 
 import java.util.concurrent.TimeUnit;
 
@@ -48,7 +47,7 @@ public class SeckillCacheService {
     private final SeckillActivityMapper seckillActivityMapper;
     private final RedissonClient redissonClient;
     /** P3 Day 3：过渡期双写镜像（默认关；失败只记日志，不影响预热/回置主流程） */
-    private final DualWriteMirror dualWriteMirror;
+    // P4 收官清理：反向镜像已随旧库下线退役（字段/mirrorPreheatStatus/3 处调用全部删除）
     /** P3 Day 5：库存键写入选口 —— seckill:stock:* 归 seckill 域，activity 只表达"写多少、保留多久" */
     private final SeckillStockPort seckillStockPort;
 
@@ -126,14 +125,14 @@ public class SeckillCacheService {
             UpdateWrapper<SeckillActivity> updateWrapper = new UpdateWrapper<>();
             updateWrapper.eq("id", activityId).set("preheat_status", PreheatStatusEnum.PREHEATED.getCode());
             seckillActivityMapper.update(null, updateWrapper);
-            mirrorPreheatStatus(activityId, PreheatStatusEnum.PREHEATED.getCode());
+            
             log.info("活动预热成功，activityId={}, ttl={}秒", activityId, ttlSeconds);
         } catch (Exception e) {
             // 预热失败，更新数据库状态为"预热失败"
             UpdateWrapper<SeckillActivity> failWrapper = new UpdateWrapper<>();
             failWrapper.eq("id", activityId).set("preheat_status", PreheatStatusEnum.PREHEAT_FAILED.getCode());
             seckillActivityMapper.update(null, failWrapper);
-            mirrorPreheatStatus(activityId, PreheatStatusEnum.PREHEAT_FAILED.getCode());
+            
             log.error("活动预热失败，activityId={}", activityId, e);
             throw new BusinessException(ResultCode.SYSTEM_ERROR, "活动预热失败，请稍后重试");
         }
@@ -231,7 +230,7 @@ public class SeckillCacheService {
         wrapper.eq("id", activityId)
                 .set("preheat_status", PreheatStatusEnum.NOT_PREHEATED.getCode());
         seckillActivityMapper.update(null, wrapper);
-        mirrorPreheatStatus(activityId, PreheatStatusEnum.NOT_PREHEATED.getCode());
+        
         log.info("活动预热状态已回置为未预热，activityId={}", activityId);
     }
 
@@ -244,10 +243,6 @@ public class SeckillCacheService {
      * @param activityId    活动编号
      * @param preheatStatus 预热状态码（PreheatStatusEnum）
      */
-    private void mirrorPreheatStatus(Long activityId, int preheatStatus) {
-        dualWriteMirror.mirrorActivity(
-                "UPDATE seckill_activity SET preheat_status = ? WHERE id = ?", preheatStatus, activityId);
-    }
 
     public SeckillActivityVO getActivityFromCache(Long activityId) {
         String activityKey = CacheKeyConstant.SECKILL_ACTIVITY_PREFIX + activityId;

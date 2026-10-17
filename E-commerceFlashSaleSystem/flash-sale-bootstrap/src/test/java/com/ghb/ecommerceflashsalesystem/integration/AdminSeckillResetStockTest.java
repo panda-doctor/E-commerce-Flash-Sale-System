@@ -67,8 +67,9 @@ public class AdminSeckillResetStockTest {
     void setUp() throws Exception {
         // P3 Day 3：双写镜像关闭态注入（单测聚焦主库写回语义）
         // P3 Day 5：库存端口以 mock 注入（断言调用参数，不再断言 activity 直写 Redis 库存键）
+        // P4 收官后：镜像已退役，构造器不再有 dualWriteMirror 参数
         seckillCacheService = new SeckillCacheService(redisTemplate, seckillActivityMapper, redissonClient,
-                new DualWriteMirror(new DualWriteProperties()), seckillStockPort);
+                seckillStockPort);
         // 重置方法内部先获取分布式锁；单测里直接放行，聚焦守卫与写回语义
         when(redissonClient.getLock(anyString())).thenReturn(lock);
         when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);

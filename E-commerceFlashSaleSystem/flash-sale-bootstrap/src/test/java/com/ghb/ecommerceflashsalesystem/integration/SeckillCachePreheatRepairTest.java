@@ -54,8 +54,9 @@ class SeckillCachePreheatRepairTest {
     void setUp() throws InterruptedException {
         // P3 Day 3：双写镜像关闭态注入（单测聚焦预热修复语义）
         // P3 Day 5：库存端口 mock 注入（活动哈希仍由 RedisTemplate 写，库存改由端口写）
+        // P4 收官后：镜像已退役，构造器不再有 dualWriteMirror 参数
         cacheService = new SeckillCacheService(redisTemplate, activityMapper, redissonClient,
-                new DualWriteMirror(new DualWriteProperties()), seckillStockPort);
+                seckillStockPort);
         when(redissonClient.getLock(anyString())).thenReturn(lock);
         when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(lock.isHeldByCurrentThread()).thenReturn(true);
