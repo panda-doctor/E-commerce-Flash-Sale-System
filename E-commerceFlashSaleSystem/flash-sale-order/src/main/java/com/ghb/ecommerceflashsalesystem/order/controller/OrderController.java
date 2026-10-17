@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillOrder;
 import com.ghb.ecommerceflashsalesystem.domain.enums.OrderStatusEnum;
 import com.ghb.ecommerceflashsalesystem.order.service.OrderQueryService;
+import com.ghb.ecommerceflashsalesystem.order.vo.OrderListItemVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -69,31 +70,25 @@ public class OrderController {
      * GET /api/seckill/users/{userId}/orders?activityId=1
      */
     @GetMapping("/users/{userId}/orders")
-    public Result<List<Map<String, Object>>> listUserOrders(@PathVariable Long userId,
-                                                             @RequestParam(required = false) Long activityId,
-                                                             HttpServletRequest httpRequest) {
+    public Result<List<OrderListItemVO>> listUserOrders(@PathVariable Long userId,
+                                                        @RequestParam(required = false) Long activityId,
+                                                        HttpServletRequest httpRequest) {
         Long authenticatedUserId = (Long) httpRequest.getAttribute(AuthAttributeConstant.AUTHENTICATED_USER_ID);
         if (authenticatedUserId == null || !authenticatedUserId.equals(userId)) {
             throw new BusinessException(ResultCode.UNAUTHORIZED, "请求用户与访问令牌不匹配");
         }
         List<SeckillOrder> orders = orderQueryService.listByUserAndActivity(userId, activityId);
-        List<Map<String, Object>> data = new ArrayList<>();
+        // P2-6：改为 VO（字段名与旧的 Map 完全一致，前端无感；契约从此可编译核对）
+        List<OrderListItemVO> data = new ArrayList<>();
         for (SeckillOrder order : orders) {
-            Map<String, Object> item = new HashMap<>();
-            item.put("orderNo", order.getOrderNo());
-            item.put("activityId", order.getActivityId());
-            item.put("productId", order.getProductId());
-            OrderStatusEnum status = OrderStatusEnum.fromValue(order.getStatus());
-            item.put("status", status == null ? OrderStatusEnum.QUEUING.name() : status.name());
-            item.put("createdAt", order.getCreatedAt());
-            data.add(item);
+            data.add(OrderListItemVO.of(order));
         }
         return Result.success(data);
     }
 
     @GetMapping("/users/me/orders")
-    public Result<List<Map<String, Object>>> listMyOrders(@RequestParam(required = false) Long activityId,
-                                                          HttpServletRequest httpRequest) {
+    public Result<List<OrderListItemVO>> listMyOrders(@RequestParam(required = false) Long activityId,
+                                                      HttpServletRequest httpRequest) {
         Long authenticatedUserId = (Long) httpRequest.getAttribute(AuthAttributeConstant.AUTHENTICATED_USER_ID);
         if (authenticatedUserId == null) throw new BusinessException(ResultCode.UNAUTHORIZED, "请先登录");
         return listUserOrders(authenticatedUserId, activityId, httpRequest);

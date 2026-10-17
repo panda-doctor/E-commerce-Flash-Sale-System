@@ -221,7 +221,7 @@ private void compensateDeadMessage(SeckillOrderMessage message) {
 | P2-3 | 安全 | 密码/token 是否脱敏取决于日志实现（未逐条核对） | `GlobalExceptionHandler`、各 Controller 的 `log.info` | 可能记录敏感信息 | 统一脱敏过滤器 |
 | P2-4 | 秒杀 | 无防暴破计数（登录/秒杀仅靠 Lua 限流窗口） | `rate_limit.lua` 调用点 | 分布式撞库/刷接口风险 | 增加失败计数与短封禁 |
 | P2-5 | 读侧 | `projectionFailure` 只有全局计数与单一探针（仅单体），order/auth 无等价探针 | `ProjectionHealthIndicator` | 漂移发现依赖单体存活 | 各运行时暴露同类探针或集中采集 |
-| P2-6 | 订单 | `/users/{userId}/orders` 与 `/users/me/orders` 语义重复（前者仅本人可用） | `OrderController` | 契约冗余，易误用 | 保留 `me`，`{userId}` 改为管理端 |
+| P2-6 ✅**部分修复** | 订单 | 列表响应从 `Map` 拼装改为 **`OrderListItemVO`**（字段名 `orderNo/activityId/productId/status/createdAt` 完全不变 ⇒ 前端无感，但契约可编译核对）；`{userId}` 与 `me` 语义重复**保留**（兼容既有契约，`{userId}` 已有归属强校验，不构成越权） | `order/vo/OrderListItemVO.java`、`OrderController` | — | 余项：若前端只用 `me`，可后续把 `{userId}` 降级为管理端接口 |
 | P2-7 | 图片上传 | 合法文件被误拒的历史问题未复现/未修 | `AdminFileController` 校验分支 | 管理端上传失败 | 改用魔数头校验 + 允许格式白名单 |
 | ~~P2-8~~ ✅**已部分修复** | 死信 | 新增 `POST /api/admin/seckill/dead-letters/replay-batch`（`{"originalMessageIds":[…]}`）：逐条重放、**单条失败不影响其余**，返回 `attempted/succeeded/failed/failures`；死信 > 0 的告警已由 `ProjectionHealthIndicator.deadLetterCount` 覆盖 | `DeadLetterReplayService.replayBatch` + `AdminMessageController:48` | — | 余项：按流游标自动批量（需读 dead stream 游标），当前由运维传 id 列表 |
 | ~~P2-9~~ | 库存补偿 | **撤销（第二次误判）**：`SeckillRequest` 只有 `activityId/userId/productId`，**没有 quantity 字段** ⇒ 系统语义即"一次一件"，`INCR +1` 与原扣减严格对称 | `SeckillRequest.java:20-31` | — | 无需修改；若未来引入 quantity，必须同步改 Lua 扣减与补偿（已记录约束） |
