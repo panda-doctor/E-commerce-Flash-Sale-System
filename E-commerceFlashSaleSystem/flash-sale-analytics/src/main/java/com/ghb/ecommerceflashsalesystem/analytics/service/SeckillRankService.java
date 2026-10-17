@@ -14,8 +14,9 @@ public interface SeckillRankService {
      * @param activityId  活动ID
      * @param userId      用户ID
      * @param successTime 抢单成功时刻（毫秒，越早排名越前）；为 null 时回退当前时间
+     * @param orderNo     订单号（P5：随事件写入投影，榜单展示直接读投影，读侧不再回调 order 服务）
      */
-    void recordSuccess(Long activityId, Long userId, Long successTime);
+    void recordSuccess(Long activityId, Long userId, Long successTime, String orderNo);
 
     /**
      * 获取活动榜单 TOP N

@@ -35,6 +35,26 @@ public class MetricsServiceImpl implements MetricsService {
      */
     private final ObjectProvider<SeckillActivitySnapshotMapper> snapshotMapperProvider;
 
+    /**
+     * P5 Day 2：订单数的取数来源。{@code projection}（默认）= 读 Redis 投影（消费成功时累加）；
+     * {@code order} = 回退到 Day 8 的跨服务计数（HTTP 调 order 的内部接口）。
+     *
+     * <p>为什么保留回退：投影与"DB 订单数"存在**延迟窗口**（消息尚未消费），切换默认值前
+     * 需要一段双读观察期；出问题一行配置即可切回，不必回滚代码。</p>
+     */
+    @org.springframework.beans.factory.annotation.Value("${module.analytics.metrics-source:projection}")
+    private String metricsSource = "projection";
+
+    private long orderCount(Long activityId) {
+        if ("order".equalsIgnoreCase(metricsSource)) {
+            return orderQueryPort.countByActivity(activityId);
+        }
+        Object v = redisTemplate.opsForHash().get(
+                CacheKeyConstant.SECKILL_METRIC_PREFIX + activityId,
+                CacheKeyConstant.METRIC_FIELD_ORDER_COUNT);
+        return v instanceof Number ? ((Number) v).longValue() : 0L;
+    }
+
     @Override
     public ActivityMetricsVO collectMetrics(Long activityId) {
         ActivityMetricsVO vo = new ActivityMetricsVO();
@@ -49,7 +69,8 @@ public class MetricsServiceImpl implements MetricsService {
             vo.setRedisStock(null); // 未预热或者已经过期
         }
         // 2. 订单数（成功落库的订单）；实现由 order 模块适配
-        long orderCount = orderQueryPort.countByActivity(activityId);
+        // P5 Day 2：默认读投影（零跨服务调用）；module.analytics.metrics-source=order 可回退
+        long orderCount = orderCount(activityId);
         vo.setOrderCount(orderCount);
         vo.setSuccessCount(orderCount); // 成功数等于订单数（口径统一：以 DB 最终一致为核对源）
 

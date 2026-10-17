@@ -20,11 +20,11 @@ import java.util.stream.Collectors;
 public class SeckillRankServiceImpl implements SeckillRankService {
 
     private final RedisTemplate<String, Object> redisTemplate;
-    /** P0 Day 4：订单数据经端口由 order 域提供，避免 analytics → order 反向依赖 */
-    private final OrderQueryPort orderQueryPort;
+    // P5 Day 2：读侧改读 Redis 投影（榜单 ZSet + 订单号映射 Hash + 订单数计数），
+    // 因此不再需要 OrderQueryPort —— analytics 与 order 之间从此没有同步调用。
 
     @Override
-    public void recordSuccess(Long activityId, Long userId, Long successTime) {
+    public void recordSuccess(Long activityId, Long userId, Long successTime, String orderNo) {
         // 榜单非关键路径，异常只记录日志，不影响主流程
         try {
             String key = CacheKeyConstant.SECKILL_RANK_PREFIX + activityId;
@@ -41,10 +41,48 @@ public class SeckillRankServiceImpl implements SeckillRankService {
                 log.debug("用户已在榜中，activityId={}, userId={}（幂等）", activityId, userId);
             }
             // 榜单键暂不设过期（复盘需要），由业务侧按活动维度清理
+
+            // ---- P5 Day 2：投影写入（与榜单同处，全部幂等）----
+            if (orderNo != null && !orderNo.isBlank()) {
+                // ① 订单号映射：榜单展示直接读它，读侧不再回调 order 服务
+                redisTemplate.opsForHash().put(
+                        CacheKeyConstant.SECKILL_RANK_ORDER_PREFIX + activityId,
+                        String.valueOf(userId), orderNo);
+                // ② 订单数计数：Stream 是至少一次投递 → 以 orderNo 为幂等键（7 天覆盖重投递窗口）
+                Boolean first = redisTemplate.opsForValue().setIfAbsent(
+                        CacheKeyConstant.SECKILL_DEDUPE_ORDER_PREFIX + orderNo, "1",
+                        java.time.Duration.ofDays(7));
+                if (Boolean.TRUE.equals(first)) {
+                    redisTemplate.opsForHash().increment(
+                            CacheKeyConstant.SECKILL_METRIC_PREFIX + activityId,
+                            CacheKeyConstant.METRIC_FIELD_ORDER_COUNT, 1);
+                }
+            }
         } catch (Exception e) {
             log.warn("记录榜单失败，activityId={}, userId={}", activityId, userId, e);
         }
     }
+    /**
+     * P5 Day 2：从投影 Hash 批量读订单号（`HMGET`）。缺失的条目返回空串（与旧实现口径一致：
+     * 早期未入投影的历史榜单成员会暂时显示空订单号，回填脚本可补齐）。
+     */
+    private Map<Long, String> orderNosOf(Long activityId, List<Long> userIds) {
+        Map<Long, String> result = new HashMap<>();
+        if (userIds == null || userIds.isEmpty()) {
+            return result;
+        }
+        List<Object> fields = userIds.stream().map(id -> (Object) String.valueOf(id)).collect(Collectors.toList());
+        List<Object> values = redisTemplate.opsForHash()
+                .multiGet(CacheKeyConstant.SECKILL_RANK_ORDER_PREFIX + activityId, fields);
+        for (int i = 0; i < userIds.size(); i++) {
+            Object v = (values == null || i >= values.size()) ? null : values.get(i);
+            if (v != null) {
+                result.put(userIds.get(i), String.valueOf(v));
+            }
+        }
+        return result;
+    }
+
     @Override
     public List<RankEntryVO> topN (Long activityId, int top) {
         // 限制top 范围
@@ -64,7 +102,7 @@ public class SeckillRankServiceImpl implements SeckillRankService {
                 .collect(Collectors.toList());
 
         // 批量查询订单号映射（同一活动、同一用户唯一订单）；实现由 order 模块适配
-        Map<Long, String> userIdToOrder = orderQueryPort.orderNosOf(activityId, userIds);
+        Map<Long, String> userIdToOrder = orderNosOf(activityId, userIds);   // P5：读投影 Hash（无跨服务调用）
         // 构造返回列表
         List<RankEntryVO> result = new ArrayList<>();
         int rank = 1;

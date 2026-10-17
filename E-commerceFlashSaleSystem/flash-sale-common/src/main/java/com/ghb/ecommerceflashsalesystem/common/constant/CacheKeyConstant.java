@@ -143,6 +143,20 @@ public class CacheKeyConstant {
      */
     public static final String METRIC_FIELD_SOLD_OUT = "soldOutReject";
 
+    /**
+     * P5 Day 2：订单数投影字段（消费成功时累加）。
+     *
+     * <p>此前指标里的订单数是**查询期**调 order 服务的内部接口取的（Day 8 过渡实现）；
+     * 改为事件投影后，读侧零跨服务调用。</p>
+     */
+    public static final String METRIC_FIELD_ORDER_COUNT = "orderCount";
+
+    /** P5：榜单条目的 userId → orderNo 映射（Hash），随榜单在消费成功时写入 */
+    public static final String SECKILL_RANK_ORDER_PREFIX = "seckill:rank:order:";
+
+    /** P5：订单级幂等键前缀（Stream 至少一次投递 → 同一 orderNo 只累加一次计数） */
+    public static final String SECKILL_DEDUPE_ORDER_PREFIX = "seckill:dedupe:order:";
+
 }
 /*
  * 3. 实际用途与意义
