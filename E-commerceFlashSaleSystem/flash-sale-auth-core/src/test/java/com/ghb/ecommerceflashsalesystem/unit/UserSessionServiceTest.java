@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -41,7 +42,7 @@ class UserSessionServiceTest {
         sessionMapper = mock(UserSessionMapper.class);
         authMirror = mock(AuthMirror.class);
         service = new UserSessionService(sessionMapper, mock(UserAccountService.class),
-                new SecurityProperties(), authMirror);
+                new SecurityProperties());
     }
 
     @Test
@@ -52,7 +53,8 @@ class UserSessionServiceTest {
 
         assertThat(deleted).isEqualTo(3);
         verify(sessionMapper).deleteExpired(any(LocalDateTime.class));
-        verify(authMirror).purgeExpired(any(LocalDateTime.class));
+        // P4 收官：副本侧清理已随旧库下线退役（authMirror 不再参与），只断言权威库路径
+        verifyNoInteractions(authMirror);
     }
 
     @Test

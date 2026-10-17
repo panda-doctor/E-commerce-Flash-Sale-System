@@ -92,7 +92,7 @@ public class CreateBusinessValidationTest {
                                 .collect(Collectors.toMap(Product::getId,
                                         p -> new ProductBrief(p.getId(), p.getName(), p.getImageUrl(), p.getOriginalPrice())));
                     }
-                }, dualWriteMirror);
+                });
     }
 
     /** 活动"productId 存在性"通过：mock selectById 返回非 null 商品；成功路径 insert 返回 1 */

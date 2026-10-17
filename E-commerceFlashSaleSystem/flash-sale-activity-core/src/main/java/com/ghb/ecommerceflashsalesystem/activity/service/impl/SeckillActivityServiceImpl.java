@@ -12,7 +12,7 @@ import com.ghb.ecommerceflashsalesystem.domain.entity.SeckillActivity;
 import com.ghb.ecommerceflashsalesystem.domain.enums.ActivityStatusEnum;
 import com.ghb.ecommerceflashsalesystem.activity.vo.ActivityItemVO;
 import com.ghb.ecommerceflashsalesystem.activity.vo.SeckillActivityVO;
-import com.ghb.ecommerceflashsalesystem.infra.db.DualWriteMirror;
+// P4 收官清理：反向镜像已随旧库下线退役
 import com.ghb.ecommerceflashsalesystem.activity.port.ProductCatalogPort;
 import com.ghb.ecommerceflashsalesystem.activity.mapper.SeckillActivityMapper;
 import com.ghb.ecommerceflashsalesystem.activity.cache.SeckillCacheService;
@@ -40,7 +40,7 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
     /** P3 Day 5：商品目录端口（跨域读出口；实现由装配层提供，activity 不再直读 product 表） */
     private final ProductCatalogPort productCatalogPort;
     /** P3 Day 3：过渡期双写镜像（默认关；失败只记日志，不影响活动创建/更新） */
-    private final DualWriteMirror dualWriteMirror;
+    // P4 收官清理：dualWriteMirror 字段与 mirrorActivityUpsert 已删除（旧库已 DROP）
 
     // ========== 方法⓪：活动广场列表（附带商品信息与实时库存） ==========
 
@@ -114,7 +114,7 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
             activity.setVersion(0);
 
             seckillActivityMapper.insert(activity); //插入活动
-            mirrorActivityUpsert(activity);
+
             log.info("创建活动成功，activityId={}", activity.getId());
             return activity.getId();
         }else{
@@ -139,7 +139,7 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
                 throw new BusinessException(ResultCode.PARAM_ERROR,
                         "活动已被他人修改，请刷新后重试，activityId=" + activityId);
             }
-            mirrorActivityUpsert(activityIdExisting);
+
             // R4 修复：更新成功后必须失效预热缓存并回置预热状态为"未预热"，
             // 否则详情与 execute 继续命中旧缓存（旧价旧库存落单）；
             // 新版生效需管理员在管理台重新点击"预热"（预热方法校验通过后会重建缓存）。
@@ -163,20 +163,6 @@ public class SeckillActivityServiceImpl implements SeckillActivityService {
      *
      * @param activity 已写入主库的活动实体
      */
-    private void mirrorActivityUpsert(SeckillActivity activity) {
-        dualWriteMirror.mirrorActivity(
-                "INSERT INTO seckill_activity (id, product_id, activity_name, start_time, end_time, seckill_price, "
-                        + "seckill_stock, limit_per_user, status, preheat_status, version) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                        + "ON DUPLICATE KEY UPDATE product_id=VALUES(product_id), activity_name=VALUES(activity_name), "
-                        + "start_time=VALUES(start_time), end_time=VALUES(end_time), seckill_price=VALUES(seckill_price), "
-                        + "seckill_stock=VALUES(seckill_stock), limit_per_user=VALUES(limit_per_user), "
-                        + "status=VALUES(status), preheat_status=VALUES(preheat_status), version=VALUES(version)",
-                activity.getId(), activity.getProductId(), activity.getActivityName(), activity.getStartTime(),
-                activity.getEndTime(), activity.getSeckillPrice(), activity.getSeckillStock(),
-                activity.getLimitPerUser(), activity.getStatus(), activity.getPreheatStatus(), activity.getVersion());
-    }
-
     // ========== 方法②：查询活动详情（缓存优先） ==========
 
     @Override

@@ -6,7 +6,7 @@ import com.ghb.ecommerceflashsalesystem.user.config.SecurityProperties;
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserAccount;
 import com.ghb.ecommerceflashsalesystem.domain.entity.UserSession;
 import com.ghb.ecommerceflashsalesystem.user.mapper.UserSessionMapper;
-import com.ghb.ecommerceflashsalesystem.user.mirror.AuthMirror;
+// P4 收官清理：反向镜像已随旧库下线退役
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -41,7 +41,7 @@ public class UserSessionService {
     private final UserAccountService userAccountService;
     private final SecurityProperties securityProperties;
     /** P4 Day 6：auth 权威库在 flash_sale_auth，会话写入后镜像到旧库副本供另外三个运行时做会话校验 */
-    private final AuthMirror authMirror;
+    // P4 收官清理：authMirror 字段与 4 处镜像调用已删除（旧库已 DROP）
 
     public String create(UserAccount user, HttpServletResponse response) {
         String token = randomToken();
@@ -54,7 +54,7 @@ public class UserSessionService {
         session.setCreatedAt(now);
         session.setExpiresAt(now.plusHours(securityProperties.getSessionTtlHours()));
         sessionMapper.insert(session);
-        authMirror.upsertSession(session); // P4 Day 6：新会话镜像到副本（主键 token_hash）
+
         addCookie(response, securityProperties.getSessionCookieName(), token, true,
                 securityProperties.getSessionTtlHours() * 3600L);
         addCookie(response, CSRF_COOKIE, csrf, false, securityProperties.getSessionTtlHours() * 3600L);
@@ -78,7 +78,7 @@ public class UserSessionService {
         if (sessionMapper.rotateCsrf(session.getTokenHash(), csrfHash, now) != 1) {
             throw new BusinessException(ResultCode.UNAUTHORIZED, "登录会话已失效");
         }
-        authMirror.rotateCsrf(session.getTokenHash(), csrfHash, now); // P4 Day 6：CSRF 轮换镜像
+
         session.setCsrfTokenHash(csrfHash);
         addCookie(response, CSRF_COOKIE, csrf, false, securityProperties.getSessionTtlHours() * 3600L);
         return csrf;
@@ -100,7 +100,7 @@ public class UserSessionService {
             String tokenHash = sha256(token);
             LocalDateTime now = LocalDateTime.now();
             sessionMapper.revoke(tokenHash, now);
-            authMirror.revokeSession(tokenHash, now); // P4 Day 6：登出吊销镜像到副本
+
         }
         addCookie(response, securityProperties.getSessionCookieName(), "", true, 0);
         addCookie(response, CSRF_COOKIE, "", false, 0);
@@ -121,7 +121,7 @@ public class UserSessionService {
     public int purgeExpiredSessions() {
         LocalDateTime now = LocalDateTime.now();
         int deleted = sessionMapper.deleteExpired(now);
-        authMirror.purgeExpired(now); // 副本侧同步清理，否则旧库过期行长期堆积、对账漂移
+        /* P4 收官清理：副本侧 purgeExpired 镜像已随旧库下线移除 */ // 副本侧同步清理，否则旧库过期行长期堆积、对账漂移
         return deleted;
     }
 
