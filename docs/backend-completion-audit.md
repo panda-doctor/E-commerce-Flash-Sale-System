@@ -15,8 +15,8 @@
 |---|---|
 | 总体评分 | **89 / 100** |
 | P0（阻断） | **0** |
-| P1（高） | **3** |
-| P2（中） | **8** |
+| P1（高） | **1**（原 3 → P1-2 误判已撤销、P1-3 已修复） |
+| P2（中） | **10**（原 8 + 由 P1-2 拆出的 2 项） |
 | P3（低） | **5** |
 | 是否建议进入前端联调 | **建议进入**（契约稳定、CORS 已配 5173），但 P1-2（失败补偿）与 P1-3（默认凭据）应在对外演示前处理 |
 
@@ -24,7 +24,10 @@
 - 核心交易链路（限流 → Lua 原子扣减 + 去重 → Stream → 消费者幂等落单 → 订单查询 → 读侧投影）**代码完整且可追到底**；
 - 认证授权落实到具体接口（`requireAdmin` / `requireUser` / `requireSessionUser` 三类拦截器 + 资源归属校验），未发现 IDOR 或身份伪造；
 - 工程可编译、回归 **143/0/0**、投影对账 **20/20 零差异**、八服务均验证过启动；
-- 未达"交付标准"的原因：**并发正确性缺本轮可复现验证**、**失败补偿链路缺失**、**默认凭据可静默生效**。
+- 未达"交付标准"的原因：**并发正确性缺本轮可复现验证**（P1-1，唯一未解决的 P1）。
+
+> **整改进展（2026-10-17）**：P1-3 已修复（`d141619`，生产 profile 下默认凭据 → 启动失败，+3 条语义测试，基线 146）；
+> P1-2 经复核为**误判已撤销**（`SeckillOrderConsumer:332` 的 `compensateDeadMessage` 已做库存回补 + 令牌释放）。
 
 ---
 
@@ -170,14 +173,28 @@ gateway(:8090)  bootstrap(:8081 单体)             ← 边缘与编排
 - 修复建议：新增 `ConcurrencyTest`（Testcontainers 或本地 Redis）：库 存 N、并发 M≫N，断言 `成功数 == N`、`订单数 == N`、`库存 == 0`；另一组断言同一用户并发仅 1 单。
 - 验证：用例红灯先复现（如人为去掉 Lua 的原子判断），再回绿。
 
-**P1-2 下单失败后的库存补偿链路缺失**
-- 模块：秒杀下单 / 库存
-- 描述：`seckill_execute.lua` 成功后 Redis 库存已扣；若后续消费持续失败（未落库、进死信），代码中**未找到库存回补或超时释放**的路径 —— 全仓 `@Scheduled` 仅有两处（会话清理、Stream 消费），无库存对账/回补任务；`OrderController` 也无取消入口。
-- 位置：`order/consumer/SeckillOrderConsumer.java`（失败分支）、`order/scheduler/StreamConsumerScheduler.java`、缺失的补偿任务
-- 触发条件：DB 不可用 / 唯一键冲突持续 / 消息体非法 → 死信堆积。
-- 影响：**永久少卖**（库存扣了但没有订单），且指标 `orderCount` 不含这些请求 ⇒ 用户看到"售罄"但库里没有对应订单。
-- 修复建议：① 死信在写入前**先回补库存**（`HINCRBY stock +1` 或 `decr_stock.lua` 的反向脚本）；② 增加补偿对账任务（Redis 已扣 − DB 成功订单 = 待补偿）；③ 订单超时关闭（若纳入范围）。
-- 验证：制造落库失败（如临时改表名为错误值）→ 断言死信产生后库存回到扣减前。
+**P1-2（⚠️ 已撤销 —— 原结论为误判，2026-10-17 复核）**
+
+原报告的"失败补偿缺失"不成立。复核证据：
+
+```java
+// SeckillOrderConsumer.java:332（DEAD 分支内）
+compensateDeadMessage(message);
+
+// SeckillOrderConsumer.java:409 起
+private void compensateDeadMessage(SeckillOrderMessage message) {
+    String stockKey = CacheKeyConstant.SECKILL_STOCK_PREFIX + message.getActivityId();
+    String tokenKey = CacheKeyConstant.SECKILL_USER_PREFIX + message.getActivityId() + ":" + message.getUserId();
+    redisTemplate.opsForValue().increment(stockKey, 1);   // 回补库存
+    redisTemplate.delete(tokenKey);                        // 释放"一人一单"令牌
+}
+```
+
+即：消息**转死信时**会回补库存并释放用户令牌，语义正确（重试中不回补，避免与可能的成功落库冲突）。
+误判原因：初审只 grep 了 `cancelOrder|timeoutClose|releaseStock|rollbackStock|@Scheduled`，
+而实现名是 `compensateDeadMessage` —— **按命名猜实现**是本次审查的方法错误，已记入遗留。
+
+由该误判拆出的两条**真实但较轻**的问题（降为 P2，见下表 P2-9 / P2-10）。
 
 **P1-3 内部令牌与数据库口令存在可静默生效的默认值**
 - 模块：配置/安全
@@ -200,6 +217,8 @@ gateway(:8090)  bootstrap(:8081 单体)             ← 边缘与编排
 | P2-6 | 订单 | `/users/{userId}/orders` 与 `/users/me/orders` 语义重复（前者仅本人可用） | `OrderController` | 契约冗余，易误用 | 保留 `me`，`{userId}` 改为管理端 |
 | P2-7 | 图片上传 | 合法文件被误拒的历史问题未复现/未修 | `AdminFileController` 校验分支 | 管理端上传失败 | 改用魔数头校验 + 允许格式白名单 |
 | P2-8 | 死信 | 重放接口无批量参数与告警阈值（仅手动触发） | `AdminMessageController` | 故障恢复慢 | 加批量与"死信 > N 告警" |
+| P2-9 | 库存补偿 | 补偿固定 `INCR +1`，若 `SeckillRequest.quantity > 1` 会**少回补** | `SeckillOrderConsumer:415` | 大数量下单场景库存失真 | 补偿改为 `INCRBY <quantity>`，或显式约束 `quantity == 1`（秒杀语义） |
+| P2-10 | 库存一致性 | 补偿是**事件驱动**（仅死信触发），缺周期性对账任务（Redis 已扣 − DB 成功订单） | 缺失 `StockReconcileScheduler` | 丢消息/人工误操作造成的长期漂移无法发现 | 增加每日对账任务 + 差异告警（可复用 `reconcile-analytics-projection.ps1` 风格） |
 
 ### P3（低）—— 5 项
 
@@ -283,8 +302,9 @@ gateway(:8090)  bootstrap(:8081 单体)             ← 边缘与编排
 | 任务 | 范围 | 目标 | 验收条件 |
 |---|---|---|---|
 | R1 并发验证 | 新增 `ConcurrencyIT`（Testcontainers Redis/MySQL 或本地隔离库） | 证明不超卖、不重复下单 | 库存 N + 并发 M：成功=N、订单=N、库存=0、无负库存；同用户并发 2 请求仅 1 单 |
-| R2 失败补偿 | `SeckillOrderConsumer` 失败分支 + 新增 `StockReconcileScheduler` | 库存扣减与订单最终一致 | 人为制造落库失败 → 死信 + 库存回补；对账任务输出"Redis 已扣 − DB 成功"差异表 |
-| R3 默认凭据治理 | 各 `application.yaml` + 启动校验 | 生产不允许默认值 | 不设 `INTERNAL_TOKEN`/`MYSQL_PASSWORD` 启动 → 失败或内部接口全拒 |
+| ~~R2 失败补偿~~ | **已实现，撤销该整改项**：`SeckillOrderConsumer.compensateDeadMessage`（死信回补库存 + 释放令牌） | — | — |
+| R2' 补偿加固（P2-9/P2-10） | `SeckillOrderConsumer` 补偿改 `INCRBY quantity`（或约束 quantity=1）；新增 `StockReconcileScheduler` | 大数量不偏差、长期漂移可发现 | 单测：quantity=3 的死信回补 3；对账任务输出差异表且差异为 0 |
+| R3 默认凭据治理 ✅**已完成**（`d141619`） | `infra/guard/ProductionCredentialGuard` + 3 条语义测试 | 生产不允许默认值 | 已验证：prod + 默认值 → 启动抛 `IllegalStateException`；dev → 放行 |
 
 ### 第二优先级（P2，联调期并行）
 R4 分页上限显式化 → R5 日志脱敏 → R6 防暴破计数 → R7 各运行时探针/集中采集 → R8 订单 VO 化 → R9 上传校验改魔数 → R10 死信批量与告警阈值。
@@ -306,7 +326,7 @@ R11 脚本路径参数化 → R12 每服务 Dockerfile + 托管 CI → R13 OpenA
 | 库存扣减具备合理的并发保护 | **部分通过** | Lua 原子脚本 + 去重 + DB 唯一约束（设计正确），**缺并发测试证据**（P1-1） |
 | 重复请求和重复秒杀得到正确处理 | **通过** | `SADD` 去重 + `SETNX` + 唯一约束；重启消费者后对账仍 0 差异（实测） |
 | 订单创建、查询和状态流转正常 | **通过** | 落库（快照 0→1）、本人列表实测、越权校验 |
-| 库存与订单之间具备合理一致性保障 | **部分通过** | 正向一致（对账 0 差异）；**失败补偿缺失**（P1-2） |
+| 库存与订单之间具备合理一致性保障 | **部分通过** | 正向一致（对账 0 差异）+ 死信补偿已实现（`compensateDeadMessage`）；缺**周期性**库存对账（P2-10） |
 | 核心异常与边界场景已验证 | **部分通过** | 未登录/依赖降级/售罄/重复已验；并发异常未验证 |
 | 用户无法越权访问他人订单或受保护资源 | **通过** | `OrderController` 归属校验 + `requireUser` 拦截（代码 + 实测） |
 | 前端所需的 API 和数据契约明确 | **通过** | 36 项清单 + `docs/interface.md` + `postman/`（异步无进度接口属 D 类可适配） |
