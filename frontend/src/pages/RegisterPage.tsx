@@ -8,7 +8,11 @@ import { toast } from '../components/ui/Toast'
 import { useAuth } from '../stores/auth'
 import { toMessage } from '../lib/errors'
 
+/** 与后端 `RegisterRequest` 的校验注解保持一致（不额外臆造规则）。 */
 const PASSWORD_MIN = 10
+const PASSWORD_MAX = 72
+const DISPLAY_NAME_MAX = 64
+const ACCOUNT_PATTERN = /^[a-z0-9._-]{3,32}$/i
 
 export default function RegisterPage() {
   const { register } = useAuth()
@@ -24,15 +28,29 @@ export default function RegisterPage() {
 
   const validate = () => {
     const next: Record<string, string> = {}
-    if (!accountName.trim()) {
+    const account = accountName.trim()
+    const display = displayName.trim()
+
+    if (!account) {
       next.accountName = '请填写账号名'
+    } else if (!ACCOUNT_PATTERN.test(account)) {
+      next.accountName = '账号名须为 3~32 位字母、数字或 . _ -'
     }
+
+    if (display.length > DISPLAY_NAME_MAX) {
+      next.displayName = `昵称最多 ${DISPLAY_NAME_MAX} 个字符`
+    }
+
     if (password.length < PASSWORD_MIN) {
-      next.password = `密码至少 ${PASSWORD_MIN} 位（后端限制 10~72 位）`
+      next.password = `密码至少 ${PASSWORD_MIN} 位`
+    } else if (password.length > PASSWORD_MAX) {
+      next.password = `密码最多 ${PASSWORD_MAX} 位`
     }
+
     if (password !== confirm) {
       next.confirm = '两次输入的密码不一致'
     }
+
     setFieldError(next)
     return Object.keys(next).length === 0
   }
@@ -79,7 +97,7 @@ export default function RegisterPage() {
           label="账号名"
           name="accountName"
           autoComplete="username"
-          placeholder="4~32 位字母或数字"
+          placeholder="3~32 位字母、数字或 . _ -"
           value={accountName}
           error={fieldError.accountName}
           onChange={(event) => setAccountName(event.target.value)}
@@ -89,6 +107,7 @@ export default function RegisterPage() {
           name="displayName"
           placeholder="用于页面展示，最多 64 个字符"
           value={displayName}
+          error={fieldError.displayName}
           onChange={(event) => setDisplayName(event.target.value)}
         />
         <Input

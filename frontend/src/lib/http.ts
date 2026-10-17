@@ -17,13 +17,16 @@ export class ApiError extends Error {
   readonly code: number
   readonly httpStatus: number
   readonly data: unknown
+  /** 后端 `Result.requestId`：用户反馈问题时可直接报给后端定位链路。 */
+  readonly requestId?: string
 
-  constructor(message: string, code: number, httpStatus: number, data?: unknown) {
+  constructor(message: string, code: number, httpStatus: number, data?: unknown, requestId?: string) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.httpStatus = httpStatus
     this.data = data
+    this.requestId = requestId
   }
 }
 
@@ -141,7 +144,13 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
           throw new ApiError('服务端返回为空或格式异常', ErrorCode.SYSTEM_ERROR, response.status)
         }
         if (envelope.code !== ErrorCode.SUCCESS) {
-          throw new ApiError(envelope.message || '请求失败', envelope.code, response.status, envelope.data)
+          throw new ApiError(
+            envelope.message || '请求失败',
+            envelope.code,
+            response.status,
+            envelope.data,
+            envelope.requestId,
+          )
         }
         return envelope.data
       })

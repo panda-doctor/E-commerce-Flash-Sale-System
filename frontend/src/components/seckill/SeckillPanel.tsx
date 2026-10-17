@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, ShoppingBag, X } from 'lucide-react'
+import { Loader2, RefreshCw, ShoppingBag, X } from 'lucide-react'
 import { executeSeckill } from '../../api/seckill'
 import { useAuth } from '../../stores/auth'
 import { useOrderPolling } from '../../hooks/queries/useOrders'
+import { queryKeys } from '../../lib/queryKeys'
 import { Button } from '../ui/Button'
 import { Badge } from '../ui/Badge'
 import { toast } from '../ui/Toast'
@@ -21,7 +22,7 @@ const STATUS_TEXT: Record<string, string> = {
 }
 
 /**
- * 秒杀交易面板：提交 → 按 `result` 枚举反馈 → QUEUING 时用订单号轮询至终态。
+ * 秒杀交易面板：提交 → 按 `result` 枚举反馈 → QUEUED 时用订单号轮询至终态。
  * 后端不提供进度百分比，因此只展示"排队中/成功/失败"三个真实状态。
  */
 export function SeckillPanel({
@@ -47,6 +48,9 @@ export function SeckillPanel({
   const orderQuery = useOrderPolling(orderNo ?? undefined, Boolean(orderNo))
   const orderStatus = orderQuery.data?.status
 
+  /** 已处理过的终态签名，保证同一订单的同一终态只触发一次缓存刷新。 */
+  const handledRef = useRef<string | null>(null)
+
   const mutation = useMutation({
     mutationFn: () => executeSeckill(activityId, productId),
     onSuccess: (data) => {
@@ -58,8 +62,10 @@ export function SeckillPanel({
       } else if (data.result !== 'QUEUED') {
         toast.error(SECKILL_RESULT_TEXT[data.result])
       }
-      queryClient.invalidateQueries({ queryKey: ['orders'] })
-      queryClient.invalidateQueries({ queryKey: ['activity', activityId] })
+      // 提交后库存可能已扣减：列表与详情一并刷新（榜单等终态后再刷）
+      void queryClient.invalidateQueries({ queryKey: ['orders'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.activity(activityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.activities() })
     },
     onError: (error: unknown) => {
       const message = toMessage(error)
@@ -69,10 +75,27 @@ export function SeckillPanel({
     },
   })
 
-  // 轮询到终态时刷新相关缓存（订单列表/活动库存/榜单）
-  if (orderStatus && orderStatus !== 'QUEUING') {
-    queryClient.invalidateQueries({ queryKey: ['orders'] })
-  }
+  /**
+   * 轮询到终态后刷新相关缓存。
+   * 必须放在 effect 里：渲染阶段执行 queryClient 副作用会让每次渲染都触发一次失效，
+   * 数据变化引起的重渲染又再次触发，形成刷新循环（本处曾写在渲染体，已修正）。
+   */
+  useEffect(() => {
+    if (!orderNo || !orderStatus || orderStatus === 'QUEUING') {
+      return
+    }
+    const signature = `${orderNo}:${orderStatus}`
+    if (handledRef.current === signature) {
+      return
+    }
+    handledRef.current = signature
+
+    void queryClient.invalidateQueries({ queryKey: ['orders'] })
+    void queryClient.invalidateQueries({ queryKey: ['order'] })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.activity(activityId) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.activities() })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.rank(activityId) })
+  }, [activityId, orderNo, orderStatus, queryClient])
 
   const hint = phaseHint(phase)
   const canBuy = phase === 'IN_PROGRESS'
@@ -143,11 +166,27 @@ export function SeckillPanel({
                     <p className="text-ink-600">订单号</p>
                     <p className="tnum mt-0.5 break-all font-medium text-ink-900">{orderNo}</p>
                     <p className="mt-2 flex items-center gap-1.5 text-ink-600">
-                      {orderStatus && STATUS_TEXT[orderStatus] === undefined ? null : orderQuery.isFetching ? (
-                        <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                      ) : null}
+                      {orderQuery.isFetching ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : null}
                       状态：{orderStatus ? (STATUS_TEXT[orderStatus] ?? orderStatus) : '查询中…'}
                     </p>
+
+                    {orderQuery.pollingStopped ? (
+                      <div className="mt-2 rounded-md bg-white px-2 py-2">
+                        <p className="text-xs text-ink-600">
+                          自动刷新已停止（超时或连续失败）。订单可能仍在处理中，可手动刷新查看。
+                        </p>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="mt-2"
+                          loading={orderQuery.isFetching}
+                          icon={<RefreshCw className="size-3.5" aria-hidden />}
+                          onClick={() => void orderQuery.refetch()}
+                        >
+                          手动刷新状态
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 

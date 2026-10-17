@@ -50,6 +50,15 @@ export default function OrdersPage() {
         </Button>
       </div>
 
+      {ordersQuery.pollingStopped ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-brand-soft px-4 py-2.5 text-xs text-ink-600">
+          自动刷新已停止（超时或连续失败），排队中的订单可能仍在处理。
+          <Button size="sm" variant="secondary" loading={ordersQuery.isFetching} onClick={() => ordersQuery.refetch()}>
+            手动刷新
+          </Button>
+        </div>
+      ) : null}
+
       <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="订单筛选">
         {FILTERS.map((item) => (
           <button

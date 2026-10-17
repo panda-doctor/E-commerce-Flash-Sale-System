@@ -18,12 +18,16 @@ interface ToastStore {
 
 let seq = 0
 
+/** 同屏最多展示的提示条数（超出则挤掉最旧的一条）。 */
+const MAX_VISIBLE = 3
+
 /** 极简 toast：不引入额外依赖，zustand 只为共享一份队列（体积 ~1KB）。 */
 export const useToastStore = create<ToastStore>((set) => ({
   items: [],
   push: (tone, message) => {
     const id = ++seq
-    set((state) => ({ items: [...state.items, { id, tone, message }] }))
+    // 只保留最近 3 条：连续失败时避免堆叠把页面遮住
+    set((state) => ({ items: [...state.items, { id, tone, message }].slice(-MAX_VISIBLE) }))
     window.setTimeout(() => {
       set((state) => ({ items: state.items.filter((item) => item.id !== id) }))
     }, 4000)

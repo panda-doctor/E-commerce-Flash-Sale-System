@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchCsrf, fetchMe, login as loginApi, logout as logoutApi, register as registerApi } from '../api/auth'
 import { setCsrfToken, onUnauthorized } from '../lib/http'
+import { clearUserScopedCache, queryKeys } from '../lib/queryKeys'
 import type { LoginPayload, RegisterPayload, UserProfile } from '../types/auth'
 
 interface AuthContextValue {
@@ -11,7 +12,8 @@ interface AuthContextValue {
   restoring: boolean
   login: (payload: LoginPayload) => Promise<UserProfile>
   register: (payload: RegisterPayload) => Promise<UserProfile>
-  logout: () => Promise<void>
+  /** 返回值表示服务端是否确认注销（false = 仅清理了本地状态，会话可能仍有效）。 */
+  logout: () => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -21,7 +23,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 刷新页面后靠 Cookie 会话恢复登录态；40100 视为未登录（不重试、不报错）
   const { data, isFetched } = useQuery({
-    queryKey: ['auth', 'me'],
+    queryKey: queryKeys.authMe(),
     queryFn: fetchMe,
     retry: false,
     staleTime: 5 * 60_000,
@@ -35,8 +37,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (payload: LoginPayload) => {
       const session = await loginApi(payload)
+      // 换账号前先清掉上一个会话的订单缓存，避免新用户首帧看到他人数据
+      clearUserScopedCache(queryClient)
       setCsrfToken(session.csrfToken)
-      queryClient.setQueryData(['auth', 'me'], session.user)
+      queryClient.setQueryData(queryKeys.authMe(), session.user)
       return session.user
     },
     [queryClient],
@@ -45,25 +49,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback(
     async (payload: RegisterPayload) => {
       const session = await registerApi(payload)
+      clearUserScopedCache(queryClient)
       setCsrfToken(session.csrfToken)
-      queryClient.setQueryData(['auth', 'me'], session.user)
+      queryClient.setQueryData(queryKeys.authMe(), session.user)
       return session.user
     },
     [queryClient],
   )
 
   const logout = useCallback(async () => {
-    await logoutApi().catch(() => undefined)
+    // 注销失败也要清本地状态（否则界面还显示已登录），但要把"服务端未确认"如实返回给调用方
+    let serverConfirmed = true
+    await logoutApi().catch(() => {
+      serverConfirmed = false
+    })
     setCsrfToken(null)
-    queryClient.setQueryData(['auth', 'me'], null)
-    queryClient.removeQueries({ queryKey: ['orders'] })
+    queryClient.setQueryData(queryKeys.authMe(), null)
+    // 用户域缓存（订单列表 / 订单详情）必须整体清除：键里虽有 userId 兜底，但缓存不应留着
+    clearUserScopedCache(queryClient)
+    return serverConfirmed
   }, [queryClient])
 
-  // 任意接口返回 40100：清空本地用户态（路由守卫会据此跳登录）
+  // 任意接口返回 40100：清空本地用户态与用户域缓存（路由守卫会据此跳登录）
   useEffect(() => {
     onUnauthorized(() => {
       setCsrfToken(null)
-      queryClient.setQueryData(['auth', 'me'], null)
+      queryClient.setQueryData(queryKeys.authMe(), null)
+      clearUserScopedCache(queryClient)
     })
     return () => onUnauthorized(null)
   }, [queryClient])

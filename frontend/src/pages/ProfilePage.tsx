@@ -6,6 +6,7 @@ import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { toast } from '../components/ui/Toast'
 import { formatDateTime } from '../lib/format'
+import { toMessage } from '../lib/errors'
 
 /** 个人中心：展示真实账户字段（来自 /api/auth/me）。 */
 export default function ProfilePage() {
@@ -18,11 +19,18 @@ export default function ProfilePage() {
 
   const onLogout = () => {
     logout()
-      .then(() => {
-        toast.info('已退出登录')
+      .then((serverConfirmed) => {
+        if (serverConfirmed) {
+          toast.info('已退出登录')
+        } else {
+          toast.error('已退出当前页面，但服务器会话可能仍未注销，请检查网络后重试')
+        }
         navigate('/login', { replace: true })
       })
-      .catch((error: unknown) => console.error('退出登录失败', error))
+      .catch((error: unknown) => {
+        toast.error(toMessage(error))
+        console.error('退出登录失败', error)
+      })
   }
 
   return (

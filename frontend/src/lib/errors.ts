@@ -38,3 +38,11 @@ export const SECKILL_RESULT_TEXT: Record<SeckillResult, string> = {
 export function isUnauthorized(error: unknown): boolean {
   return error instanceof ApiError && error.code === ErrorCode.UNAUTHORIZED
 }
+
+/**
+ * 取出后端请求号（`Result.requestId`）。
+ * 展示在错误态里，用户反馈问题时可以直接报给后端，比"页面报错了"有用得多。
+ */
+export function requestIdOf(error: unknown): string | null {
+  return error instanceof ApiError && error.requestId ? error.requestId : null
+}

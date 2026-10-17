@@ -6,6 +6,9 @@ export interface Result<T> {
   code: number
   message: string
   data: T
+  /** 后端链路追踪号（排查线上问题时提供给后端最有价值的信息）。 */
+  requestId?: string
+  timestamp?: number
 }
 
 export interface PageResponse<T> {

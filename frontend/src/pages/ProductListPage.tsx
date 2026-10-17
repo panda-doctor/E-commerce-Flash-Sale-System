@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Search, Timer, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useProducts } from '../hooks/queries/useProducts'
@@ -46,6 +46,16 @@ export default function ProductListPage() {
 
   const data = productsQuery.data
   const total = data?.total ?? 0
+
+  // 页码越界兜底：total>0 但当前页为空（多半是商品刚下架或数据减少），自动退回最后一页
+  const lastPage = data && data.pages > 0 ? data.pages : 1
+  const pageOutOfRange = Boolean(data) && total > 0 && (data?.records.length ?? 0) === 0 && page > lastPage
+
+  useEffect(() => {
+    if (pageOutOfRange) {
+      setPage(lastPage)
+    }
+  }, [pageOutOfRange, lastPage])
 
   return (
     <div className="pb-12">
@@ -129,6 +139,16 @@ export default function ProductListPage() {
           </div>
         ) : productsQuery.isError ? (
           <ErrorState error={productsQuery.error} onRetry={() => productsQuery.refetch()} />
+        ) : pageOutOfRange ? (
+          <EmptyState
+            title="当前页已无数据"
+            description={`商品数据有变化，正在为你返回第 ${lastPage} 页。`}
+            action={
+              <Button variant="secondary" size="sm" onClick={() => setPage(lastPage)}>
+                回到第 {lastPage} 页
+              </Button>
+            }
+          />
         ) : data && data.records.length > 0 ? (
           <>
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

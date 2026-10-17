@@ -85,10 +85,19 @@ export default function OrderDetailPage() {
         </dl>
 
         {queuing ? (
-          <div className="mt-5 flex items-center gap-2 rounded-lg bg-brand-soft px-3 py-2.5 text-xs text-ink-600">
-            <Loader2 className="size-3.5 animate-spin text-brand" aria-hidden />
-            正在排队生成订单，页面会自动刷新（离开本页即停止轮询）。
-          </div>
+          orderQuery.pollingStopped ? (
+            <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg bg-brand-soft px-3 py-2.5 text-xs text-ink-600">
+              自动刷新已停止（超时或连续失败），订单可能仍在处理中。
+              <Button size="sm" variant="secondary" loading={orderQuery.isFetching} onClick={() => orderQuery.refetch()}>
+                手动刷新状态
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-5 flex items-center gap-2 rounded-lg bg-brand-soft px-3 py-2.5 text-xs text-ink-600">
+              <Loader2 className="size-3.5 animate-spin text-brand" aria-hidden />
+              正在排队生成订单，页面会自动刷新（离开本页即停止轮询）。
+            </div>
+          )
         ) : (
           <div className="mt-5 flex flex-wrap items-center gap-2">
             <Badge tone={order.status === 'CREATED' ? 'success' : 'neutral'}>

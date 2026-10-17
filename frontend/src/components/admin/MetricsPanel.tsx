@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Activity, RefreshCw, Timer } from 'lucide-react'
 import { fetchMetrics } from '../../api/admin'
 import { useAdminToken } from '../../stores/adminToken'
+import { queryKeys, tokenFingerprint } from '../../lib/queryKeys'
 import { Button } from '../ui/Button'
 import { Card } from '../ui/Card'
 import { Skeleton } from '../ui/Skeleton'
@@ -42,8 +43,10 @@ export function MetricsPanel({ activityId }: { activityId: string }) {
   const { token } = useAdminToken()
 
   const metricsQuery = useQuery({
-    queryKey: ['admin', 'metrics', activityId],
+    // 键带令牌指纹：换管理员令牌后不复用上一位的指标缓存；无令牌时不发请求
+    queryKey: queryKeys.adminMetrics(tokenFingerprint(token), activityId),
     queryFn: () => fetchMetrics(token, activityId),
+    enabled: Boolean(token) && Boolean(activityId),
     refetchInterval: 5000,
     staleTime: 0,
   })
